@@ -10,7 +10,7 @@ KINDS = ("round",)
 PROBLEM_FIELDS = ("kind", "wargame", "side", "title", "summary", "body", "published")
 STORED_STAMPS = ("id", "revision", "author", "updated")
 ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "traffic", "benign_every_s",
-                "time_limit_s")
+                "time_limit_s", "bot_steps", "cards")
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,8 @@ class CatalogCase:
 class WargameCatalog:
     cases: Mapping[str, CatalogCase] = field(default_factory=dict)
     objectives: frozenset[str] = frozenset()
+    steps: frozenset[str] = frozenset()
+    cards: frozenset[str] = frozenset()
 
 
 def validate_problem(doc: object, catalog: Mapping[str, WargameCatalog]) -> list[FieldError]:
@@ -85,6 +87,8 @@ def _round(setup: Mapping, wargame: WargameCatalog | None, side: object) -> list
 
     errors.extend(_listed(setup, "probe_cases", wargame, _probe_case))
     errors.extend(_listed(setup, "objectives", wargame, _objective))
+    errors.extend(_listed(setup, "bot_steps", wargame, _step))
+    errors.extend(_listed(setup, "cards", wargame, _card))
 
     if "benign_every_s" in setup and not _positive(setup["benign_every_s"]):
         errors.append(FieldError("round.benign_every_s", "not_a_positive_integer"))
@@ -119,6 +123,14 @@ def _probe_case(case_id: str, wargame: WargameCatalog) -> str | None:
 
 def _objective(key: str, wargame: WargameCatalog) -> str | None:
     return None if key in wargame.objectives else "unknown_objective"
+
+
+def _step(step_id: str, wargame: WargameCatalog) -> str | None:
+    return None if step_id in wargame.steps else "unknown_step"
+
+
+def _card(card_id: str, wargame: WargameCatalog) -> str | None:
+    return None if card_id in wargame.cards else "unknown_card"
 
 
 def _named_in(value: object, names: Mapping) -> bool:

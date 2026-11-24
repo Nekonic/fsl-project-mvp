@@ -9,6 +9,7 @@ class Matchup(StrEnum):
     PVP = "pvp"
     DEF_VS_BOT = "def_vs_bot"
     ATK_VS_BOT = "atk_vs_bot"
+    BOT_VS_BOT = "bot_vs_bot"
 
 
 class Phase(StrEnum):
@@ -30,20 +31,31 @@ PLAYERS = {
     Matchup.PVP: {Side.ATTACK: HUMAN, Side.DEFENCE: HUMAN},
     Matchup.DEF_VS_BOT: {Side.ATTACK: BOT, Side.DEFENCE: HUMAN},
     Matchup.ATK_VS_BOT: {Side.ATTACK: HUMAN, Side.DEFENCE: BOT},
+    Matchup.BOT_VS_BOT: {Side.ATTACK: BOT, Side.DEFENCE: BOT},
 }
 
 ALLOWED_MATCHUPS = {
     Side.ATTACK: frozenset({Matchup.PVP, Matchup.ATK_VS_BOT}),
     Side.DEFENCE: frozenset({Matchup.PVP, Matchup.DEF_VS_BOT}),
-    Side.BOTH: frozenset(Matchup),
+    Side.BOTH: frozenset({Matchup.PVP, Matchup.DEF_VS_BOT, Matchup.ATK_VS_BOT}),
 }
 
 TIME_LIMIT = "time_limit"
 ALL_OBJECTIVES_LOST = "all_objectives_lost"
 ORIGINS_SPENT = "origins_spent"
 AUTOMATIC_REASONS = (TIME_LIMIT, ALL_OBJECTIVES_LOST, ORIGINS_SPENT)
-MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "allocation_expired")
+BOTS_EXITED = "bots_exited"
+MANUAL_REASONS = ("ended_by_operator", "forfeit_attack", "forfeit_defence", "allocation_expired", BOTS_EXITED)
 END_REASONS = AUTOMATIC_REASONS + MANUAL_REASONS
+
+
+def bot_sides(matchup: str) -> tuple[str, ...]:
+    return tuple(side.value for side, client in PLAYERS[Matchup(matchup)].items() if client == BOT)
+
+
+def human_side(matchup: str) -> str | None:
+    humans = [side.value for side, client in PLAYERS[Matchup(matchup)].items() if client == HUMAN]
+    return humans[0] if len(humans) == 1 else None
 
 
 @dataclass(frozen=True)

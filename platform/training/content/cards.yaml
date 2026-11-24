@@ -1,0 +1,80 @@
+# Attack persona cards (DECISIONS 2026-11-24): one ATT&CK technique or sub-technique per card, its name as
+# ATT&CK writes it and a verbatim quote of its v20 page, copied from attack.mitre.org on 2026-11-24.
+# Only the attack bot draws a card; the defence bot has none.
+# © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
+release: v20.1
+notice: mitre.copyright
+cards:
+  - id: A1
+    technique: T1595.002
+    name: "Active Scanning: Vulnerability Scanning"
+    url: https://attack.mitre.org/versions/v20/techniques/T1595/002/
+    object_version: "1.0"
+    wargames: [board, corp]
+    quote: >-
+      Vulnerability scans typically check if the configuration of a target host/application (ex: software and
+      version) potentially aligns with the target of a specific exploit the adversary may seek to use.
+  - id: A2
+    technique: T1594
+    name: Search Victim-Owned Websites
+    url: https://attack.mitre.org/versions/v20/techniques/T1594/
+    object_version: "1.1"
+    wargames: [board, corp]
+    quote: >-
+      In addition to manually browsing the website, adversaries may attempt to identify hidden directories or files
+      that could contain additional sensitive information or vulnerable functionality. They may do this through
+      automated activities such as Wordlist Scanning, as well as by leveraging files such as sitemap.xml and
+      robots.txt.
+  - id: A3
+    technique: T1190
+    name: Exploit Public-Facing Application
+    url: https://attack.mitre.org/versions/v20/techniques/T1190/
+    object_version: "2.8"
+    wargames: [board, corp]
+    quote: >-
+      Adversaries may attempt to exploit a weakness in an Internet-facing host or system to initially access a
+      network. The weakness in the system can be a software bug, a temporary glitch, or a misconfiguration.
+  - id: A4
+    technique: T1212
+    name: Exploitation for Credential Access
+    url: https://attack.mitre.org/versions/v20/techniques/T1212/
+    object_version: "1.6"
+    wargames: [board]
+    quote: >-
+      Adversaries may exploit software vulnerabilities in an attempt to collect credentials.
+  - id: A5
+    technique: T1027
+    name: Obfuscated Files or Information
+    url: https://attack.mitre.org/versions/v20/techniques/T1027/
+    object_version: "2.0"
+    wargames: [board]
+    quote: >-
+      Adversaries may attempt to make an executable or file difficult to discover or analyze by encrypting,
+      encoding, or otherwise obfuscating its contents on the system or in transit.
+  - id: A6
+    technique: T1110
+    name: Brute Force
+    url: https://attack.mitre.org/versions/v20/techniques/T1110/
+    object_version: "2.8"
+    wargames: [board, corp]
+    quote: >-
+      If an adversary guesses the correct password but fails to log in to a compromised account due to
+      location-based conditional access policies, they may change their infrastructure until they match the
+      victim’s location and therefore bypass those policies.
+  - id: A7
+    technique: T1068
+    name: Exploitation for Privilege Escalation
+    url: https://attack.mitre.org/versions/v20/techniques/T1068/
+    object_version: "1.6"
+    wargames: [corp]
+    quote: >-
+      Adversaries may exploit software vulnerabilities in an attempt to elevate privileges.
+  - id: A8
+    technique: T1565.001
+    name: "Data Manipulation: Stored Data Manipulation"
+    url: https://attack.mitre.org/versions/v20/techniques/T1565/001/
+    object_version: "1.1"
+    wargames: [corp]
+    quote: >-
+      Adversaries may insert, delete, or manipulate data at rest in order to influence external outcomes or hide
+      activity, thus threatening the integrity of the data.

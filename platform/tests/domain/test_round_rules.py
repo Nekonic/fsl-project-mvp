@@ -3,8 +3,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from domain.round_rules import (
+    ALLOWED_MATCHUPS,
+    Matchup,
     Phase,
     RoundState,
+    Side,
     ended,
     may_end,
 )
@@ -47,3 +50,8 @@ def test_only_a_running_round_ends(phase):
     assert ended(state(phase=phase, objectives_lost=2)) is None
 
 
+
+
+def test_a_both_sides_problem_does_not_take_the_bot_vs_bot_matchup():
+    assert Matchup.BOT_VS_BOT not in ALLOWED_MATCHUPS[Side.BOTH]
+    assert ALLOWED_MATCHUPS[Side.BOTH] == {Matchup.PVP, Matchup.DEF_VS_BOT, Matchup.ATK_VS_BOT}
