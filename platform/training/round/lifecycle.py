@@ -272,7 +272,7 @@ def judge_after() -> timedelta:
 
 
 def judge(found: Round, at: datetime | None = None) -> int:
-    made = referee.judge(found, actions(found), alert_feed.detections(found), attack.running(found),
+    made = referee.judge(found, logged_actions(found), alert_feed.detections(found), attack.running(found),
                          at or timezone.now(), judge_after())
     for verdict in made:
         log.append(found.pk, "case.judged", {"action": verdict.action, "case": verdict.case,
@@ -340,7 +340,7 @@ def forfeit(found: Round, player: Player) -> Round:
 
 
 def observe(found: Round) -> None:
-    losses.observe_effects(found, reach(found), attack.actions(found))
+    losses.observe_effects(found, reach(found), attack.logged_actions(found))
 
 
 ALERTS_READ = "ingesting alerts"
@@ -450,6 +450,10 @@ def catch_up(found: Round, at: datetime | None = None) -> str | None:
 
 def actions(found: Round):
     return attack.actions(found) + customers.benign_records(found)
+
+
+def logged_actions(found: Round):
+    return attack.logged_actions(found) + customers.benign_records(found)
 
 
 def score(found: Round, correlation: str | None = None) -> referee.RoundScore:

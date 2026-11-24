@@ -93,7 +93,7 @@ def test_a_long_body_comes_back_truncated(as_attacker, attacker, cloud):
 def test_the_sent_action_is_a_free_action_record_with_no_verdict(as_attacker, attacker):
     as_attacker.post(url(attacker.round, "requests/"), {"method": "GET", "path": "/search/"}, format="json")
 
-    [record] = service.actions(attacker.round)
+    [record] = service.logged_actions(attacker.round)
 
     assert (record.kind, record.malicious, record.method, record.path) == ("request", None, "GET", "/search/")
     assert record.as_case().declared is False

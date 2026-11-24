@@ -99,7 +99,7 @@ def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] 
             continue
         window = window_of(at, actions)
         if not window:
-            fell += lose(found, [tier], at, at - CLOCK_SKEW, at + CLOCK_SKEW, None)
+            fell += lose(found, [tier], at, at - ATTRIBUTION_WINDOW, at + CLOCK_SKEW, None)
             continue
         fell += lose(found, [tier], at, window[0].started_at - CLOCK_SKEW,
                      max(action.ended_at for action in window) + CLOCK_SKEW, window[-1].marker)

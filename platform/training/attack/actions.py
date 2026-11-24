@@ -18,6 +18,7 @@ from cr.config import configured
 from domain.round_rules import Phase
 from domain.types import (
     ACTION_CASE,
+    ACTION_ORIGIN_REQUEST,
     CORRELATION_MARKER,
     CORRELATION_WINDOW,
     ActionRecord,
@@ -28,6 +29,7 @@ from sandbox import attacker as box
 from sandbox import customers, edge
 from sandbox.reach import allocation_range, range_of
 from scoring import losses as referee
+from telemetry import access as waf_log
 from telemetry import events as log
 from telemetry.models import AccessCursor
 from training.attack import cases as firing
@@ -507,8 +509,18 @@ def record_of(action: Action) -> ActionRecord:
                         expect=action.expect, method=action.meta.get("method"), path=action.meta.get("path"))
 
 
-def actions(found: Round) -> tuple[ActionRecord, ...]:
+def origin_record(request: waf_log.OriginRequest) -> ActionRecord:
+    return ActionRecord(action_id=request.marker, kind=ACTION_ORIGIN_REQUEST, marker=request.marker,
+                        correlation=CORRELATION_WINDOW, source_ip=request.ip, started_at=request.at,
+                        ended_at=request.at, method=request.method, path=request.path)
+
+
+def logged_actions(found: Round) -> tuple[ActionRecord, ...]:
     return tuple(record_of(action) for action in Action.objects.filter(round=found))
+
+
+def actions(found: Round) -> tuple[ActionRecord, ...]:
+    return logged_actions(found) + tuple(origin_record(request) for request in waf_log.origin_requests(found))
 
 
 def running(found: Round) -> set[str]:
@@ -517,7 +529,7 @@ def running(found: Round) -> set[str]:
 
 def submit_loot(found: Round, player: Player, value: Any) -> Looted:
     writable(found)
-    verdict = referee.submit_loot(found, value, actions(found))
+    verdict = referee.submit_loot(found, value, logged_actions(found))
     chosen = verdict.objective
     return Looted(lost=verdict.lost, objective=LostObjective(key=chosen.key, name=chosen.name) if chosen else None)
 

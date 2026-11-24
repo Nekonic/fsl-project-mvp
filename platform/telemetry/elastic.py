@@ -109,6 +109,7 @@ def access_record(doc_id: str, doc: dict[str, Any]) -> dict[str, Any]:
         "refused": status in REFUSED_STATUSES,
         "marker": doc.get("request_id") or None,
         "request": doc.get("request", ""),
+        "host": doc.get("vhost") or None,
     }
 
 

@@ -455,6 +455,17 @@ sequenceDiagram
   없으면 비어 있습니다. `Objective.seen`과 방어 상태의 `seen`은 `detected`를 그대로 담습니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
+- 출발지 요청: WAF 접근 로그에서 라운드 시작부터 끝까지 이 라운드의 공격 출발지(현재·소진 모두, `Origin` 행)에서 온
+  요청 가운데 플랫폼이 보낸 행동의 마커가 없는 줄은 그 공격자의 행동입니다(`telemetry/access.origin_requests`,
+  `elastic.access_record`의 `host`는 nginx `vhost`). SOCKS·VPN 터널로 보낸 요청과 kali 셸의 `curl`이 여기에 들어갑니다.
+  `training/attack/actions.actions`가 한 줄마다 `origin_request` 행동(마커 `log:<문서 id>`, 시각 상관)을 덧붙이고,
+  선언된 케이스가 아니므로 `free_actions`로만 셉니다. board의 귀속 구간(loot 전 2분)에 들어가고, corp도 그 시각에 겹친
+  행동이 없으면 귀속 구간을 board와 같은 2분으로 저장합니다. 그 출발지를 소진하면 대응 O입니다. 점수는 판정 때 접근
+  로그를 읽으므로 로그가 늦게 들어와도 됩니다. loot 제출, corp 변경 관찰, 케이스 판정(`case.judged`)은 DB의 행동만 봅니다.
+  WAF 룰 테스트(`training/defence/rules.attack_requests`)는 이 요청을 자유 요청으로 함께 다시 보냅니다. 같은
+  `(method, host, path)` 줄은 한 번만 보내고 결과를 그 줄의 마커 모두에 붙입니다. 접근 로그에는 헤더와 본문이 없으므로
+  본문 없이 보내고 POST·PUT·PATCH는 `body_missing`으로 표시합니다. 2026-11-23의 "공격이 보낸 요청을 로그에서 꺼내
+  현재 버전과 후보에 두 번 보내는" 재전송과는 다른 것이고, 그것은 만들지 않았습니다.
 - 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 늦은 판정 때(`round.judged` 앞)
   `lifecycle.judge`가 `scoring.score.judge`를 부릅니다. 점수와 같은 상관 분석으로 케이스마다 판정하되,
   `domain.scoring.metrics.decided`가 판정할 때가 됐는지 정합니다. 끝난 케이스에 알림이 묶였으면 바로, 알림이 없으면

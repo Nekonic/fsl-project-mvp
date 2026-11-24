@@ -8,6 +8,7 @@ CORRELATION_WINDOW = "window"
 CORRELATION_STRATEGIES = (CORRELATION_MARKER, CORRELATION_WINDOW)
 
 ACTION_CASE = "case"
+ACTION_ORIGIN_REQUEST = "origin_request"
 ACTION_KINDS = ("request", "tool", "command", "case", "site")
 
 ENGINE_IDS = "ids"

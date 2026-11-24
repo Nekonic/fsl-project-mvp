@@ -14,6 +14,7 @@ from cr.config import configured
 from domain.types import ACTION_CASE, ENGINE_IDS, ENGINE_WAF, ENGINES, RESPONSE_VERSION, ResponseRecord
 from sandbox import crs, reach, suricata
 from scoring import losses as referee
+from telemetry import access as waf_log
 from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
@@ -22,6 +23,7 @@ from training.models import Action, Allocation, Player, Round, RuleSet, RuleTest
 
 DEFENCE = "defence"
 IDS_FILE = ruletest.IDS_FILE
+BODY_METHODS = ("POST", "PUT", "PATCH")
 SETUP, CONSOLE, TERMINAL = "setup", "console", "terminal"
 
 
@@ -196,7 +198,20 @@ def attack_requests(found: Round) -> list[dict]:
             made.append({**ruletest.probe_request(recorded[action.case_id]), "marker": action.marker})
         elif action.kind != ACTION_CASE and "method" in action.meta and "path" in action.meta:
             made.append(ruletest.sent_request(action.marker, action.meta))
-    return made
+    return made + origin_lines(found)
+
+
+def origin_lines(found: Round) -> list[dict]:
+    lines: dict[tuple[str, str | None, str], dict] = {}
+    for request in waf_log.origin_requests(found):
+        line = (request.method, request.host, request.path)
+        if line in lines:
+            lines[line]["markers"].append(request.marker)
+            continue
+        sent = ruletest.sent_request(request.marker, {"method": request.method, "host": request.host,
+                                                      "path": request.path})
+        lines[line] = {**sent, "markers": [request.marker], "body_missing": request.method in BODY_METHODS}
+    return list(lines.values())
 
 
 def version(found: Round, engine: str, number: int) -> RuleSet:

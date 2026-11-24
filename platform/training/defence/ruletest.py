@@ -263,9 +263,9 @@ def judged(engine: str, given: Any, wired: Wired, recordings: Sequence[Recording
         alerts = waf_alerts({marker: answer for marker, answer in replayed.items() if marker in probed})
         failed_benign = [recording.case for recording in benign
                          if replayed.get(recording.marker, {}).get("status") in REFUSED_STATUSES]
-        actions = [{"marker": attack["marker"],
+        actions = [{"marker": marker,
                     "refused": replayed.get(unseen[attack["marker"]], {}).get("status") in REFUSED_STATUSES}
-                   for attack in attacks]
+                   for attack in attacks for marker in attack.get("markers") or [attack["marker"]]]
     table = verdicts.table([recording.probe(engine) for recording in recordings], alerts, engine,
                            applied_table(round_id, engine))
     return {"ok": True, "passed": bool(benign) and not failed_benign and not untested_benign,

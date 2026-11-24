@@ -12,12 +12,27 @@ from typing import Any
 from cr import errors
 from cr.config import configured
 from telemetry import elastic
-from training.models import Round
+from training.models import Action, Origin, Round
 
 DENY = "deny"
 LIMIT_REQ = "limit_req"
+ORIGIN_MARKER = "log:"
 DENIED = re.compile(r"\baccess forbidden by rule, client: ([0-9A-Fa-f.:]+),")
 LIMITED = re.compile(r'\blimiting requests, excess: [0-9.]+ by zone "([^"]+)", client: ([0-9A-Fa-f.:]+),')
+
+
+@dataclass(frozen=True)
+class OriginRequest:
+    id: str
+    at: datetime
+    ip: str
+    method: str
+    host: str | None
+    path: str
+
+    @property
+    def marker(self) -> str:
+        return f"{ORIGIN_MARKER}{self.id}"
 
 
 @dataclass(frozen=True)
@@ -76,3 +91,48 @@ def traffic(found: Round, after: str = "") -> dict:
         if event["at"] and (origin["last_at"] is None or event["at"] > origin["last_at"]):
             origin["last_at"] = event["at"]
     return {"by_origin": sorted(by_origin.values(), key=lambda origin: origin["ip"]), "next": encoded(moved)}
+
+
+def request_line(request: str) -> tuple[str, str] | None:
+    parts = request.split(" ")
+    if len(parts) < 2 or not parts[0] or not parts[1].startswith("/"):
+        return None
+    return parts[0], parts[1]
+
+
+def logged_rows(found: Round):
+    cfg = configured().elastic
+    index = cfg.index_of(found.allocation.slot or 0)
+    cursor: dict = {"at": found.started.isoformat()}
+    handed: set[str] = set()
+    while True:
+        events, cursor = elastic.access_events(cfg.url, index, cursor)
+        fresh = [event for event in events if event["id"] not in handed]
+        if not fresh:
+            return
+        handed.update(event["id"] for event in fresh)
+        yield from fresh
+
+
+def origin_requests(found: Round) -> tuple[OriginRequest, ...]:
+    if found.started is None:
+        return ()
+    ips = set(Origin.objects.filter(round=found).values_list("ip", flat=True))
+    if not ips:
+        return ()
+    known = set(Action.objects.filter(round=found).values_list("marker", flat=True))
+    made = []
+    for row in logged_rows(found):
+        at = row["at"]
+        if at is not None and found.ended is not None and at > found.ended:
+            break
+        if at is None or at < found.started:
+            continue
+        if row["source_ip"] not in ips or (row["marker"] and row["marker"] in known):
+            continue
+        line = request_line(row["request"])
+        if line is None:
+            continue
+        made.append(OriginRequest(id=row["id"], at=at, ip=row["source_ip"], method=line[0], host=row.get("host"),
+                                  path=line[1]))
+    return tuple(made)
