@@ -24,8 +24,11 @@ def test_the_project_password_is_a_read_only_secret_file_not_an_environment_valu
     platform = composed.services()["platform"]
     secrets = composed.document()["secrets"]
 
-    assert platform["secrets"] == ["openstack_password", "bots_launcher_key"]
+    assert platform["secrets"] == ["openstack_password", "bots_launcher_key", "store_password"]
     assert secrets["openstack_password"] == {"file": "./openstack-password"}
+    assert secrets["store_password"] == {"file": "./store-password"}
+    assert composed.services()["postgres"]["environment"]["POSTGRES_PASSWORD_FILE"] == "/run/secrets/store_password"
+    assert "CR_DB_PASSWORD" not in str(platform["environment"])
     assert "CR_OPENSTACK_PASSWORD\"" not in SETTINGS.read_text()
     assert '"/run/secrets/openstack_password"' in SETTINGS.read_text()
 

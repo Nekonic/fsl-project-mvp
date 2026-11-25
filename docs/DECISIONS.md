@@ -11246,6 +11246,62 @@ is kept outside the repo; this entry keeps what changed the product.
   made again on every rebuild, so a learner's saved `known_hosts` refuses it; a step-1 defence bot (Haiku
   5.5, no shell) did not stop a tunnelled sqlmap run within its first minutes.
 
+## 2026-11-25 — The platform store moves from SQLite to PostgreSQL; opening the range to external learners comes last
+
+Two rulings of the user, 2026-11-25.
+
+- **The store moves to PostgreSQL** ("do it if it is the best option"). Why: last night three rounds at once
+  gave `database is locked` past the 30 s busy timeout on `bot_run_report` (bot notes), the judge and
+  `bot_run_finish`, with WAL and IMMEDIATE transactions already on. SQLite allows one writer for the whole
+  file, so every round, bot and judge of the platform queues behind one write. Rejected: staying on SQLite
+  with shorter transactions only (it removes the worst holder but keeps one writer for all rounds);
+  MariaDB (no gain over PostgreSQL for Django here). PostgreSQL is not on the user's fixed list
+  (OpenStack, Docker, Suricata, nginx, Elasticsearch), so it may be replaced later.
+- **Regardless of the engine, no write transaction is held across ssh.** `apply_waf` and `apply_ids` held
+  the transaction (and the row lock on the rule-set head) while they wrote the WAF or the sensor over ssh;
+  they now do the remote step outside the database and record the result in a short transaction after.
+- **Opening the range to external learners is the last task of the Player vs AI work**: the public-IP
+  forwards of UDP 51820-51919, TCP 2222 and the console, and `CR_VPN_HOST`.
+
+What the build settled (branch `pg-store`, local tests only, not deployed):
+
+- **The service.** `postgres:18.4` (the official image, released 2026-08) as compose service `postgres`,
+  container `cr-postgres`, data on the named volume `cr_storedata`, a `pg_isready` healthcheck that
+  `platform` and `rebuild` wait for. It sits only on a new internal network `store`, which `bots` does not
+  join, and publishes no port. Its password is `/opt/cr/store-password`, made by cloud-init (32 random
+  bytes, 0640, uid 10001 for the platform, gid 999 for the image's `postgres` user), read through a
+  compose secret. Django reads the connection from `CR_DB_HOST`, `CR_DB_PORT`, `CR_DB_NAME`,
+  `CR_DB_USER` and the password file; with `CR_DB_HOST` empty it keeps SQLite. psycopg 3.3.8 (the newest
+  release older than two weeks).
+- **Unit tests stay on SQLite.** They need no service and the ORM behaves alike on both for nearly all of
+  them; `bin/verify --fast` stays as it was. What only PostgreSQL does (the dump, the restore, the SQLite
+  load) is tested by `platform/tests/test_store_postgres.py` against the compose image run in Docker for
+  the test, skipped where Docker is absent. Not chosen: the whole suite on PostgreSQL (it needs a
+  service for every `--fast` run). The whole suite ran once on PostgreSQL 18.4 locally: three tests
+  assumed SQLite (a row id starting at 1 in each test, two subprocesses inheriting the database
+  settings) and were fixed; no product code behaved differently.
+- **Backup and restore.** `bin/backup` runs a bash program inside `cr-postgres` (`CR_STORE_EXEC`, program
+  on stdin): `pg_dump -Fc` into a temporary file, `pg_restore --list` on it, row counts, then the archive,
+  kept as `backups/store-<UTC stamp>.pgdump`. `bash -s`, not `sh -s`: for `--restore` the program and
+  the archive share stdin, and dash read ahead into the archive (measured: `pg_restore` got 0 bytes);
+  bash reads its program a byte at a time. An empty store keeps no backup, so no empty archive can be
+  picked for a restore. `--restore` loads an archive in one `psql --single-transaction` (drop `public`,
+  load), so a broken archive leaves the store as it was. Thinning counts both `store-*.pgdump` and the
+  older `db-*.sqlite3` by stamp.
+- **The one-time move of the live store.** The first `up --replace` after this change finds the old VM
+  on SQLite (`db.sqlite3`, no `cr_storedata` volume) and backs it up as before (`bin/backup --sqlite`);
+  the new VM loads that file with `manage.py load_sqlite_store`, which migrates a copy of it to the new
+  code, empties PostgreSQL, applies the same migrations and copies every table with `COPY`, checking each
+  table's row count, in one transaction, then resets the identity sequences. PostgreSQL text holds no NUL,
+  so such a character is dropped and counted. Measured on a copy of the store of 2026-11-25 04:22Z
+  (253 MB): 34 tables, every count equal, no NUL, 40 s on the development VM.
+- **Rule applies.** The ssh step runs outside any transaction; the version is checked before it and again
+  under `select_for_update` in the short transaction that records it. Concurrent applies of one round's
+  engine take turns on an in-process lock, as the platform's API runs in one process.
+- **Found, not changed:** on PostgreSQL a NUL character in a text or JSON value is refused at write
+  (SQLite stored it). Alerts, customer requests, commands and bot notes come from outside; the live store
+  held none on 2026-11-25, so no write path strips it yet. If one appears, the write that carries it fails.
+
 ## 2026-11-25 — The attack bot is Haiku, Sonnet and Opus 5.5 again; quoted arguments go through a file
 
 - The entry "2026-11-24 — The attack bot runs on Haiku 5.5 at every step until the account's tier changes" is

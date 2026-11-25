@@ -73,14 +73,39 @@ TEMPLATES = [
     }
 ]
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": os.environ.get("DJANGO_DB_PATH", BASE_DIR / "db.sqlite3"),
-        "OPTIONS": {"timeout": 30, "transaction_mode": "IMMEDIATE",
-                    "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL"},
+DB_HOST = os.environ.get("CR_DB_HOST", "").strip()
+DB_PASSWORD_FILE = Path(os.environ.get("CR_DB_PASSWORD_FILE") or "/run/secrets/store_password")
+
+
+def store_password() -> str:
+    given = os.environ.get("CR_DB_PASSWORD", "")
+    if given or not DB_PASSWORD_FILE.is_file():
+        return given
+    return DB_PASSWORD_FILE.read_text().strip()
+
+
+if DB_HOST:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "HOST": DB_HOST,
+            "PORT": os.environ.get("CR_DB_PORT") or "5432",
+            "NAME": os.environ.get("CR_DB_NAME") or "cr",
+            "USER": os.environ.get("CR_DB_USER") or "cr",
+            "PASSWORD": store_password(),
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
+        }
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.environ.get("DJANGO_DB_PATH", BASE_DIR / "db.sqlite3"),
+            "OPTIONS": {"timeout": 30, "transaction_mode": "IMMEDIATE",
+                        "init_command": "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL"},
+        }
+    }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LANGUAGE_CODE = "ko"

@@ -42,11 +42,16 @@ API_WAIT = 1200
 API_POLL = 2
 CONTAINER_WAIT = 120
 STORE_DIRECTORY = "/var/lib/docker/volumes/cr_platformdata/_data"
+POSTGRES_DIRECTORY = "/var/lib/docker/volumes/cr_storedata/_data"
+POSTGRES, SQLITE = "postgres", "sqlite"
 STORE_PROBE = (
     "command -v docker >/dev/null || exit 0; "
     "sudo docker ps -q --filter 'name=^cr-platform$' --filter status=running || exit 3; "
+    f"sudo test -d {POSTGRES_DIRECTORY} && echo {POSTGRES}; "
     f"sudo test -e {STORE_DIRECTORY}/db.sqlite3 && echo stored; exit 0"
 )
+STORE_EXEC = "sudo docker exec -i cr-postgres bash -s"
+PLATFORM_EXEC = "sudo docker exec -i cr-platform python -"
 REGISTRY = "ghcr.io"
 OWNER = "nekonic"
 BUILDER = "cr-build-"
@@ -412,7 +417,7 @@ def keep_range_key(key: Path, old: Host | None, first: bool = False, run=run) ->
     print(f"kept the platform's range key at {key}")
 
 
-def holds_store(old: Host) -> bool:
+def holds_store(old: Host) -> str | None:
     asked = old.ssh(STORE_PROBE, check=False)
     if asked.returncode != 0:
         said = asked.stderr.decode(errors="replace").strip()
@@ -420,18 +425,26 @@ def holds_store(old: Host) -> bool:
             f"{Path(sys.argv[0]).name}: cannot tell whether {old.target} holds the platform's store "
             f"(ssh exited {asked.returncode}: {said[-300:] or 'nothing'}), so nothing was deleted"
         )
-    return bool(asked.stdout.strip())
+    said = asked.stdout.decode(errors="replace").split()
+    if not said:
+        return None
+    return POSTGRES if POSTGRES in said else SQLITE
 
 
-def back_up(old: Host, keep: int = 1) -> Path:
-    environ = {**os.environ, "CR_PLATFORM_EXEC": shlex.join(
-        ["ssh", *old.options, old.target, "sudo docker exec -i cr-platform python -"])}
-    done = subprocess.run([str(ROOT / "bin/backup"), "--keep", str(keep)],
+def back_up(old: Host, keep: int = 1, kind: str = POSTGRES) -> Path | None:
+    if kind == SQLITE:
+        environ = {**os.environ, "CR_PLATFORM_EXEC": shlex.join(["ssh", *old.options, old.target, PLATFORM_EXEC])}
+        asked = ["--sqlite"]
+    else:
+        environ = {**os.environ, "CR_STORE_EXEC": shlex.join(["ssh", *old.options, old.target, STORE_EXEC])}
+        asked = []
+    done = subprocess.run([str(ROOT / "bin/backup"), "--keep", str(keep), *asked],
                           env=environ, capture_output=True, text=True)
     if done.returncode != 0:
         raise Refused(f"platform-rebuild: no backup, so nothing was deleted: {done.stderr.strip()}")
     print(done.stdout, end="")
-    return Path(done.stdout.splitlines()[0])
+    first = done.stdout.splitlines()[0] if done.stdout.strip() else ""
+    return None if first.startswith("no backup kept") else Path(first)
 
 
 def backup_module():
@@ -441,23 +454,23 @@ def backup_module():
     return module
 
 
-def holds_rows(kept: Path, check) -> bool:
+def holds_rows(kept: Path, backup) -> bool:
     try:
-        return any(check(kept.resolve()).values())
-    except SystemExit:
+        if backup.STAMPED.fullmatch(kept.name):
+            return backup.is_archive(kept.resolve())
+        return any(backup.check(kept.resolve()).values())
+    except (SystemExit, OSError):
         return False
 
 
 def newest_backup() -> Path | None:
     backup = backup_module()
-    stamped = sorted((path for path in BACKUPS.glob("db-*.sqlite3") if backup.STAMPED.fullmatch(path.name)),
-                     reverse=True)
-    return next((path for path in stamped if holds_rows(path, backup.check)), None)
+    return next((path for path in reversed(backup.stamped(BACKUPS)) if holds_rows(path, backup)), None)
 
 
 def store_to_restore(kept: Path | None) -> Path | None:
     if kept is not None:
-        if holds_rows(kept, backup_module().check):
+        if holds_rows(kept, backup_module()):
             return kept
         print(f"{kept.name} holds no rows, so the newest backup that does is restored instead")
     newest = newest_backup()
@@ -602,15 +615,20 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
     if store is not None:
         new.ssh(f"mkdir -p {CHECKOUT}/backups")
         new.copy(store, f"{CHECKOUT}/backups/{store.name}")
-        new.ssh(
-            f"cd {CHECKOUT} && {compose} stop {STORE_SERVICES} && sudo docker run --rm --network none "
-            f"--entrypoint sh --user cr -v cr_platformdata:/data -v {CHECKOUT}/backups:/backups:ro "
-            "$(sudo docker inspect --format '{{.Config.Image}}' cr-platform) -c "
-            + shlex.quote(f"rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/{store.name} /data/db.sqlite3")
-        )
+        new.ssh(f"cd {CHECKOUT} && {compose} stop {STORE_SERVICES} && {restore_command(store)}")
     new.ssh(settings_rewrite(sideload), platform_settings(sideload).encode())
     new.ssh(password_write(), password.encode())
     new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else f" {STORE_SERVICES}"))
+
+
+def restore_command(store: Path) -> str:
+    backup = backup_module()
+    kept = shlex.quote(f"{CHECKOUT}/backups/{store.name}")
+    if backup.STAMPED.fullmatch(store.name):
+        return f"{{ printf '%s' {shlex.quote(backup.RESTORE)}; cat {kept}; }} | {STORE_EXEC}"
+    return (f"sudo docker compose -f {CHECKOUT}/compose.yaml run --rm --no-deps -T "
+            f"-v {CHECKOUT}/backups:/backups:ro --entrypoint gosu platform "
+            f"cr python manage.py load_sqlite_store {shlex.quote(f'/backups/{store.name}')}")
 
 
 def api_answers(address: str) -> bool:
@@ -692,7 +710,7 @@ def rebuild(cloud, environment: dict[str, str], sideload_pairs: list[str] = ()) 
         if old and not holding:
             print(f"{old.target} has no cr-platform container and no store, so there is nothing to back up")
         keep_range_key(range_key, old if holding else None, first=status is None or old is not None)
-        store = store_to_restore(back_up(old, cloud.backups_keep) if holding else None)
+        store = store_to_restore(back_up(old, cloud.backups_keep, holding) if holding else None)
         known_hosts.unlink(missing_ok=True)
         address = replace_stack(cloud, existed=status is not None)
         new = Host("ubuntu", address, known_hosts, identity)

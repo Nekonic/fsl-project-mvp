@@ -8,11 +8,14 @@ networks:
     ipam:
       config:
         - subnet: 172.31.0.0/24
+  store:
+    internal: true
 
 volumes:
   esdata:
   collectordata:
   platformdata:
+  storedata:
 
 secrets:
   openstack_password:
@@ -21,8 +24,28 @@ secrets:
     file: ./bots-launcher-key
   claude_oauth_token:
     file: ./claude-oauth-token
+  store_password:
+    file: ./store-password
 
 services:
+  postgres:
+    platform: linux/amd64
+    image: postgres:18.4
+    container_name: cr-postgres
+    networks: [store]
+    environment:
+      POSTGRES_USER: cr
+      POSTGRES_DB: cr
+      POSTGRES_PASSWORD_FILE: /run/secrets/store_password
+    secrets: [store_password]
+    volumes:
+      - storedata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -q -U cr -d cr"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
   elasticsearch:
     platform: linux/amd64
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
@@ -100,8 +123,10 @@ services:
     container_name: cr-platform
     depends_on:
       elasticsearch: {condition: service_healthy}
+      postgres: {condition: service_healthy}
     networks:
       mgmt: {}
+      store: {}
     ports:
       - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
       - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
@@ -111,7 +136,7 @@ services:
       ELASTIC_URL: "http://elasticsearch:9200"
       ELASTIC_INDEX: "logs-*"
       KIBANA_URL: "http://kibana:5601/kibana"
-      DJANGO_DB_PATH: "/data/db.sqlite3"
+      CR_DB_HOST: "postgres"
       CR_REFILL_DIR: "/data/refill"
       CR_PROBES_OUT: "/data/probes"
       CR_JUMP_DIR: "/data/jump"
@@ -129,7 +154,7 @@ services:
       - path: ./openstack.env
         required: false
         format: raw
-    secrets: [openstack_password, bots_launcher_key]
+    secrets: [openstack_password, bots_launcher_key, store_password]
     volumes: &platform-volumes
       - ./platform:/app
       - ./redteam:/app/redteam:ro
@@ -144,14 +169,16 @@ services:
     container_name: cr-rebuild
     depends_on:
       platform: {condition: service_started}
+      postgres: {condition: service_healthy}
     networks:
       mgmt: {}
+      store: {}
     entrypoint: ["gosu", "cr", "python", "manage.py", "rebuild_slots"]
     environment:
       <<: *platform-environment
       CR_REBUILD_EVERY_SECONDS: "${CR_REBUILD_EVERY_SECONDS:-5}"
     env_file: *platform-env-file
-    secrets: [openstack_password]
+    secrets: [openstack_password, store_password]
     volumes: *platform-volumes
 
   bots:

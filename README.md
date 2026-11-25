@@ -343,8 +343,9 @@ uv run bin/cloud down            # DB 백업 후 슬롯 스택, cr-mgmt, 플랫�
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
-- `down`과 `--replace`는 먼저 DB를 `backups/db-<UTC 시각>.sqlite3`로 받습니다. 백업이
-  실패하면 아무것도 지우지 않습니다.
+- `down`과 `--replace`는 먼저 DB를 `backups/store-<UTC 시각>.pgdump`로 받습니다. 백업이
+  실패하면 아무것도 지우지 않습니다. 아직 SQLite를 쓰는 이전 플랫폼 VM이면 `db-<UTC 시각>.sqlite3`로 받고,
+  새 VM이 그 파일을 PostgreSQL로 한 번 옮겨 담습니다(아래 "백업과 복원").
 - 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
   옮겨 주고, 템플릿·이미지·flavor·`target_tag`가 같은 스택은 그대로 씁니다. 다른 스택은
   `STALE`이 되어 지우고 새로 만듭니다. 새 플랫폼 VM은 이전 VM의 `cr-mgmt` 포트(`cr-platform.mgmt`)를
@@ -424,6 +425,11 @@ bin/verify --fast       # 단위·API 테스트 전체
 - `--fast`는 `platform/tests/` 아래 계층별로 `domain`(Django 없이), `seams`, 단위별(`users`, `telemetry`, `scoring`,
   `training`), `contract` 순서로 돌리고, 그다음 `platform/tests/test_*.py`를
   돌립니다.
+- 단위 테스트의 DB는 SQLite입니다(`CR_DB_HOST`가 비어 있을 때 `cr/settings.py`가 고름). 서비스 없이 빨리 돌고,
+  ORM이 두 엔진에서 같게 동작하는 부분이 대부분이라서입니다. PostgreSQL에만 있는 경로(`bin/backup`의 덤프와 복원,
+  `load_sqlite_store`)는 `platform/tests/test_store_postgres.py`가 `compose.yaml`의 PostgreSQL 이미지를 Docker로
+  잠깐 띄워 시험합니다. Docker가 없으면 그 파일만 건너뜁니다. 전체 단위 테스트를 PostgreSQL에서 돌리려면
+  `CR_DB_HOST`, `CR_DB_PORT`, `CR_DB_PASSWORD`를 주고 pytest를 실행합니다.
 - 한 계층만 돌리려면 `platform/`에서 실행합니다.
 
 ```bash
@@ -443,30 +449,49 @@ npm run build && npx vitest run
 
 ## 백업과 복원
 
-백업 대상은 플랫폼 VM `cr_platformdata` 볼륨의 `/data/db.sqlite3`입니다. 계정, 할당, 라운드, 플레이어, 출발지, 공격 기록,
-도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트가 들어 있습니다. Elasticsearch 데이터는
-백업하지 않습니다.
+DB는 플랫폼 VM의 `cr-postgres` 컨테이너(PostgreSQL 18.4, `cr_storedata` 볼륨)입니다. 계정, 할당, 라운드,
+플레이어, 출발지, 공격 기록, 도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트가 들어 있습니다.
+Elasticsearch 데이터는 백업하지 않습니다. `cr-postgres`는 `store` 네트워크(외부로 나가지 않는 내부 네트워크)에만
+붙고, 거기에는 `platform`과 `rebuild`만 함께 있습니다. 비밀번호는 cloud-init이 만든 `/opt/cr/store-password`
+(0640, uid 10001, gid 999)를 compose secret으로 읽습니다.
 
 ```bash
-CR_PLATFORM_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-platform python -" \
-  bin/backup
+CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-postgres bash -s" \
+  bin/backup --keep 2
 ```
 
-`backups/db-<UTC 시각>.sqlite3`에 저장하고 `PRAGMA integrity_check`로 검사합니다.
+플랫폼이 도는 동안 `pg_dump` custom format으로 받아 `backups/store-<UTC 시각>.pgdump`에 저장합니다.
+컨테이너 안에서 `pg_restore --list`로 읽히는지 확인한 뒤에만 이 이름을 붙입니다. 행이 하나도 없는 DB는
+백업을 남기지 않고, 그때는 이전 백업도 지우지 않습니다. `--keep`(기본 1)을 넘는 이전 백업은 지웁니다.
+`db-<UTC 시각>.sqlite3`(SQLite 시절 백업)도 시각 순서로 같이 셉니다. 손으로 이름 붙인 파일은 지우지 않습니다.
 
-복원:
+복원(DB 내용 전체를 한 트랜잭션으로 바꿉니다):
 
 ```bash
-scp -i ~/.ssh/fsl_claude backups/db-20260925T020000Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose stop platform rebuild'
+CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-postgres bash -s" \
+  bin/backup --restore backups/store-20261126T020000Z.pgdump
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose start platform rebuild'
+```
+
+`platform`과 `rebuild`를 먼저 멈춥니다. 연결이 남아 있으면 복원이 그 잠금을 기다립니다.
+
+SQLite 백업(`db-<UTC 시각>.sqlite3`)을 PostgreSQL로 옮기기(`up --replace`가 이 경우 알아서 합니다):
+
+```bash
+scp -i ~/.ssh/fsl_claude backups/db-20261125T042248Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
 sudo docker compose stop platform rebuild
-sudo docker compose run --rm --no-deps --user cr --entrypoint sh -v ./backups:/backups:ro platform \
-  -c 'rm -f /data/db.sqlite3-journal /data/db.sqlite3-wal /data/db.sqlite3-shm && cp /backups/db-20260925T020000Z.sqlite3 /data/db.sqlite3'
+sudo docker compose run --rm --no-deps -T -v /opt/cr/backups:/backups:ro --entrypoint gosu platform \
+  cr python manage.py load_sqlite_store /backups/db-20261125T042248Z.sqlite3
 sudo docker compose start platform rebuild
 ```
 
-`-journal`, `-wal`, `-shm` 파일은 꼭 지웁니다. 남아 있으면 SQLite가 복원한 파일 위에 옛 내용을 재생합니다.
+`load_sqlite_store`는 백업 파일을 읽기만 합니다. 복사본을 지금 코드의 마이그레이션까지 올린 뒤 PostgreSQL을
+비우고, 같은 마이그레이션을 적용하고, 테이블마다 행을 옮겨 행 수를 맞춰 봅니다. 한 트랜잭션이라 중간에
+실패하면 아무것도 들어가지 않습니다. PostgreSQL 텍스트는 NUL 문자를 담지 못해 그 문자만 빼고 옮기며,
+그런 값이 있으면 테이블별로 개수를 알려 줍니다.
 
 새 구조의 DB는 마이그레이션을 `0001_initial`부터 새로 시작합니다. 이전 저장소에서 옮기는 데이터는 없습니다.
 
@@ -492,6 +517,7 @@ sudo docker compose start platform rebuild
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음 |
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 그 게이트가 한국어 안내와 함께 403으로 거절 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
+| DB | `cr-postgres`는 포트를 열지 않고 내부 `store` 네트워크에만 붙음. 거기에는 `platform`과 `rebuild`만 있고 `bots`는 없음. 비밀번호는 `/opt/cr/store-password`(0640)를 compose secret으로 읽음 |
 | 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
 | 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |

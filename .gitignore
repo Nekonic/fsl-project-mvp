@@ -12,6 +12,7 @@ deploy/suricata/logs/
 /openstack-password
 /bots-launcher-key
 /claude-oauth-token
+/store-password
 /.env
 config/ingest-geoip/*.mmdb
 /deploy/openstack/cloud.yaml

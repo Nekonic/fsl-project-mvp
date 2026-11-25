@@ -140,7 +140,9 @@ stand". Still not run on a range:
 - of the Player vs AI build: a `def_vs_bot` round the attack bot plays to
   the end (it was refused or stopped tonight), a loss with response O (the
   defence spent the origin before the loss), the learner's UDP reach, and
-  three rounds at once without SQLite lock errors;
+  three rounds at once on the PostgreSQL store (branch `pg-store`, built and
+  tested locally on 2026-11-25, not deployed: the first replace after it
+  backs the SQLite VM up and loads that backup into PostgreSQL);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
@@ -150,13 +152,18 @@ stand". Still not run on a range:
 1. **The name `cr-platform`** (an admin): remove the abandoned stack's
    record from Heat's database, then one replace under that name
    (`docs/OPENSTACK.md` §5.3).
-2. **The platform under several rounds** (found 2026-11-25): SQLite locks,
-   `joined_later`'s per-join UPDATE, rule applies holding the write lock over
-   ssh, and free actions read from Elasticsearch at scoring time.
-3. **One `pvp` round, and a loss with response O**.
-4. **A captured walk of every page as a learner**, then a live review round
+2. **The platform under several rounds** (found 2026-11-25): the store moves
+   to PostgreSQL and rule applies no longer hold a transaction over ssh
+   (`pg-store`, not deployed yet); `joined_later`'s per-join UPDATE (fixed,
+   not run on the range) and free actions read from Elasticsearch at scoring
+   time stay.
+3. **External learners** (the user, 2026-11-25: the last task of the Player
+   vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
+   console, and `CR_VPN_HOST`.
+4. **One `pvp` round, and a loss with response O**.
+5. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
-5. **Gate 2**: present what changed with the evidence; on approval, move the
+6. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points

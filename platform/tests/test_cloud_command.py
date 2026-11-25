@@ -260,7 +260,7 @@ class StandingStack:
         monkeypatch.setattr(rebuild, "holds_store", lambda old: holds)
         monkeypatch.setattr(rebuild, "start_platform", lambda old: self.calls.append("start"))
         monkeypatch.setattr(rebuild, "keep_range_key", lambda key, old: self.calls.append("key"))
-        monkeypatch.setattr(rebuild, "back_up", lambda old, keep: self.calls.append("back_up"))
+        monkeypatch.setattr(rebuild, "back_up", lambda old, keep, kind=None: self.calls.append("back_up"))
         monkeypatch.setattr(rebuild, "wait_for_api", lambda address: self.calls.append("api"))
         monkeypatch.setattr(self.module, "take_down", lambda call, stack, run: self.calls.append("take_down"))
 

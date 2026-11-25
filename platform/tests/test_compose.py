@@ -147,19 +147,30 @@ services:
 
 def test_the_platform_s_store_outlives_the_checkout_that_started_it():
     compose = composed.document()
-    platform = compose["services"]["platform"]
-    store = platform["environment"]["DJANGO_DB_PATH"].rsplit("/", 1)[0]
+    store = compose["services"]["postgres"]
     mounted = {
         entry.split(":")[1]: entry.split(":")[0]
-        for entry in platform["volumes"]
+        for entry in store["volumes"]
         if isinstance(entry, str) and entry.count(":") >= 1
     }
 
-    assert mounted.get(store) in (compose.get("volumes") or {}), (
-        f"{store} is mounted from {mounted.get(store)!r}, a directory inside "
+    assert compose["services"]["platform"]["environment"]["CR_DB_HOST"] == "postgres"
+    assert mounted.get("/var/lib/postgresql") in (compose.get("volumes") or {}), (
+        f"/var/lib/postgresql is mounted from {mounted.get('/var/lib/postgresql')!r}, a directory inside "
         f"whichever checkout ran compose up. The sessions, cases and scores are "
         f"the only store there is, and removing that checkout removes them"
     )
+
+
+def test_the_store_is_reached_only_by_the_services_that_hold_it():
+    services = composed.services()
+    on_store = sorted(name for name, service in services.items() if "store" in (service.get("networks") or {}))
+
+    assert on_store == ["platform", "postgres", "rebuild"], "a bot that reached the store could rewrite its score"
+    assert not services["postgres"].get("ports")
+    assert composed.networks()["store"].get("internal") is True
+    assert re.fullmatch(r"postgres:\d+\.\d+", services["postgres"]["image"])
+    assert services["platform"]["depends_on"]["postgres"] == {"condition": "service_healthy"}
 
 
 def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_and_only_by_choice():

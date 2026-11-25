@@ -16,10 +16,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BACKUPS = ROOT / "backups"
+STORE_EXEC = "docker exec -i cr-postgres bash -s"
 PLATFORM_EXEC = "docker exec -i cr-platform python -"
 TIMEOUT = 600
 CHUNK = 1 << 20
-STAMPED = re.compile(r"db-\d{8}T\d{6}Z\.sqlite3")
+ARCHIVE_MAGIC = b"PGDMP"
+STAMPED = re.compile(r"store-(\d{8}T\d{6}Z)\.pgdump")
+LEGACY = re.compile(r"db-(\d{8}T\d{6}Z)\.sqlite3")
+ROWS_SAID = "rows "
 
 TABLES = (
     ("users", "auth_user"),
@@ -38,6 +42,35 @@ TABLES = (
     ("problems", "training_problem"),
     ("postures", "training_posture"),
 )
+
+IN_STORE = '-X -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+
+COUNTED = (
+    "SELECT relname, (xpath('/row/c/text()', query_to_xml(format('SELECT count(*) AS c FROM public.%I', relname), "
+    "false, true, '')))[1]::text FROM pg_class WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace"
+)
+
+DUMP = f"""{{
+set -e
+taken=$(mktemp -d)
+trap 'rm -rf "$taken"' EXIT
+pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f "$taken/store"
+pg_restore --list "$taken/store" > /dev/null
+psql {IN_STORE} -At -F ' ' -c {shlex.quote(COUNTED)} | sed 's/^/{ROWS_SAID}/' >&2
+cat "$taken/store"
+}}
+"""
+
+RESTORE = f"""{{
+set -e
+given=$(mktemp -d)
+trap 'rm -rf "$given"' EXIT
+cat > "$given/store"
+pg_restore --no-owner --no-privileges -f "$given/store.sql" "$given/store"
+psql {IN_STORE} --single-transaction -c 'DROP SCHEMA public CASCADE' -c 'CREATE SCHEMA public' -f "$given/store.sql"
+psql {IN_STORE} -At -F ' ' -c {shlex.quote(COUNTED)} | sed 's/^/{ROWS_SAID}/' >&2
+}}
+"""
 
 IMPORTS = """
 import os, shutil, sqlite3, sys, tempfile
@@ -64,39 +97,43 @@ def snapshot(path, out):
     out.flush()
 
 
-def fetch(out):
-    way_in = os.environ.get("CR_PLATFORM_EXEC", "").strip() or PLATFORM_EXEC
-    command = shlex.split(way_in)
-    program = IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE
+def way_in(variable, default):
+    chosen = os.environ.get(variable, "").strip() or default
+    return chosen, shlex.split(chosen)
+
+
+def started(command, variable, default):
     try:
-        running = subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        )
+        return subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     except OSError as error:
         raise SystemExit(
-            f"backup: cannot run {command[0]!r}: {error.strerror}. CR_PLATFORM_EXEC "
-            f"is the command that runs python in the platform's environment "
-            f"(default: {PLATFORM_EXEC})"
+            f"backup: cannot run {command[0]!r}: {error.strerror}. {variable} is the command that "
+            f"reaches the store (default: {default})"
         )
+
+
+def fetch(out, program, variable, default):
+    chosen, command = way_in(variable, default)
+    running = started(command, variable, default)
     with running:
-        hand_over(running.stdin, program.encode())
-        said = drain(running, out, way_in)
+        hand_over(running.stdin, program)
+        said = drain(running, out, chosen)
     if running.returncode != 0:
         said = said.decode(errors="replace").strip() or "(nothing on stderr)"
-        raise SystemExit(
-            f"backup: no snapshot; {way_in!r} exited {running.returncode}:\n{said}"
-        )
-    return out.tell()
+        raise SystemExit(f"backup: no snapshot; {chosen!r} exited {running.returncode}:\n{said}")
+    return out.tell(), said
 
 
-def hand_over(stdin, program):
+def hand_over(stdin, program, data=None):
     with suppress(BrokenPipeError):
         stdin.write(program)
+        if data is not None:
+            shutil.copyfileobj(data, stdin, CHUNK)
     with suppress(BrokenPipeError):
         stdin.close()
 
 
-def drain(running, out, way_in):
+def drain(running, out, chosen):
     said = bytearray()
     watching = selectors.DefaultSelector()
     watching.register(running.stdout, selectors.EVENT_READ, out)
@@ -106,7 +143,7 @@ def drain(running, out, way_in):
         if not ready:
             running.kill()
             raise SystemExit(
-                f"backup: nothing from {way_in!r} for {TIMEOUT}s; "
+                f"backup: nothing from {chosen!r} for {TIMEOUT}s; "
                 f"something may be holding the store locked"
             )
         for key, _ in ready:
@@ -119,6 +156,23 @@ def drain(running, out, way_in):
                 out.write(chunk)
     running.wait()
     return bytes(said)
+
+
+def counted(said):
+    present = {}
+    for line in said.decode(errors="replace").splitlines():
+        if line.startswith(ROWS_SAID):
+            table, _, count = line[len(ROWS_SAID):].partition(" ")
+            with suppress(ValueError):
+                present[table] = int(count)
+    if not set(present) & {table for _, table in TABLES}:
+        raise SystemExit("backup: the snapshot is not the platform's store: it holds none of its tables")
+    return {table: present.get(table) for _, table in TABLES}
+
+
+def is_archive(path):
+    with open(path, "rb") as image:
+        return image.read(len(ARCHIVE_MAGIC)) == ARCHIVE_MAGIC
 
 
 def check(path):
@@ -146,57 +200,117 @@ def check(path):
         raise SystemExit(f"backup: the snapshot is not the platform's store: {error}")
 
 
-def keep():
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+def stamp_of(path):
+    named = STAMPED.fullmatch(path.name) or LEGACY.fullmatch(path.name)
+    return named.group(1) if named else None
+
+
+def stamped(directory):
+    return sorted((path for path in directory.iterdir() if stamp_of(path)), key=stamp_of) if directory.is_dir() else []
+
+
+def kept_as(name, take):
     BACKUPS.mkdir(parents=True, exist_ok=True)
-    partial = BACKUPS / f"db-{stamp}.partial"
-    kept = BACKUPS / f"db-{stamp}.sqlite3"
+    partial = BACKUPS / f"{name}.partial"
     try:
         with open(partial, "wb") as out:
-            size = fetch(out)
+            size, rows = take(out, partial)
             out.flush()
             os.fsync(out.fileno())
-        rows = check(partial)
+        rows = rows if rows is not None else check(partial)
+        if not any(rows.values()):
+            return None, size, rows
+        kept = BACKUPS / name
         os.replace(partial, kept)
+        return kept, size, rows
     finally:
         partial.unlink(missing_ok=True)
-    return kept, size, rows
+
+
+def take_archive(out, partial):
+    size, said = fetch(out, DUMP.encode(), "CR_STORE_EXEC", STORE_EXEC)
+    out.flush()
+    if not is_archive(partial):
+        raise SystemExit("backup: the answer is not a pg_dump custom-format archive")
+    return size, counted(said)
+
+
+def take_sqlite(out, partial):
+    program = (IMPORTS + inspect.getsource(snapshot) + WRITE_THE_STORE).encode()
+    size, _ = fetch(out, program, "CR_PLATFORM_EXEC", PLATFORM_EXEC)
+    return size, None
+
+
+def keep(legacy=False):
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if legacy:
+        return kept_as(f"db-{stamp}.sqlite3", take_sqlite)
+    return kept_as(f"store-{stamp}.pgdump", take_archive)
 
 
 def thin(kept, newest):
-    older = sorted(path for path in kept.parent.iterdir() if STAMPED.fullmatch(path.name) and path != kept)
+    older = [path for path in stamped(kept.parent) if path != kept]
     gone = older[:max(0, len(older) - newest + 1)]
     for path in gone:
         path.unlink()
     return gone
 
 
+def restore(archive):
+    if not is_archive(archive):
+        raise SystemExit(f"backup: {archive} is not a pg_dump custom-format archive")
+    chosen, command = way_in("CR_STORE_EXEC", STORE_EXEC)
+    running = started(command, "CR_STORE_EXEC", STORE_EXEC)
+    with running, open(archive, "rb") as data:
+        hand_over(running.stdin, RESTORE.encode(), data)
+        said = drain(running, open(os.devnull, "wb"), chosen)
+    if running.returncode != 0:
+        said = said.decode(errors="replace").strip() or "(nothing on stderr)"
+        raise SystemExit(f"backup: {archive} was not restored; {chosen!r} exited {running.returncode}:\n{said}")
+    return counted(said)
+
+
+def printed_rows(rows):
+    for label, table in TABLES:
+        count = "absent" if rows[table] is None else rows[table]
+        print(f"  {label:<18} {count:>8}")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Snapshot the platform's store into backups/ while it keeps "
-                    "serving, compacted, then remove the older db-<UTC stamp>.sqlite3 "
-                    "files beyond --keep. CR_PLATFORM_EXEC chooses how to reach the "
-                    f"platform (default: {PLATFORM_EXEC}).",
+        description="Dump the platform's PostgreSQL store into backups/store-<UTC stamp>.pgdump (pg_dump "
+                    "custom format) while it keeps serving, then remove the older stamped backups beyond "
+                    f"--keep. CR_STORE_EXEC chooses how to reach the store (default: {STORE_EXEC}). "
+                    "With --restore, load such an archive into the store instead, replacing what it holds.",
     )
     parser.add_argument("--keep", type=int, default=1,
                         help="how many backups to leave in backups/, this one included (default 1)")
+    parser.add_argument("--restore", type=Path, metavar="ARCHIVE",
+                        help="restore this store-<UTC stamp>.pgdump into the store, in one transaction")
+    parser.add_argument("--sqlite", action="store_true",
+                        help="back up a platform that still runs the SQLite store, into db-<UTC stamp>.sqlite3 "
+                             f"(CR_PLATFORM_EXEC, default: {PLATFORM_EXEC})")
     args = parser.parse_args()
     if args.keep < 1:
         parser.error("--keep must be at least 1: the backup just taken is always kept")
 
-    kept, size, rows = keep()
-    stored = any(rows.values())
-    gone = thin(kept, args.keep) if stored else []
+    if args.restore is not None:
+        rows = restore(args.restore)
+        print(f"restored {args.restore}")
+        printed_rows(rows)
+        return
 
+    kept, size, rows = keep(args.sqlite)
+    if kept is None:
+        print("no backup kept: the store holds no rows, so no older backup was removed")
+        printed_rows(rows)
+        return
+    gone = thin(kept, args.keep)
     print(kept)
-    print(f"  {size} bytes, integrity_check ok")
-    for label, table in TABLES:
-        count = "absent" if rows[table] is None else rows[table]
-        print(f"  {label:<14} {count:>8}")
+    print(f"  {size} bytes, " + ("integrity_check ok" if args.sqlite else "pg_restore --list ok"))
+    printed_rows(rows)
     for path in gone:
         print(f"  removed {path.name}, older than the newest {args.keep}")
-    if not stored:
-        print("  the store holds no rows, so no older backup was removed")
 
 
 if __name__ == "__main__":

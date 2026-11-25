@@ -34,7 +34,9 @@ Words used in this file:
 - **Fabric**: the management network `cr-mgmt`, the security groups and the
   keypair the platform creates before the stacks (`POST /api/staff/range/fabric/`).
   Every range VM has one control port on `cr-mgmt`.
-- **Store**: the platform's SQLite database (`db.sqlite3`).
+- **Store**: the platform's PostgreSQL database (compose service `postgres`,
+  container `cr-postgres`, volume `cr_storedata`). Until 2026-11-25 it was a
+  SQLite file, `db.sqlite3` in the `cr_platformdata` volume.
 - **Substrate**: what the platform builds the range on (`CR_SUBSTRATE`); here
   `sandbox.openstack.connect`.
 
@@ -1158,8 +1160,10 @@ The server's cloud-init does these steps:
    launcher runs tools on. It makes `/opt/cr/openstack-password` empty, mode 0600, owned by
    uid 10001; the hand-over fills it. It also makes `/opt/cr/bots-launcher-key`
    (32 random bytes, base64, mode 0600, uid 10001), the key the platform and the
-   `bots` service share, and `/opt/cr/claude-oauth-token` empty, mode 0600,
-   uid 10001 (§5.1.1).
+   `bots` service share, `/opt/cr/claude-oauth-token` empty, mode 0600,
+   uid 10001 (§5.1.1), and `/opt/cr/store-password` (32 random bytes, base64,
+   mode 0640, uid 10001, gid 999), the store's password: the platform reads it
+   as uid 10001 and the `postgres` image as its user 999.
 6. Writes `/opt/cr/.env` with `CR_PUBLISH=<fixed IP>`,
    `CR_SYSLOG_PUBLISH=0.0.0.0` and `CR_IMAGE_TAG` (the clone's commit), and
    fetches the GeoIP database (`bin/fetch-geoip`).
@@ -1285,7 +1289,8 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
 `down` does these steps:
 
 1. It asks the VM over ssh whether a running `cr-platform` container or a store
-   file exists. The store file is `db.sqlite3` in the `cr_platformdata` volume.
+   exists, and which kind: the `cr_storedata` volume (PostgreSQL) or, on a VM
+   from before 2026-11-25, `db.sqlite3` in the `cr_platformdata` volume.
 2. If neither exists, as after a first boot that never started the platform,
    there is nothing to back up and no platform to ask. `down` then deletes the
    range stacks with the CLI (below), the servers of step 7 and the stack.
@@ -1295,7 +1300,7 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    container, because the backup runs through `docker exec`. It refuses, and
    deletes nothing, when the container does not start.
 5. It keeps the range key and backs up the store (`bin/backup --keep`,
-   `backups.keep`).
+   `backups.keep`; `--sqlite` on a SQLite VM).
 6. It waits for the API. Then it runs `DELETE pool/`, which drops the owed
    refills and deletes every slot stack, waits until `GET pool/` lists no
    slot with a server (up to 30 min), because each range VM's control port
@@ -1355,7 +1360,15 @@ This command replaces the platform VM without losing data. It does these steps:
    `rebuild`, stopped. On 2026-11-24 only `platform` was stopped: `cr-rebuild`
    kept its WAL connection to the store the restore replaced, its lock on the
    file made every write of the new platform answer `database is locked`, and
-   `bin/cloud up --replace` stopped at the first sign-in (500).
+   `bin/cloud up --replace` stopped at the first sign-in (500). A
+   `store-<UTC time>.pgdump` goes through `bin/backup`'s restore program into
+   `cr-postgres` (one transaction: the schema is dropped, the archive loaded).
+   A `db-<UTC time>.sqlite3`, which the first replace after the move to
+   PostgreSQL takes from the old VM, is loaded once with
+   `docker compose run ... platform ... manage.py load_sqlite_store`: it
+   migrates a copy of the file to the new code, empties PostgreSQL, applies the
+   same migrations and copies every table, checking each table's row count, in
+   one transaction.
 8. It writes the password into `/opt/cr/openstack-password` in place, so the
    file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
    an older hand-over left in `/opt/cr/openstack.env` and writes the
@@ -1369,8 +1382,9 @@ is in place.
 
 There may be no store to carry over: there may be no stack, the stack may have
 failed, or the VM may hold none. The backup just taken may also hold no rows. In
-these cases the command restores the newest `backups/db-<UTC time>.sqlite3` that
-holds rows, and names it. If there is none, the platform starts empty and says
+these cases the command restores the newest backup by its stamp, a
+`backups/store-<UTC time>.pgdump` or an older `backups/db-<UTC time>.sqlite3`
+that holds rows, and names it. If there is none, the platform starts empty and says
 so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
 store. Move a backup you do not want restored out of `backups/` first: on
 2026-11-23 the old VM held no store and the command chose the old tree's
@@ -1445,13 +1459,26 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
 
 `bin/backup` works like this:
 
-- It writes a compacted copy of the store into a temporary file inside the
-  platform container, using SQLite's `VACUUM INTO`. It streams the copy over ssh
-  in 1 MiB chunks. It gives up only after 600 s with no data.
-- When the copy passes `integrity_check`, it removes older
-  `backups/db-<UTC time>.sqlite3` files beyond `--keep` (default 1, counting the
-  new one). If the store held no rows, as a new VM's does, it removes none. It
-  never removes a file with any other name.
+- It runs a short bash program inside `cr-postgres` (`CR_STORE_EXEC`, default
+  `docker exec -i cr-postgres bash -s`; the program goes in on stdin). The
+  program writes `pg_dump -Fc` into a temporary file there, checks it with
+  `pg_restore --list`, counts the rows of each table and streams the archive
+  over ssh in 1 MiB chunks. It gives up only after 600 s with no data. The
+  platform keeps serving: `pg_dump` reads one snapshot and blocks no writer.
+- It keeps the archive as `backups/store-<UTC time>.pgdump` only when it starts
+  with the custom-format header and the store holds rows. An empty store, as a
+  new VM's, keeps no backup and removes none. Otherwise it removes older stamped
+  backups (`store-*.pgdump` and the SQLite `db-*.sqlite3`, by stamp) beyond
+  `--keep` (default 1, counting the new one). It never removes a file with any
+  other name.
+- `bin/backup --restore ARCHIVE` sends the same way in a program followed by the
+  archive; inside the container `pg_restore` turns it into SQL, and `psql
+  --single-transaction` drops the `public` schema and loads it, so a broken
+  archive leaves the store as it was. Stop `platform` and `rebuild` first.
+- `bin/backup --sqlite` backs up a platform from before 2026-11-25 the old way:
+  a compacted copy made with SQLite's `VACUUM INTO` inside `cr-platform`
+  (`CR_PLATFORM_EXEC`), kept as `backups/db-<UTC time>.sqlite3` after
+  `integrity_check`.
 - `bin/platform-rebuild` and `bin/cloud down` pass `backups.keep` from
   `cloud.yaml` as `--keep`.
 - The new VM holds one copy in `/opt/cr/backups`, the one it was restored from.

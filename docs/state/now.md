@@ -77,17 +77,23 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. The platform under several rounds: SQLite locks, rule applies holding
-   the write lock, free actions read from Elasticsearch (the alert-join fix
-   of 2026-11-25 has not run on the range)
-   (`docs/STATE.md` "Open points").
+2. The platform under several rounds: the PostgreSQL store and rule
+   applies without a transaction over ssh are built and tested locally (the
+   SQLite to PostgreSQL load ran on a copy of the store of 2026-11-25
+   04:22Z: 34 tables, every row count equal); deploy it with one
+   `bin/cloud up --replace` once the cloud is free. Free actions read from
+   Elasticsearch stay; the alert-join fix of 2026-11-25 has not run on the
+   range (`docs/STATE.md` "Open points").
 3. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
    2026-11-25 (`docs/STATE.md` "Open points"); a fall back to Opus 4.8 at
    step 3 needs the user's ruling.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-6. Gate 2.
+6. External learners, the last task of the Player vs AI work: the
+   public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
+   `CR_VPN_HOST`.
+7. Gate 2.
 
 ## Open points
 

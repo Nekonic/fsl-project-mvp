@@ -216,13 +216,14 @@ def down(args: argparse.Namespace) -> None:
     with tempfile.TemporaryDirectory() as scratch:
         old = rebuild.Host("ubuntu", address, Path(scratch) / "known_hosts",
                            Path(cloud.key_file).expanduser())
-        if not rebuild.holds_store(old):
+        holding = rebuild.holds_store(old)
+        if not holding:
             take_down_broken(cloud.stack, f"at {address} has no cr-platform container and no store, so "
                              "there is nothing to back up and no platform to ask", rebuild.run)
             return
         rebuild.start_platform(old)
         rebuild.keep_range_key(Path(cloud.range_key).expanduser(), old)
-        rebuild.back_up(old, cloud.backups_keep)
+        rebuild.back_up(old, cloud.backups_keep, holding)
     rebuild.wait_for_api(address)
     take_down(Platform(address), cloud.stack, rebuild.run)
     print("the platform and the range are gone")

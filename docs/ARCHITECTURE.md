@@ -104,10 +104,10 @@ bin/
   acceptance                  test/ 실행
   cloud                       클라우드 전체. 스태프 range API를 bots/rest.py로 호출
   platform-rebuild            플랫폼 VM 재구축. 준비 확인만 urllib로 /api/auth/csrf/를 직접 찌름(bots/rest.py 안 거침)
-  backup  prune               DB 스냅숏, 닫힌 할당 정리
+  backup  prune               DB 백업(pg_dump custom format)·복원(--restore), 닫힌 할당 정리
   fetch-geoip  pick-origins  worldmap  build-css
 platform/                     패키지 아님. manage.py와 pytest의 작업 디렉터리
-  cr/          settings.py  urls.py  wsgi.py  schema.py(쪽별 스키마)
+  cr/          settings.py(CR_DB_HOST가 있으면 PostgreSQL, 없으면 SQLite)  urls.py  wsgi.py  schema.py(쪽별 스키마)
                config.py    경계마다 넘기는 frozen 설정, topology의 센서 목록. 설정을 읽는 유일한 경계 모듈
                errors.py    DomainError와 하위 클래스, 오류 코드
                handler.py   DRF 예외 처리기. 오류 형태 하나
@@ -167,7 +167,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                ruletest.py    검사 → probe 묶음 → 오프라인 실행 → 판정표
                terminal.py    방어 쪽 점프 권한 두 개(WAF, IDS)    kibana_gate.py  views_kibana.py  Kibana 게이트
     lessons/   빈 패키지. 다시 만들 레슨의 자리
-    management/commands/  prune  terminal_shell
+    management/commands/  prune  terminal_shell  load_sqlite_store(SQLite 백업을 PostgreSQL로 한 번 옮김)
   scoring/     Objective, Verdict. 대상의 정답 데이터를 읽는 유일한 단위
                loot.py      경계: board 정답 데이터, 라운드 시작 때 비밀번호 새로 정하기(rotate)
                effect.py    경계: corp 정답 데이터(MySQL 바이너리 로그)
@@ -606,6 +606,22 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 - `wargames/board/`: `set_passwords` 명령. `objectives.yaml`의 비밀값이 `rotate`로 이 명령을 선언하고, 라운드
   시작 때 `scoring.loot.rotate`가 target VM에서 돌립니다. target 이미지가 이 명령이 든 `cr-board`를 받아야 합니다.
 - `deploy/roles/kali/stamp.py`는 `deploy/proxy/stamp.py`를 가리키는 링크라 프록시 코드는 한 벌입니다. 설계 문서가 지우기로 했던 "중복"은 처음부터 없었습니다.
+
+## DB
+
+플랫폼 DB는 PostgreSQL 18.4입니다(compose 서비스 `postgres`, 컨테이너 `cr-postgres`, 볼륨 `cr_storedata`). 2026-11-25에
+SQLite에서 옮겼습니다. SQLite는 파일 하나에 쓰는 쪽이 하나뿐이라 라운드 셋이 동시에 돌 때 봇 메모, 판정,
+`bot_run_finish`가 30초 잠금 대기를 넘겼기 때문입니다(`docs/DECISIONS.md` 2026-11-25).
+
+- `platform`과 `rebuild`가 `CR_DB_HOST=postgres`로 붙고, 비밀번호는 compose secret `store_password`에서 읽습니다.
+  `cr-postgres`는 내부 네트워크 `store`에만 있고 포트를 열지 않습니다.
+- 원격 장비에 ssh로 닿는 동안에는 DB 쓰기 트랜잭션을 열어 두지 않습니다. `apply_waf`, `apply_ids`와 라이브
+  룰 기록은 WAF·센서에 먼저 쓰고, 그 결과를 짧은 트랜잭션에서 버전 확인과 함께 기록합니다. 같은 라운드·엔진의
+  적용은 프로세스 안의 잠금(`training/defence/rules.py`의 `engine_held`)으로 차례를 지킵니다.
+- 백업은 `bin/backup`(`pg_dump -Fc`, `backups/store-<UTC 시각>.pgdump`), 복원은 `bin/backup --restore`입니다.
+  `bin/cloud up --replace`는 이전 VM을 백업하고 새 VM에 복원합니다. 이전 VM이 아직 SQLite면 `db-<UTC 시각>.sqlite3`로
+  받고, 새 VM에서 `manage.py load_sqlite_store`가 PostgreSQL로 옮깁니다.
+- 단위 테스트는 SQLite에서 돕니다(`CR_DB_HOST`가 비면 `cr/settings.py`가 SQLite를 고름).
 
 ## 아직 없는 것
 

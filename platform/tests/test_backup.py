@@ -41,9 +41,10 @@ def backup(tmp_path, monkeypatch, capsys):
     backups = tmp_path / "backups"
     monkeypatch.setattr(module, "BACKUPS", backups)
     monkeypatch.delenv("CR_PLATFORM_EXEC", raising=False)
+    monkeypatch.delenv("CR_STORE_EXEC", raising=False)
 
-    def invoke():
-        monkeypatch.setattr(sys, "argv", ["backup"])
+    def invoke(*asked):
+        monkeypatch.setattr(sys, "argv", ["backup", *(asked or ("--sqlite",))])
         module.main()
         return capsys.readouterr().out
 
@@ -156,6 +157,7 @@ def test_a_platform_reached_some_other_way_is_backed_up_the_same(
     store = made_store(tmp_path / "db.sqlite3")
     monkeypatch.chdir(ROOT / "platform")
     monkeypatch.setenv("DJANGO_DB_PATH", str(store))
+    monkeypatch.setenv("CR_DB_HOST", "")
     monkeypatch.setenv("CR_PLATFORM_EXEC", shlex.join([sys.executable, "-"]))
 
     printed = backup()
@@ -182,8 +184,9 @@ def test_a_database_holding_none_of_the_platform_s_tables_is_not_kept(
     assert backup.kept() == []
 
 
-def test_backups_stay_out_of_git():
-    listed = load_backup().BACKUPS / "db-20260925T000000Z.sqlite3"
+@pytest.mark.parametrize("name", ["db-20260925T000000Z.sqlite3", "store-20261126T000000Z.pgdump"])
+def test_backups_stay_out_of_git(name):
+    listed = load_backup().BACKUPS / name
 
     ignored = subprocess.run(
         ["git", "check-ignore", "-q", str(listed.relative_to(ROOT))], cwd=ROOT
@@ -283,7 +286,7 @@ def test_a_new_backup_leaves_the_newest_keep_and_any_backup_named_by_hand(backup
     backups.mkdir()
     for name in ("db-20261001T000000Z.sqlite3", "db-20261002T000000Z.sqlite3", "db-20261014-pre-p6.sqlite3"):
         (backups / name).write_bytes(b"older")
-    monkeypatch.setattr(sys, "argv", ["backup", "--keep", "2"])
+    monkeypatch.setattr(sys, "argv", ["backup", "--sqlite", "--keep", "2"])
 
     backup.module.main()
 
@@ -322,8 +325,36 @@ def test_a_backup_of_an_empty_store_removes_no_older_backup(backup, monkeypatch,
 
     said = backup()
 
-    assert "db-20261001T000000Z.sqlite3" in backup.kept() and len(backup.kept()) == 2, (
+    assert backup.kept() == ["db-20261001T000000Z.sqlite3"], (
         "a replacement VM that never took its hand-over holds a new, empty store; backing it up "
         "with --keep 1 removed the only copy of the store it was meant to receive"
     )
     assert "holds no rows" in said
+
+
+@pytest.mark.parametrize("answer", [b"", b"Traceback (most recent call last):\n", b"SQLite format 3\x00"],
+                         ids=["nothing", "text", "a-sqlite-file"])
+def test_an_answer_that_is_not_a_pg_dump_archive_is_not_kept(backup, monkeypatch, tmp_path, answer):
+    given = tmp_path / "answer"
+    given.write_bytes(answer)
+    monkeypatch.setenv("CR_STORE_EXEC", shlex.join(["cat", str(given)]))
+
+    said = failure(lambda: backup("--keep", "1"))
+
+    assert "pg_dump" in said
+    assert backup.kept() == []
+
+
+def test_a_new_archive_thins_the_older_backups_of_both_kinds_by_their_stamp(backup, monkeypatch, tmp_path):
+    backups = backup.module.BACKUPS
+    backups.mkdir()
+    for name in ("db-20261001T000000Z.sqlite3", "db-20261002T000000Z.sqlite3", "store-20261003T000000Z.pgdump",
+                 "db-20261014-pre-p6.sqlite3"):
+        (backups / name).write_bytes(b"older")
+    kept = backups / "store-20261126T000000Z.pgdump"
+    kept.write_bytes(b"PGDMP")
+
+    gone = backup.module.thin(kept, 2)
+
+    assert [path.name for path in gone] == ["db-20261001T000000Z.sqlite3", "db-20261002T000000Z.sqlite3"]
+    assert backup.kept() == ["db-20261014-pre-p6.sqlite3", "store-20261003T000000Z.pgdump", kept.name]

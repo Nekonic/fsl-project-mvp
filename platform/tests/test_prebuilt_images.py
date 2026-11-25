@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import re
+import shlex
 import sqlite3
 import stat
 import subprocess
@@ -359,42 +360,41 @@ class NewPlatform:
         return fed
 
 
-COMPOSE_2_40_DOCKER = """#!/bin/sh
-case "$*" in
-  *"config --images platform"*) printf 'docker.elastic.co/elasticsearch/elasticsearch:8\\nghcr.io/nekonic/cr-platform:dev\\n' ;;
-  "inspect --format {{.Config.Image}} cr-platform") echo ghcr.io/nekonic/cr-platform:dev ;;
-  *) exit 1 ;;
-esac
-"""
+def restoring(ran):
+    [restore] = [command for command in ran if "stop platform rebuild &&" in command]
+    return restore
 
 
-def test_the_store_restore_runs_exactly_the_platform_image(tmp_path):
+def test_a_sqlite_backup_is_loaded_into_postgresql_by_the_platform_image_once(tmp_path):
     module = rebuild()
-    store = tmp_path / "store.sqlite3"
-    store.write_bytes(b"")
+    store = tmp_path / "db-20261125T042248Z.sqlite3"
+    store.write_bytes(b"SQLite format 3\x00")
     key = tmp_path / "range-key"
     key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
     platform = NewPlatform()
 
     module.hand_over(platform, "secret", key, store)
 
-    [restore] = [command for command in platform.ran if "docker run" in command]
-    image = re.search(r"\$\((.*?)\) -c ", restore).group(1)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    (bin_dir / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
-    (bin_dir / "docker").write_text(COMPOSE_2_40_DOCKER)
-    for tool in bin_dir.iterdir():
-        tool.chmod(0o755)
-    resolved = subprocess.run(
-        ["sh", "-c", f'set -- $({image}); echo "$@"'],
-        env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, capture_output=True, text=True, check=True,
-    ).stdout.split()
+    restore = restoring(platform.ran)
+    assert f"copy {store} /opt/cr/backups/{store.name}" in platform.ran
+    assert ("compose.yaml run --rm --no-deps -T -v /opt/cr/backups:/backups:ro --entrypoint gosu platform "
+            f"cr python manage.py load_sqlite_store /backups/{store.name}") in restore, (
+        "the first replace after the move to PostgreSQL backs the old VM up as SQLite; the new VM must load it")
 
-    assert resolved == ["ghcr.io/nekonic/cr-platform:dev"], (
-        f"the restore runs docker run with {resolved}: Compose 2.40 lists the images platform "
-        f"depends on too, so anything but the platform image alone breaks bin/cloud up --replace"
-    )
+
+def test_a_postgresql_archive_is_restored_by_bin_backup_s_own_restore_program(tmp_path):
+    module = rebuild()
+    store = tmp_path / "store-20261126T000000Z.pgdump"
+    store.write_bytes(b"PGDMP")
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    platform = NewPlatform()
+
+    module.hand_over(platform, "secret", key, store)
+
+    restore = restoring(platform.ran)
+    assert restore.endswith(f"cat /opt/cr/backups/{store.name}; }} | sudo docker exec -i cr-postgres bash -s")
+    assert shlex.quote(module.backup_module().RESTORE) in restore
 
 
 HEAD = "1" * 40
@@ -506,7 +506,7 @@ def test_a_sideloaded_rebuild_checks_head_out_and_loads_only_the_named_images(tm
     assert f"/tmp/corp-db.tar" in load
     assert (f"docker tag ghcr.io/nekonic/cr-corp-db:{built} ghcr.io/nekonic/cr-corp-db:"
             "$(sed -n 's/^CR_IMAGE_TAG=//p' /opt/cr/.env)") in load
-    restore = next(i for i, command in enumerate(ran) if "docker run" in command)
+    restore = ran.index(restoring(ran))
     assert checkout < ran.index(load) < restore
     assert ran[-1] == "cd /opt/cr && sudo docker compose -f /opt/cr/compose.yaml up -d --force-recreate", (
         "HEAD's compose file may add services, so every service starts, not only the platform; and a file "
@@ -530,10 +530,10 @@ def test_the_restore_stops_every_service_that_holds_the_store_and_starts_them_ag
 
     module.hand_over(platform, "secret", key, store)
 
-    [restore] = [command for command in platform.ran if "docker run" in command]
+    restore = restoring(platform.ran)
     assert "compose.yaml stop platform rebuild &&" in restore, (
-        "on 2026-11-24 cr-rebuild kept a WAL connection to the store the restore replaced; its lock on the "
-        "file made every write of the new platform answer database is locked")
+        "on 2026-11-24 cr-rebuild kept a connection to the store the restore replaced; its lock "
+        "made every write of the new platform wait")
     assert platform.ran[-1].endswith("up -d --force-recreate platform rebuild")
 
 
@@ -570,8 +570,10 @@ class Probed:
 def test_a_vm_that_answers_with_nothing_holds_no_store_and_one_that_says_stored_does():
     module = rebuild()
 
-    assert module.holds_store(Probed(0, b"")) is False
-    assert module.holds_store(Probed(0, b"stored\n")) is True
+    assert module.holds_store(Probed(0, b"")) is None
+    assert module.holds_store(Probed(0, b"stored\n")) == module.SQLITE
+    assert module.holds_store(Probed(0, b"abc123\n")) == module.SQLITE
+    assert module.holds_store(Probed(0, b"abc123\npostgres\n")) == module.POSTGRES
 
 
 @pytest.mark.parametrize("code, said", [(255, "Permission denied"), (3, "")])
@@ -593,9 +595,11 @@ def probe(tmp_path):
         (bin_dir / name).chmod(0o755)
     volume = tmp_path / "volume"
     volume.mkdir()
-    script = module.STORE_PROBE.replace(module.STORE_DIRECTORY, str(volume))
+    postgres = tmp_path / "storedata"
+    script = module.STORE_PROBE.replace(module.STORE_DIRECTORY, str(volume)).replace(
+        module.POSTGRES_DIRECTORY, str(postgres))
 
-    def run(docker=None, stored=False):
+    def run(docker=None, stored=False, pg=False):
         (bin_dir / "docker").unlink(missing_ok=True)
         if docker is not None:
             (bin_dir / "docker").write_text(f"#!/bin/sh\n{docker}\n")
@@ -603,6 +607,10 @@ def probe(tmp_path):
         (volume / "db.sqlite3").unlink(missing_ok=True)
         if stored:
             (volume / "db.sqlite3").write_bytes(b"")
+        if pg:
+            postgres.mkdir(exist_ok=True)
+        elif postgres.exists():
+            postgres.rmdir()
         done = subprocess.run(["/bin/sh", "-c", script], env={"PATH": str(bin_dir)},
                               capture_output=True, text=True)
         return done.returncode, done.stdout.strip()
@@ -620,6 +628,12 @@ def test_the_store_probe_reports_a_running_platform_or_a_store_file_as_something
     code, out = probe(docker=docker, stored=stored)
 
     assert code == 0 and out
+
+
+def test_the_store_probe_names_a_postgresql_store_so_it_is_dumped_not_copied(probe):
+    code, out = probe(docker="echo abc123", pg=True)
+
+    assert code == 0 and "postgres" in out.split()
 
 
 def test_the_store_probe_cannot_tell_when_docker_does_not_answer(probe):
@@ -738,7 +752,7 @@ def test_the_password_that_marks_a_finished_hand_over_is_written_after_the_store
 
     module.hand_over(platform, "secret", key, store)
 
-    restore = next(i for i, command in enumerate(platform.ran) if "docker run" in command)
+    restore = platform.ran.index(restoring(platform.ran))
     marked = next(i for i, command in enumerate(platform.ran) if "openstack-password" in command)
     assert restore < marked < len(platform.ran) - 1, (
         "plain up takes a VM with the password line as handed over and restores nothing; a hand-over "
@@ -808,6 +822,10 @@ def test_the_newest_backup_that_holds_rows_is_the_one_restored(monkeypatch, tmp_
         "an empty backup or one that is not a store is skipped, and a file named by hand is never "
         "picked, as bin/backup never removes it"
     )
+    (backups / "store-20261006T000000Z.pgdump").write_bytes(b"PGDMP archive")
+    (backups / "store-20261007T000000Z.pgdump").write_bytes(b"not an archive")
+    assert module.newest_backup() == backups / "store-20261006T000000Z.pgdump", (
+        "after the move to PostgreSQL the newest pg_dump archive wins over every older SQLite backup")
 
 
 class Resumed:
@@ -900,7 +918,7 @@ class Replacing:
         monkeypatch.setattr(module, "keep_range_key",
                             lambda key, old, first=False, run=None: self.calls.append(("key", old is not None, first)))
 
-        def back_up(old, keep):
+        def back_up(old, keep, kind=None):
             self.calls.append("back_up")
             self.kept = stamped_backup(self.backups, "db-20261020T120000Z.sqlite3", kept_rows)
             return self.kept
