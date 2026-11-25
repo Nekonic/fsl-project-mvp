@@ -203,7 +203,8 @@ flowchart TB
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
 - 플랫폼 VM의 `rebuild` 서비스(같은 이미지의 `manage.py rebuild_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
   합니다. `bots` 서비스(`cr-bots`)는 대기 중인 봇 실행을 REST API로 가져가 실행마다 Claude Code를 하나 띄웁니다
-  (`bots/README.md`). 주기적으로 도는 라운드 작업은 없습니다.
+  (`bots/README.md`). 주기적으로 도는 라운드 작업은 하나뿐입니다. 런처가 몇 초마다 `bot_run_claim`을 부를 때 기준선
+  진행(`training/round/baseline.advance`)이 돌아 기준선 라운드를 따라잡고, 끝내고, 채점하고, 다음 라운드를 엽니다.
 - 알림 수집, 출발지 소진, corp 변경 관찰, 명령 기록 읽기, WAF 설정 변경 감시, 정상 케이스, 라운드 종료 조건은 그 라운드에
   API 요청(이벤트, 상태, 점수, 공격·방어 동작)이 들어올 때 처리합니다. 라운드마다 한 번에 한 요청만 읽고, 읽은 뒤
   `CR_READ_EVERY_SECONDS`(기본 5초) 동안은 다시 읽지 않습니다.

@@ -11095,7 +11095,10 @@ Settled while building the core (steps, cards, bot runs, records, debrief, basel
   which is Haiku 5.5 for attack and Sonnet 5.5 for defence, as ruled.
 - **The launcher's own profile (prompt hashes, Claude Code version) reaches the key through the claim.**
   The prompts live in `bots/`, not in the platform image, so `bot_run_claim` takes an opaque `launcher`
-  object, kept on the run and folded into the record's key.
+  object, kept on the run and folded into the record's key. The object is the SHA-256 of each
+  `bots/prompts/*.md` and the pinned Claude Code version (`CR_CLAUDE_CODE_VERSION`, set from the bots
+  Dockerfile's `CLAUDE_CODE_VERSION`), nothing about the process, so a restarted or recreated `bots`
+  container keeps every baseline current and a prompt edit or a Claude Code bump marks them stale.
 - **A record is written by the first read after the round is judged and its runs are over**
   (`views_catch_up`), by `bot_run_finish`, by the baseline runner and by `retention.drop`; `lifecycle` does
   not call `records`, which keeps the coordinators free of an import cycle.
@@ -11156,3 +11159,39 @@ Settled while building the console screens (spec §13), within the gate-1 spec.
   that it shows nothing rather than "no baseline".
 - **The debrief has its own page** (`/rounds/<r>/debrief`, linked from the result) and the frozen copy is
   shown on the record page (`/records/<id>`, linked from 내 기록); both draw one component.
+
+## 2026-11-25 — Player vs AI rounds: what the review of the branch changed
+
+Three reviews read the branch against the spec and CLAUDE.md; these are the rulings that changed code.
+
+- **An origin request takes only the alerts on its own request target.** Window correlation on the origin
+  and ±2 s made `GET /search/` sent a second before `GET /search/?q=' or 1=1--` "alerted" too, and a WAF
+  version could then earn response O only by refusing the benign line, which the benign test forbids. An
+  alert that carries a URI (`DetectionRecord.uri`) now attributes to an origin request only when it equals
+  that request's target as logged; an alert with no URI still correlates by origin and time. Declared cases
+  and logged actions are unchanged.
+- **A tunnelled POST, PUT or PATCH replayed without its body proves nothing.** The access log has no body,
+  so the rule test still sends the line but leaves it out of the test's `actions`; it is neither needed nor
+  counted for version response. Spending the origin still responds to it.
+- **The corp attribution window for origin requests.** corp keeps its observed-change window; when no
+  logged action overlaps the change, the window is stored as board's two minutes before the change, so
+  tunnelled requests can be attributed there too (spec §16.3).
+- **The allocation heartbeat is never paced**, like forfeit: it is not a side action (spec §5).
+- **A timed-out run is stopped by SIGTERM, then SIGKILL to every process of its `botN` uid.** `sudo`
+  does not pass SIGKILL on, so killing it left Claude Code running; `sudo` does pass SIGTERM, and after
+  15 s the launcher kills the uid's processes through `sudo -u botN`.
+- **The VPN relay keeps answering the PC it hears from.** It moves a port's reply address to a new sender
+  only after the current one has been silent for twice the keepalive (50 s), so one spoofed datagram cannot
+  take over an attached learner's replies.
+- **A round that ends while its tunnel is being attached detaches it.** The profile row is saved before
+  kali is reached, and after attaching the lifecycle detaches again if the round is no longer running.
+- **The rest of Claude Code's built-in read-only commands are denied too** (`paste`, `fold`, `fmt`, `pr`,
+  `expand`, `unexpand`, `comm`, `tsort`, `numfmt`, `cut`, `nl`, `tac`, `rev`, `hexdump`, `cmp`, `column`,
+  `tr`, with `sort`, `uniq`, `base64`, `sed` and `awk`), since several read a file such as
+  `/proc/self/environ`; the live test of spec §17 should still try one.
+- **The debrief's attack lane carries the origin requests** among the free actions of their origin, with
+  the alerts from that origin inside their span.
+- **Not changed:** `origin_request` stays out of `ACTION_KINDS`, which are the kinds an `Action` row may
+  store; origin requests are read from the log at scoring time and never stored. The default image names
+  stay `cr-<role>-bake1`; the kali rebake with `set-peer` is a cloud step that sets `compute.images` in
+  `cloud.yaml`, not a code default.

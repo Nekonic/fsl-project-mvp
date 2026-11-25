@@ -519,8 +519,12 @@ def logged_actions(found: Round) -> tuple[ActionRecord, ...]:
     return tuple(record_of(action) for action in Action.objects.filter(round=found))
 
 
+def origin_records(found: Round) -> tuple[ActionRecord, ...]:
+    return tuple(origin_record(request) for request in waf_log.origin_requests(found))
+
+
 def actions(found: Round) -> tuple[ActionRecord, ...]:
-    return logged_actions(found) + tuple(origin_record(request) for request in waf_log.origin_requests(found))
+    return logged_actions(found) + origin_records(found)
 
 
 def running(found: Round) -> set[str]:

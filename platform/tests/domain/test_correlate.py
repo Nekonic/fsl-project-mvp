@@ -73,6 +73,18 @@ def test_a_window_case_leaves_a_record_another_request_s_marker_names_to_that_re
     assert result.matches[0].detection_ids == ("own", "labelled")
 
 
+def test_an_origin_request_takes_only_the_alerts_on_its_own_request_target():
+    def tunnelled(action_id, path):
+        return ActionRecord(action_id=action_id, kind="origin_request", marker=f"log:{action_id}", correlation="window",
+                            source_ip="5.188.10.10", started_at=T0, ended_at=T0, path=path).as_case()
+    alert = DetectionRecord(detection_id="d1", timestamp=T0 + timedelta(seconds=1), src_ip="5.188.10.10",
+                            marker=None, uri="/search/?q=%27+or+1%3D1--")
+
+    result = correlate([tunnelled("a1", "/search/"), tunnelled("a2", "/search/?q=%27+or+1%3D1--")], [alert])
+
+    assert [match.detected for match in result.matches] == [False, True]
+
+
 def test_window_case_rejects_different_ip():
     result = correlate([case(correlation="window", source_ip="10.0.0.1")], [det(src_ip="10.0.0.2", at=3)])
 

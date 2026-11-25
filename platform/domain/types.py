@@ -32,6 +32,7 @@ class CaseRecord:
     started_at: datetime
     ended_at: datetime
     expect: str | None = None
+    path: str | None = None
 
     @property
     def declared(self) -> bool:
@@ -64,6 +65,7 @@ class ActionRecord:
             started_at=self.started_at,
             ended_at=self.ended_at,
             expect=self.expect,
+            path=self.path if self.kind == ACTION_ORIGIN_REQUEST else None,
         )
 
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import secrets
-import socket
 import subprocess
 import sys
 import tempfile
@@ -33,12 +33,17 @@ DEFAULT_USERS = tuple(f"bot{number}" for number in range(8))
 CREDENTIAL_VARIABLE = "CLAUDE_CODE_OAUTH_TOKEN"
 
 CLAUDE = "claude"
+CLAUDE_CODE_VERSION_VARIABLE = "CR_CLAUDE_CODE_VERSION"
+STOP_GRACE_SECONDS = 15.0
 ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)")
 DENIED = ("mcp__*", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(less *)", "Bash(more *)", "Bash(grep *)",
           "Bash(rg *)", "Bash(find *)", "Bash(ls *)", "Bash(tree *)", "Bash(stat *)", "Bash(file *)", "Bash(wc *)",
           "Bash(diff *)", "Bash(strings *)", "Bash(od *)", "Bash(xxd *)", "Bash(env *)", "Bash(printenv *)",
           "Bash(set *)", "Bash(export *)", "Bash(declare *)", "Bash(echo *)", "Bash(printf *)", "Bash(id *)",
-          "Bash(ps *)", "Bash(cd *)")
+          "Bash(ps *)", "Bash(cd *)", "Bash(paste *)", "Bash(fold *)", "Bash(fmt *)", "Bash(pr *)",
+          "Bash(expand *)", "Bash(unexpand *)", "Bash(comm *)", "Bash(tsort *)", "Bash(numfmt *)", "Bash(cut *)",
+          "Bash(nl *)", "Bash(tac *)", "Bash(rev *)", "Bash(hexdump *)", "Bash(cmp *)", "Bash(column *)",
+          "Bash(tr *)", "Bash(sort *)", "Bash(uniq *)", "Bash(base64 *)", "Bash(sed *)", "Bash(awk *)")
 RUN_SCRIPT = ('umask 077 && rm -rf "$HOME/run" && mkdir -p "$HOME/run/work" "$HOME/run/config" '
               '&& cat > "$HOME/run/config/system.md" && cd "$HOME/run/work" '
               '&& export CLAUDE_CONFIG_DIR="$HOME/run/config" && exec "$@"')
@@ -246,7 +251,7 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
         def overdue():
             if not stop.wait(settings.run_seconds):
                 timed_out.set()
-                child.kill()
+                stopped(child, user)
 
         threading.Thread(target=flushing, daemon=True).start()
         threading.Thread(target=overdue, daemon=True).start()
@@ -274,9 +279,28 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
     log(f"run {run}: {finished['exit']} turns={finished['turns']} cost_usd={finished['cost_usd']}")
 
 
+def stopped(child: subprocess.Popen, user: str | None) -> None:
+    child.terminate()
+    try:
+        child.wait(timeout=STOP_GRACE_SECONDS)
+        return
+    except subprocess.TimeoutExpired:
+        pass
+    if user is not None:
+        subprocess.run(["sudo", "-u", user, "--", sys.executable, "-c",
+                        "import os, signal; os.kill(-1, signal.SIGKILL)"],
+                       stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+    child.kill()
+
+
+def launcher_profile(environment: Mapping[str, str]) -> dict:
+    prompts = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(play.PROMPTS.glob("*.md"))}
+    return {"prompts": prompts, "claude_code": environment.get(CLAUDE_CODE_VERSION_VARIABLE, "")}
+
+
 def claim(session: signin.Platform, restarted: bool) -> dict | None:
     answer = rest.request(session, "bot_run_claim",
-                          body={"restarted": restarted, "launcher": {"host": socket.gethostname(), "pid": os.getpid()}})
+                          body={"restarted": restarted, "launcher": launcher_profile(os.environ)})
     if answer.status_code == 204:
         return None
     if answer.status_code != 200:

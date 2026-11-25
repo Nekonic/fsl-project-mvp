@@ -1,8 +1,10 @@
 FROM python:3.13-slim
 
+ARG CLAUDE_CODE_VERSION=2.1.331
+
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssh-client sudo nodejs npm ca-certificates \
- && npm install -g --no-audit --no-fund @anthropic-ai/claude-code@2.1.331 \
+ && npm install -g --no-audit --no-fund @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
  && npm cache clean --force \
  && apt-get purge -y npm && apt-get autoremove -y \
  && rm -rf /var/lib/apt/lists/* \
@@ -22,5 +24,5 @@ COPY bots/ /work/bots/
 COPY openapi/schema.yaml /work/openapi/schema.yaml
 
 USER launcher
-ENV PYTHONPATH=/work PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/work PYTHONUNBUFFERED=1 CR_CLAUDE_CODE_VERSION=${CLAUDE_CODE_VERSION}
 ENTRYPOINT ["python", "-m", "bots.launcher"]

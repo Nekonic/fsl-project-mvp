@@ -1,7 +1,7 @@
 from django.utils import timezone
 
 from training.defence import rules as service
-from training.models import Action, RuleSet, RuleTest
+from training.models import Action, Origin, RuleSet, RuleTest
 
 BASE = "/api/rounds/{round}/defence/"
 HTTP = "/etc/nginx/defence/http.conf"
@@ -62,3 +62,15 @@ def test_only_a_waf_version_whose_passed_test_replayed_attacks_is_a_response(boa
     found = service.applied(board_round)
 
     assert [(one.replayed, one.refused) for one in found] == [(frozenset({"m-free", "m-case"}), frozenset({"m-free"}))]
+
+
+def test_a_tunnelled_request_replayed_without_its_body_is_left_out_of_what_the_test_proves(
+        as_defender, board_round, cyber_range, es, at):
+    Origin.objects.create(round=board_round, origin_id="o1", ip="5.188.10.10", label="current")
+    for doc_id, request in (("a1", "GET /search/?q=%27+or+1%3D1-- HTTP/1.1"), ("a2", "POST /accounts/login/ HTTP/1.1")):
+        es.add(doc_id, {"@timestamp": at.isoformat(), "time": at.isoformat(), "event": {"module": "nginx_access"},
+                        "client_ip": "5.188.10.10", "status": 200, "vhost": "board.com", "request": request})
+
+    shown = as_defender.post(url(board_round, "waf/test/"), {"files": {HTTP: DENY}}, format="json").json()
+
+    assert [one["marker"] for one in RuleTest.objects.get(pk=shown["test"]).result["actions"]] == ["log:a1"]

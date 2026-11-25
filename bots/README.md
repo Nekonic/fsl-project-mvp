@@ -118,7 +118,7 @@ random run key as `CR_PLAYER_TOKEN`; only the relay holds the player token and s
 around the relay reaches the platform with the run key and is refused. The relay forwards everything else unchanged.
 A call past the step's pace answers `429` with the code `pace_limited` and `params.retry_after_s`; an operation or a
 declared case the step does not give answers `403` with the code `not_at_this_step`. Neither reaches the platform. An
-action is every call that is not a `GET`, and the three terminal grants; forfeit is never held back.
+action is every call that is not a `GET`, and the three terminal grants; forfeit and the allocation heartbeat are never held back.
 `bots.cli tools` hides the operations the step does not give (`CR_BOT_OPERATIONS`).
 
 Claude Code runs in print mode with Bash as its only tool, allowed only `python -m bots.cli` and `sleep`, with the
@@ -131,7 +131,8 @@ run's key. The Claude Code credential is `/run/secrets/claude_oauth_token`, pass
 `CLAUDE_CODE_OAUTH_TOKEN`; with no credential or no key the launcher claims nothing. The bot's text, its calls,
 permission denials and relay refusals are reported as notes (`bot_run_report`) with the player token, the run key,
 the credential and any `sk-ant-` string masked, and the closing text, cost, turns and refusal count with
-`bot_run_finish`. A run that outlasts `CR_BOT_RUN_SECONDS` (two hours) is stopped as `timed_out`; a launcher that
+`bot_run_finish`. A run that outlasts `CR_BOT_RUN_SECONDS` (two hours) is stopped as `timed_out`: SIGTERM, which
+`sudo` passes on, then after 15 s SIGKILL to every process of the run's `botN` uid; a launcher that
 restarts marks the runs it held `launcher_restarted`. `CR_BOT_RUNS_MAX` (2) runs at once.
 
 Only accounts named in the platform's `CR_BOT_ROUND_USERS` may open a round with a launched bot

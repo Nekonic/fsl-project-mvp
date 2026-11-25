@@ -575,12 +575,12 @@ def test_pace_waits_for_the_window_and_the_gap():
     assert pace_wait(451.0, [150.0, 200.0, 390.0], pace) is None
 
 
-def test_pace_counts_every_write_and_delete_and_the_terminal_grants_but_no_other_read_and_no_forfeit():
+def test_pace_counts_every_write_and_delete_and_the_terminal_grants_but_no_other_read_no_forfeit_no_heartbeat():
     assert counted("POST", "attack_fire_case") and counted("DELETE", "attack_stop_tool")
     assert counted("GET", "attack_terminal") and counted("GET", "defence_terminal")
     assert counted("GET", "defence_ids_terminal")
     assert not counted("GET", "round_events") and not counted("GET", "defence_alerts")
-    assert not counted("POST", "attack_forfeit")
+    assert not counted("POST", "attack_forfeit") and not counted("POST", "allocation_heartbeat")
 
 
 def attack_play(cases=("board-sqli-search",)):
@@ -664,6 +664,19 @@ def test_launcher_command_runs_claude_code_on_bash_alone_in_an_empty_directory_o
     assert not any(str(REPO) in word or "redteam" in word for word in command)
     assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
     assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Your stance this round"))
+
+
+def test_the_launcher_profile_is_the_prompt_hashes_and_the_claude_code_version_and_moves_when_a_prompt_does(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(play, "PROMPTS", tmp_path)
+    (tmp_path / "attacker.md").write_text("first")
+    environment = {launcher.CLAUDE_CODE_VERSION_VARIABLE: "2.1.331"}
+
+    before = launcher.launcher_profile(environment)
+    (tmp_path / "attacker.md").write_text("second")
+
+    assert before["claude_code"] == "2.1.331" and set(before["prompts"]) == {"attacker.md"}
+    assert launcher.launcher_profile(environment)["prompts"] != before["prompts"]
 
 
 def test_notes_are_masked_of_the_player_token_the_run_key_and_any_anthropic_key():

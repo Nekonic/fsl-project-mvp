@@ -478,7 +478,8 @@ sequenceDiagram
   로그를 읽으므로 로그가 늦게 들어와도 됩니다. loot 제출, corp 변경 관찰, 케이스 판정(`case.judged`)은 DB의 행동만 봅니다.
   WAF 룰 테스트(`training/defence/rules.attack_requests`)는 이 요청을 자유 요청으로 함께 다시 보냅니다. 같은
   `(method, host, path)` 줄은 한 번만 보내고 결과를 그 줄의 마커 모두에 붙입니다. 접근 로그에는 헤더와 본문이 없으므로
-  본문 없이 보내고 POST·PUT·PATCH는 `body_missing`으로 표시합니다. 2026-11-23의 "공격이 보낸 요청을 로그에서 꺼내
+  본문 없이 보내고 POST·PUT·PATCH는 `body_missing`으로 표시하며, 그 줄은 테스트의 `actions`에 넣지 않아 버전 대응의
+  근거가 되지 않습니다. URI가 있는 알림은 요청 대상이 로그의 요청 대상과 같은 출발지 요청에만 붙습니다. 2026-11-23의 "공격이 보낸 요청을 로그에서 꺼내
   현재 버전과 후보에 두 번 보내는" 재전송과는 다른 것이고, 그것은 만들지 않았습니다.
 - 판정 알림: 라운드를 읽을 때마다(`lifecycle.READS`의 마지막 단계)와 늦은 판정 때(`round.judged` 앞)
   `lifecycle.judge`가 `scoring.score.judge`를 부릅니다. 점수와 같은 상관 분석으로 케이스마다 판정하되,

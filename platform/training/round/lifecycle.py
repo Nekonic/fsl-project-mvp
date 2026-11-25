@@ -249,6 +249,8 @@ def attach_tunnel(found: Round) -> None:
     seat = Player.objects.filter(round=found, side="attack", client=HUMAN).exclude(user=None).first()
     if seat is not None and found.allocation.slot:
         tunnels.attach(seat.user, found.pk, found.allocation.slot)
+        if not Round.objects.filter(pk=found.pk, phase=RUNNING).exists():
+            tunnels.detach(found.pk)
 
 
 def detach_tunnel(found: Round) -> None:

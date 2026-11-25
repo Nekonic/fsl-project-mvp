@@ -57,6 +57,8 @@ def matches_case(case: CaseRecord, detection: DetectionRecord) -> bool:
         return False
     if detection.marker not in (None, case.marker):
         return False
+    if case.path and detection.uri and detection.uri != case.path:
+        return False
     return case.started_at - WINDOW_SLACK <= detection.timestamp <= case.ended_at + WINDOW_SLACK
 
 

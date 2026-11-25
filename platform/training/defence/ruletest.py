@@ -265,7 +265,8 @@ def judged(engine: str, given: Any, wired: Wired, recordings: Sequence[Recording
                          if replayed.get(recording.marker, {}).get("status") in REFUSED_STATUSES]
         actions = [{"marker": marker,
                     "refused": replayed.get(unseen[attack["marker"]], {}).get("status") in REFUSED_STATUSES}
-                   for attack in attacks for marker in attack.get("markers") or [attack["marker"]]]
+                   for attack in attacks if not attack.get("body_missing")
+                   for marker in attack.get("markers") or [attack["marker"]]]
     table = verdicts.table([recording.probe(engine) for recording in recordings], alerts, engine,
                            applied_table(round_id, engine))
     return {"ok": True, "passed": bool(benign) and not failed_benign and not untested_benign,

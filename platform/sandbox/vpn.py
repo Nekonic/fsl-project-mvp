@@ -25,6 +25,7 @@ A24 = 121665
 BASE_POINT = (9).to_bytes(32, "little")
 DATAGRAM = 65535
 MAP_POLL_SECONDS = 1.0
+CLIENT_IDLE_SECONDS = 2 * KEEPALIVE
 
 
 @dataclass(frozen=True)
@@ -168,6 +169,7 @@ class Relay:
         self.selector = selectors.DefaultSelector()
         self.legs: dict[int, tuple[socket.socket, socket.socket, str]] = {}
         self.clients: dict[int, tuple] = {}
+        self.heard: dict[int, float] = {}
         self.seen = -1.0
 
     def open(self, port: int, kali: str) -> None:
@@ -185,6 +187,7 @@ class Relay:
     def close(self, port: int) -> None:
         listening, upstream, _ = self.legs.pop(port)
         self.clients.pop(port, None)
+        self.heard.pop(port, None)
         for leg in (listening, upstream):
             self.selector.unregister(leg)
             leg.close()
@@ -208,12 +211,19 @@ class Relay:
             self.seen = changed
             self.follow(read_port_map(self.config))
 
+    def heard_from(self, port: int, sender: tuple, now: float) -> None:
+        held = self.clients.get(port)
+        if held is None or held == sender or now - self.heard.get(port, 0.0) > CLIENT_IDLE_SECONDS:
+            self.clients[port] = sender
+        if self.clients[port] == sender:
+            self.heard[port] = now
+
     def pass_on(self, port: int, direction: str) -> None:
         listening, upstream, _ = self.legs[port]
         try:
             if direction == "in":
                 datagram, sender = listening.recvfrom(DATAGRAM)
-                self.clients[port] = sender
+                self.heard_from(port, sender, time.monotonic())
                 upstream.send(datagram)
             else:
                 datagram = upstream.recv(DATAGRAM)

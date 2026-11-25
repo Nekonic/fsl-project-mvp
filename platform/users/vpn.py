@@ -104,8 +104,8 @@ def attach(user, round_id: int, slot: int) -> bool:
     reached = slot_range(slot)
     held.attached_round, held.attached_slot = round_id, slot
     held.attached_address = attacker.kali_address(reached)
-    put_on_kali(held)
     held.save(update_fields=["attached_round", "attached_slot", "attached_address"])
+    put_on_kali(held)
     write_map()
     return True
 
