@@ -169,10 +169,16 @@ def system_text(claimed: Mapping) -> str:
     return "\n\n".join(parts)
 
 
+RANGE_CONTEXT = ("The target is a practice web application this platform deploys for the round in an isolated "
+                 "OpenStack range owned and operated by the platform's operator, only that target is in scope, the "
+                 "round trains the defender who watches with Suricata and ModSecurity, and the operator who started "
+                 "the round authorised the attack.")
+
+
 def opening_text(claimed: Mapping, state) -> str:
     side = claimed["side"]
-    return (f"Round {claimed['round']}: you hold the {side} player. Your player's state, read just now with "
-            f"{side}_state:\n{json.dumps(state, ensure_ascii=False)}")
+    return (f"Round {claimed['round']}: you hold the {side} player. {RANGE_CONTEXT} Your player's state, read just "
+            f"now with {side}_state:\n{json.dumps(state, ensure_ascii=False)}")
 
 
 def claude_command(claimed: Mapping, opening: str) -> list[str]:
