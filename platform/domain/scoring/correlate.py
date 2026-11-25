@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
+from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import timedelta
 
 from domain.types import (
@@ -30,8 +32,9 @@ def correlate(
 
     matches: list[CaseMatch] = []
     matched: set[str] = set()
+    found = DetectionIndex.of(detections)
     for case in cases:
-        hits = tuple(d.detection_id for d in detections if matches_case(case, d))
+        hits = tuple(d.detection_id for d in found.matching(case))
         matched.update(hits)
         matches.append(
             CaseMatch(
@@ -48,6 +51,39 @@ def correlate(
         unmatched_detection_ids=tuple(d.detection_id for d in detections if d.detection_id not in matched),
         warnings=_warnings(cases, detections),
     )
+
+
+@dataclass(frozen=True)
+class DetectionIndex:
+    by_marker: dict[str, list[tuple[int, DetectionRecord]]]
+    by_source: dict[str, tuple[list, list[tuple[int, DetectionRecord]]]]
+
+    @classmethod
+    def of(cls, detections: Sequence[DetectionRecord]) -> DetectionIndex:
+        by_marker: dict[str, list[tuple[int, DetectionRecord]]] = defaultdict(list)
+        sourced: dict[str, list[tuple[int, DetectionRecord]]] = defaultdict(list)
+        for position, detection in enumerate(detections):
+            if detection.marker is not None:
+                by_marker[detection.marker].append((position, detection))
+            if detection.src_ip is not None:
+                sourced[detection.src_ip].append((position, detection))
+        by_source = {}
+        for source, held in sourced.items():
+            held.sort(key=lambda pair: pair[1].timestamp)
+            by_source[source] = ([detection.timestamp for _, detection in held], held)
+        return cls(by_marker=dict(by_marker), by_source=by_source)
+
+    def candidates(self, case: CaseRecord) -> list[tuple[int, DetectionRecord]]:
+        if case.correlation == CORRELATION_MARKER:
+            return self.by_marker.get(case.marker, []) if case.marker is not None else []
+        if case.source_ip is None or case.source_ip not in self.by_source:
+            return []
+        times, held = self.by_source[case.source_ip]
+        return held[bisect_left(times, case.started_at - WINDOW_SLACK):bisect_right(times, case.ended_at + WINDOW_SLACK)]
+
+    def matching(self, case: CaseRecord) -> list[DetectionRecord]:
+        return [detection for _, detection in sorted(
+            (pair for pair in self.candidates(case) if matches_case(case, pair[1])), key=lambda pair: pair[0])]
 
 
 def matches_case(case: CaseRecord, detection: DetectionRecord) -> bool:
