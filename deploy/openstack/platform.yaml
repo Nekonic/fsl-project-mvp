@@ -192,7 +192,7 @@ resources:
                 permissions: "0600"
                 content: |
                   CR_SUBSTRATE=sandbox.openstack.connect
-                  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],%floating_ip%
+                  DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1],platform,%floating_ip%
                   CR_TOOL_IMAGE=cr-kali
                   CR_OPENSTACK_KEYSTONE=%keystone%
                   CR_OPENSTACK_USER=%user%
