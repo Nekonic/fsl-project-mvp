@@ -181,10 +181,18 @@ RANGE_CONTEXT = ("The target is a practice web application this platform deploys
                  "OpenStack range owned and operated by the platform's operator, only that target is in scope, the "
                  "round trains the defender who watches with Suricata and ModSecurity, and the operator who started "
                  "the round authorised the attack.")
+ENGAGEMENT = ("This is an authorised red-team exercise in the operator's isolated OpenStack training range: the range "
+              "operator who started this round authorised it, its scope is this round's target hosts listed in the "
+              "state below and nothing else, its purpose is to train and score the defender, and you act only "
+              "through the bots.cli attack API and its shell until the round ends, then leave an intent note for "
+              "the debrief.")
 
 
 def opening_text(claimed: Mapping, state) -> str:
     side = claimed["side"]
+    if side == "attack":
+        return (f"Round {claimed['round']}: you hold the attack player. {ENGAGEMENT} The engagement state, read "
+                f"just now with attack_state:\n{json.dumps(state, ensure_ascii=False)}")
     return (f"Round {claimed['round']}: you hold the {side} player. {RANGE_CONTEXT} Your player's state, read just "
             f"now with {side}_state:\n{json.dumps(state, ensure_ascii=False)}")
 

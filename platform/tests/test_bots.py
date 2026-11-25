@@ -659,7 +659,7 @@ def claimed_run(side, stance=None):
 
 
 def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_directory_with_the_step_s_model():
-    attack = claimed_run("attack", stance="Your stance this round, quoted from MITRE ATT&CK (T1190 ...)")
+    attack = claimed_run("attack", stance="Assigned technique for this engagement, as MITRE ATT&CK describes it (T1190 ...)")
     command = launcher.child_command(attack, "opening", "bot3")
     claude = command[command.index("claude"):]
 
@@ -675,7 +675,16 @@ def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_di
     assert 'mkdir -p "$HOME/run/work"' in script and 'cd "$HOME/run/work"' in script
     assert not any(str(REPO) in word or "redteam" in word for word in command)
     assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
-    assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Your stance this round"))
+    assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Assigned technique for this engagement"))
+
+
+def test_the_attack_opening_is_the_engagement_brief_and_the_defence_opening_keeps_the_range_context():
+    attack = launcher.opening_text(claimed_run("attack"), {"phase": "running"})
+    defence = launcher.opening_text(claimed_run("defence"), {"phase": "running"})
+
+    assert launcher.ENGAGEMENT in attack and launcher.RANGE_CONTEXT not in attack and "attack_state" in attack
+    assert launcher.RANGE_CONTEXT in defence and launcher.ENGAGEMENT not in defence and "defence_state" in defence
+    assert attack.endswith('{"phase": "running"}') and defence.endswith('{"phase": "running"}')
 
 
 def test_the_launcher_profile_is_the_prompt_hashes_and_the_claude_code_version_and_moves_when_a_prompt_does(
