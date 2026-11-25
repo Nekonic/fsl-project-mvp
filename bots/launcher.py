@@ -48,6 +48,8 @@ RUN_SCRIPT = ('umask 077 && rm -rf "$HOME/run" && mkdir -p "$HOME/run/work" "$HO
               '&& cat > "$HOME/run/config/system.md" && cd "$HOME/run/work" '
               '&& export CLAUDE_CONFIG_DIR="$HOME/run/config" && exec "$@"')
 SYSTEM_FILE = "../config/system.md"
+INLINE_OUTPUT_MAX = 128000
+CHILD_SETTINGS = json.dumps({"bashOutputMaxChars": INLINE_OUTPUT_MAX})
 CHILD_PASSED = ("CR_PLATFORM_URL", "CR_PLAYER_TOKEN", "CR_ROUND", tools.STEP_OPERATIONS_VARIABLE, CREDENTIAL_VARIABLE,
                 "PYTHONPATH", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_AUTOUPDATER")
 
@@ -178,7 +180,8 @@ def claude_command(claimed: Mapping, opening: str) -> list[str]:
             "--max-budget-usd", str(claimed["budget_usd"]), "--max-turns", str(claimed["max_turns"]),
             "--output-format", "stream-json", "--verbose", "--tools", "Bash", "--allowedTools", *ALLOWED,
             "--disallowedTools", *DENIED, "--permission-mode", "dontAsk", "--strict-mcp-config", "--safe-mode",
-            "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence"]
+            "--setting-sources", "", "--settings", CHILD_SETTINGS, "--disable-slash-commands",
+            "--no-session-persistence"]
 
 
 def child_command(claimed: Mapping, opening: str, user: str | None) -> list[str]:

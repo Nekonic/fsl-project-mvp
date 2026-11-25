@@ -659,6 +659,7 @@ def test_launcher_command_runs_claude_code_on_bash_alone_in_an_empty_directory_o
     assert "Bash(python -m bots.cli *)" in claude and "Bash(cat *)" in claude[claude.index("--disallowedTools"):]
     assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(claude)
     assert claude[claude.index("--setting-sources") + 1] == "" and claude[claude.index("--permission-mode") + 1] == "dontAsk"
+    assert json.loads(claude[claude.index("--settings") + 1]) == {"bashOutputMaxChars": 128000}
     script = command[command.index("-c") + 1]
     assert 'mkdir -p "$HOME/run/work"' in script and 'cd "$HOME/run/work"' in script
     assert not any(str(REPO) in word or "redteam" in word for word in command)

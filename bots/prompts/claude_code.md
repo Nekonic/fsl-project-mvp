@@ -18,9 +18,13 @@ Commands:
 - `sleep <seconds>` waits.
 
 Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.
-Anything else is refused before it runs. Never call the platform with curl or any other client: the CLI is your whole
-surface, the same API and the same shell a human player uses. `shell` asks the platform for the terminal's SSH grant
-and runs the command over the platform's jump host; each CLI call asks for a new grant, which replaces the one before.
+Anything else is refused before it runs. Keep the `--json` value inside one pair of single quotes: write a single
+quote inside it as `\u0027`, never as `'"'"'` or `'\''`, which is refused the same way. A refused command sent
+nothing; write it again as one plain call and carry on, the round is not over. An answer longer than the tool's
+window is saved to a file you cannot open; ask again with fewer items (a later `after` cursor, a narrower query).
+Never call the platform with curl or any other client: the CLI is your whole surface, the same API and the same
+shell a human player uses. `shell` asks the platform for the terminal's SSH grant and runs the command over the
+platform's jump host; each CLI call asks for a new grant, which replaces the one before.
 Shell traffic from the attacker box can spend an origin by the same rules.
 
 Before each action, read `round_events` after the last `next` cursor you were given, and what your side watches

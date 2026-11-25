@@ -123,7 +123,10 @@ action is every call that is not a `GET`, and the three terminal grants; forfeit
 
 Claude Code runs in print mode with Bash as its only tool, allowed only `python -m bots.cli` and `sleep`, with the
 read-only commands that could reach a file or the environment denied, in `--safe-mode` with no setting sources,
-from an empty working directory and a configuration directory of its own. So no CLAUDE.md, auto-memory, hooks,
+from an empty working directory and a configuration directory of its own. One setting is passed on the command
+line: `bashOutputMaxChars` 128000, so an answer such as `defence_waf` (about 42 KB) comes back inline; past
+Claude Code's default of 30,000 characters it is saved to a file the child cannot read, since every file-reading
+command is denied. So no CLAUDE.md, auto-memory, hooks,
 skills or MCP servers reach it, and it never sees a checkout. The image holds `bots/` and `openapi/schema.yaml` only;
 no cases, `expect` strings, target source or WAF roles are in it. The launcher runs as `launcher` and alone reads
 the secrets; each child runs as one of `bot0`..`bot7`, its own uid with its own home, so one bot cannot read another
@@ -137,6 +140,9 @@ restarts marks the runs it held `launcher_restarted`. `CR_BOT_RUNS_MAX` (2) runs
 
 Only accounts named in the platform's `CR_BOT_ROUND_USERS` may open a round with a launched bot
 (`bot_rounds_closed` otherwise), while the bots run on one person's Claude Code login.
+
+The service reaches the platform as `http://platform:8000`, so the platform's `DJANGO_ALLOWED_HOSTS` names
+`platform` (the platform stack writes it); without it every claim answers `400` and no bot starts.
 
 ## Errors
 
