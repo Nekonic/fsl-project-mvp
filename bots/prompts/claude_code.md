@@ -22,6 +22,7 @@ Anything else is refused before it runs. Keep the `--json` value inside one pair
 quote inside it as `\u0027`, never as `'"'"'` or `'\''`, which is refused the same way. A refused command sent
 nothing; write it again as one plain call and carry on, the round is not over. An answer longer than the tool's
 window is saved to a file you cannot open; ask again with fewer items (a later `after` cursor, a narrower query).
+Never run a command in the background: its output goes to a file you cannot open.
 Never call the platform with curl or any other client: the CLI is your whole surface, the same API and the same
 shell a human player uses. `shell` asks the platform for the terminal's SSH grant and runs the command over the
 platform's jump host; each CLI call asks for a new grant, which replaces the one before.
