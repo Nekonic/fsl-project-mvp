@@ -109,7 +109,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range; `cr-kali-bake3` from `restructure` on 2026-11-24 | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range; `cr-kali-bake3` from `restructure` on 2026-11-24; `cr-kali-bake4` from `bot-rounds` on 2026-11-25 (the learner tunnel) | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -666,7 +666,7 @@ Glance holds three kinds of image:
 |---|---|---|
 | `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the Kali base | Kali's Generic Cloud image (`kali-linux-<ver>-cloud-genericcloud-amd64.tar.xz`), converted and uploaded once **[unverified]** | by hand, once |
-| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-24 `cr-kali-bake3`, `cr-waf-bake3`, `cr-infra-bake2`, `cr-target-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
+| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-25 `cr-kali-bake4`, `cr-waf-bake3`, `cr-infra-bake2`, `cr-target-bake2`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
 boot from the base image. The range VMs boot from the baked images with no
@@ -777,6 +777,15 @@ Glance store is therefore the likely cause; no admin log was read, so it is
 not confirmed. Check the store's free space against the image's size before
 a kali bake. The range runs `cr-kali-bake3` since 2026-11-24.
 
+On 2026-11-25 `cr-kali-bake4` was baked from `bot-rounds` (the role gained
+`wireguard-tools`, `net.ipv4.ip_forward = 1` and `set-peer`), after deleting the
+unused `cr-kali-bake2` for room: `install.sh` about 38 min, snapshot `queued` 8
+min, `saving` 2 min, active at 14,086,701,056 bytes, `min_disk` 30 GB. A first
+builder booted from `cr-kali-bake3` instead of the Kali base, to rerun the
+idempotent `install.sh` on top, never answered ssh: its console stayed at
+`Job cloud-init-network.service/start running` past 10 min. Bake kali from the
+Kali base, as the table says.
+
 The builder takes one instance of the project's quota. Until 2026-11-24 the
 full default pool took all of it (§3.2: 17 of 17 on this cloud), so `server
 create` failed while the pool stood; the quota of 24 leaves room since. Free one first: an admin raises `instances` by
@@ -812,7 +821,8 @@ On 2026-11-23 the roles were baked from `restructure` on `m1.medium` builders:
 snapshot failed (above), so the range ran `cr-kali-bake2` until 2026-11-24,
 because nothing under `deploy/roles/kali`, `deploy/kali` or `deploy/proxy`
 changed between the tree it was baked from and `restructure`; it runs
-`cr-kali-bake3`, baked from `restructure`, since.
+`cr-kali-bake3`, baked from `restructure`, from 2026-11-24, and `cr-kali-bake4`,
+baked from `bot-rounds`, since 2026-11-25.
 
 A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
@@ -1097,7 +1107,7 @@ in a container's environment.
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
 | `compute.flavors` | `platform`, and `kali`, `waf`, `infra`, `target` | §3.3. A range VM role left out takes `dba.small`; `CR_OPENSTACK_FLAVORS` |
-| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `kali: cr-kali-bake3`, `waf: cr-waf-bake3`, `infra: cr-infra-bake2`, `target: cr-target-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
+| `compute.images` | `cr-<role>-bake1` per role (**(this cloud)** `kali: cr-kali-bake4`, `waf: cr-waf-bake3`, `infra: cr-infra-bake2`, `target: cr-target-bake2`) | optional; each range VM role's Glance image, baked from `deploy/roles/<role>/` (§3.6); a role left out takes `cr-<role>-bake1`; `CR_OPENSTACK_IMAGES` |
 | `compute.pool` | `{board: 3, corp: 1}` | optional; how many range stacks stand ready for each wargame, each one Heat stack of four VMs, so how many allocations can be open at once (§6.4); `CR_OPENSTACK_POOL` |
 | `compute.target_tag` | the commit the target image was baked at | optional; the full 40-hex commit whose board and corp images the target image pulled (its bake's `CR_IMAGE_TAG`, §3.6); a range stack has no egress, so it runs only those. Without it, the commit `cr-target-bake1` was baked at; `CR_OPENSTACK_TARGET_TAG` |
 | `keys.key_name`, `keys.key_file` | `fsl-claude`, `~/.ssh/fsl_claude` | the Nova keypair the platform VM boots with (its `key_name`, §3.4), and that keypair's private key, for ssh to the VM |
@@ -1204,7 +1214,18 @@ the file empty the launcher claims nothing, so a round with a launched bot
 stays with its runs queued. `bin/platform-rebuild` does not carry this file
 over: a rebuilt VM starts with it empty again. Until the demo ends the token is
 the user's own login, and only the accounts in `CR_BOT_ROUND_USERS` can open a
-round with a launched bot (DECISIONS 2026-11-24).
+round with a launched bot (DECISIONS 2026-11-24). Those names go into
+`/opt/cr/.env` by hand as `CR_BOT_ROUND_USERS=<name>,...`, beside
+`CR_BOT_RUNS_MAX` when more than two bot runs should play at once (a
+`def_vs_bot` round takes one run, a baseline round two), then `docker compose
+up -d platform bots`; a rebuilt VM's `.env` has neither. **(this cloud)** On
+2026-11-25: `CR_BOT_ROUND_USERS=admin`, `CR_BOT_RUNS_MAX=5`, the token from the
+user's Claude Code login on cr-dev.
+
+The `bots` service calls the platform by its compose name, so the stack writes
+`platform` into `DJANGO_ALLOWED_HOSTS` beside the loopback names and the
+floating IP. A VM built before 2026-11-25 lacks it, and Django refuses every
+claim with `DisallowedHost` (the launcher logs `claim answered 400 ... invalid`).
 
 ### 5.2 One command [one-click]
 
@@ -1789,7 +1810,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 
 | VM (`cr-slot-<n>-<node>`) | Image | Learner |
 |---|---|---|
-| `kali` | `cr-kali-bake1` (**(this cloud)** `cr-kali-bake3`): Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
+| `kali` | `cr-kali-bake1` (**(this cloud)** `cr-kali-bake4`): Kali with `kali-linux-headless` and the tools | `kali` with passwordless sudo, by the attack player's web terminal and its jump grant (§3.5) |
 | `waf` | `cr-waf-bake1` (**(this cloud)** `cr-waf-bake3`): Ubuntu, nginx 1.24, ModSecurity 3.0.16, CRS 4.25.1 | the defence player as `analyst`, by web terminal and its jump grant (§3.7) |
 | `infra` | `cr-infra-bake1` (**(this cloud)** `cr-infra-bake2`): Ubuntu, nftables, Suricata (`jasonish/suricata`, pinned by digest), rsyslog, the customers program (§3.8) | the defence player as `analyst`, by the IDS terminal and its jump grant (§3.10) |
 | `target` | `cr-target-bake1` (**(this cloud)** `cr-target-bake2`): Ubuntu, Docker, board and corp at the baked tag | none |

@@ -11208,3 +11208,38 @@ Three reviews read the branch against the spec and CLAUDE.md; these are the ruli
 - To check before any external learner: what a learner reaches from the
   tunnel and from a kali shell (kali has sudo and a port on the management
   network), and close what is beyond the round.
+
+## 2026-11-25 — Player vs AI rounds, the live check: what it found and changed
+
+The live stage of spec §17 ran on `cr-platform2` from `bot-rounds`, with `cr-kali-bake4` (the kali role with
+`wireguard-tools`, `ip_forward` and `set-peer`) and the bots service on the user's Claude Code login. The run log
+is kept outside the repo; this entry keeps what changed the product.
+
+- **The bots service could not claim a run.** It calls `http://platform:8000`, and the VM's
+  `DJANGO_ALLOWED_HOSTS` named only the loopback names and the floating IP, so Django answered every claim
+  `400` (`DisallowedHost`). The platform stack now writes `platform` there. The settings default stays
+  loopback-only (`tests/test_deployment.py` holds it).
+- **A bot never saw an answer past 30,000 characters.** Claude Code saves a longer Bash answer to a file, and
+  the child may not read files; a step-1 defence bot lost `defence_waf` (about 42 KB) and stopped. The
+  launcher passes `--settings '{"bashOutputMaxChars": 128000}'`, which applies with no setting sources
+  (checked live: with 5000 the 12.7 KB tool list went to a file, without it inline).
+- **A bot stopped on a refused command.** A step-2 attack bot wrote a quote in `--json` as `'"'"'`; Claude
+  Code refused the command, the bot read it as the whole Bash tool being denied and ended the round. The
+  Claude Code prompt now says to write the quote as `'` and to retry a refused command.
+- **Correlation was quadratic.** With attribution by origin every request from an attacker origin is an
+  action; a tunnelled sqlmap run gave 2,183 actions against 13,866 alerts, each score read made about 30
+  million comparisons, and reads of that round took longer than 15 minutes while three rounds shared the
+  platform. Correlation now looks detections up by marker and by source address and time; the matches and
+  their order are unchanged.
+- **Judgement calls of the run, not rulings:** the bot-round problem's start posture removes CRS 949110 on
+  `/` as well as `/search/`, so the sort injection reaches the board while CRS alerts, or no objective can
+  fall; the plain `atk_vs_bot` round and the VPN round were one round, since one account has one profile
+  and a second account was not wanted; `CR_BOT_RUNS_MAX=5` for three rounds at once.
+- **Found, not changed (listed for the user):** SQLite write locks past the 30 s busy timeout under three
+  rounds at once (`bot_run_report`, the judge, `bot_run_finish` timed out); `telemetry/alerts.joined_later`
+  runs one JSON-filtered UPDATE per Suricata join; `apply_waf` and `apply_ids` hold the write transaction
+  while they reach the WAF or the sensor over ssh; the free actions of a round are read from Elasticsearch
+  at scoring time, so after a platform rebuild an ended round's live score loses them (round 175: detected
+  true before the rebuild, false after; its round record keeps the frozen score); the jump host's key is
+  made again on every rebuild, so a learner's saved `known_hosts` refuses it; a step-1 defence bot (Haiku
+  5.5, no shell) did not stop a tunnelled sqlmap run within its first minutes.

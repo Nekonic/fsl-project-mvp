@@ -18,8 +18,9 @@ then restructured on the working branch `restructure` (ruling 2026-11-21,
 `restructure`: on 2026-11-23 its first range was built and checked
 (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
 
-- **Images.** `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2` and, since
-  2026-11-24, `cr-kali-bake3`, all baked from `restructure`. Two kali
+- **Images.** `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2`, baked from
+  `restructure`, and since 2026-11-25 `cr-kali-bake4`, baked from `bot-rounds`
+  (the learner tunnel: `wireguard-tools`, `ip_forward`, `set-peer`). Two kali
   snapshots before it failed at about 10 minutes with Nova's
   `compute_snapshot_instance: Error`; Glance's file store had 7.9 GB free
   for the 14.1 GB image, and the third bake passed after five unused images
@@ -60,6 +61,34 @@ then restructured on the working branch `restructure` (ruling 2026-11-21,
   from its terminal; 6/0/0/84, no objective lost). The attack bot was
   refused on Opus 5.5 and Sonnet 5.5 (`[cyber]`, the account's Cyber
   Verification Program tier is Defense Access) and played on Haiku 5.5.
+- **Player vs AI live check**, 2026-11-25, `bot-rounds` on `cr-platform2`
+  (replaced twice that night from `bot-rounds`), the bots service on the
+  user's Claude Code login. As the bot uid in `cr-bots`, reading the secrets,
+  another bot's home, `/proc/1/environ` and `sudo` were refused, and a call
+  to the platform without the relay was refused. Rounds, board, three at once:
+  - `atk_vs_bot` from cr-dev as the learner PC through the account's
+    WireGuard profile: the profile attached to the round's kali and detached
+    at the end; sqlmap through the tunnel dumped `auth_user` and the loot
+    took all three objectives (round 175: detection O, response X, weighted
+    11.0, the 2,183 tunnelled requests under `free_actions` by origin); in
+    round 177 the step-3 defence bot (Opus 5.5) spent the origin by `deny`,
+    the open tunnel moved to the next origin, and nothing was lost; in round
+    179 the step-1 defence bot (Haiku 5.5) answered too late and all three
+    were lost. The SSH snippet's `DynamicForward` carried the same traffic.
+  - What a learner reaches (ruling 2026-11-25), from the tunnel and from the
+    kali shell, by TCP connect and ICMP: only the round's own WAF front and
+    its own kali; the platform VM's ports and management address, Keystone,
+    con01, the gateway and every other slot's management and LAN addresses
+    did not answer. UDP was not checked.
+  - `def_vs_bot`: the step-2 attack bot (Haiku 5.5) stopped after a refused
+    command (round 174) and, after the fix, was refused by Haiku 5.5's
+    safeguards (`[cyber]`, round 180); the attack side has no model that
+    plays on this account tonight.
+  - A two-round baseline (human side attack, step 1) ran to `current`, then
+    went `stale` when the new bots image changed the launcher profile.
+  - Fixed on the way: the bots service's Host name, answers past 30,000
+    characters, a bot ending the round on a refused command, quadratic
+    correlation (`docs/DECISIONS.md` 2026-11-25).
 
 ## What exists on restructure
 
@@ -85,7 +114,7 @@ a live range and passed.
 | Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`; the acceptance suite through `bots/rest.py`, live 2026-11-23 |
 | Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
 | Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` and the 2026-11-23 cloud check | this stage |
-| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack bot Haiku 5.5 at every step, defence bot Haiku/Sonnet/Opus 5.5); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; nothing of it ran on a range yet |
+| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack bot Haiku 5.5 at every step, defence bot Haiku/Sonnet/Opus 5.5); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; live on 2026-11-25 ("Where things stand") |
 
 ## Not live-verified
 
@@ -104,11 +133,10 @@ stand". Still not run on a range:
 - `bin/cloud up --replace` under the stack name `cr-platform` (it ran as
   `cr-platform2`; under `cr-platform` it stops before deleting anything,
   §5.3); `bin/cloud down`;
-- everything of the Player vs AI build (`bot-rounds`): the `bots` image and
-  service, a `def_vs_bot` and an `atk_vs_bot` round through the launcher, a
-  two-round baseline, a round from a PC through the WireGuard profile and
-  through the SSH config (needs the kali rebake with `set-peer` and a stack
-  update for udp 51820-51919);
+- of the Player vs AI build: a `def_vs_bot` round the attack bot plays to
+  the end (it was refused or stopped tonight), a loss with response O (the
+  defence spent the origin before the loss), the learner's UDP reach, and
+  three rounds at once without SQLite lock errors;
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
@@ -118,11 +146,10 @@ stand". Still not run on a range:
 1. **The name `cr-platform`** (an admin): remove the abandoned stack's
    record from Heat's database, then one replace under that name
    (`docs/OPENSTACK.md` §5.3).
-2. **Player vs AI live check** (spec §17 "Live"): kali rebake, platform
-   replace from `bot-rounds`, the Claude Code token in
-   `/opt/cr/claude-oauth-token` (`docs/OPENSTACK.md` §5.1.1), then the rounds
-   above.
-3. **One `pvp` round, and a bot round that loses an objective**.
+2. **The platform under several rounds** (found 2026-11-25): SQLite locks,
+   `joined_later`'s per-join UPDATE, rule applies holding the write lock over
+   ssh, and free actions read from Elasticsearch at scoring time.
+3. **One `pvp` round, and a loss with response O**.
 4. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
 5. **Gate 2**: present what changed with the evidence; on approval, move the
@@ -130,10 +157,11 @@ stand". Still not run on a range:
 
 ## Open points
 
-- **The attack bot and the model's safeguards.** On this account the
-  attack bot runs only on Haiku 5.5; Opus 5.5 and Sonnet 5.5 stop it with
-  `[cyber]` (Defense Access covers defensive work). The defence bot runs on
-  Opus 5.5.
+- **The attack bot and the model's safeguards.** On this account Opus 5.5
+  and Sonnet 5.5 stop the attack bot with `[cyber]` (Defense Access covers
+  defensive work). Haiku 5.5 played it on 2026-11-24 and in two rounds early
+  on 2026-11-25, and refused it (`[cyber]`, four refusals) later the same
+  night. The defence bot runs on every model.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it
@@ -143,7 +171,21 @@ stand". Still not run on a range:
   the repository root, it read `redteam/cases/` and the wargame files). On
   `bot-rounds` the launcher runs it from an empty directory in safe mode
   with no setting sources, from an image holding only `bots/` and the
-  schema; not yet run live.
+  schema; live on 2026-11-25 every file read the bots tried (`cat`, `grep`,
+  a `python3` script) was denied.
+- **The platform under several rounds** (2026-11-25, three board rounds and
+  a tunnelled sqlmap): `database is locked` past the 30 s busy timeout
+  (bot notes, the judge, `bot_run_finish`), reads of a round longer than
+  15 minutes until correlation was indexed, the store from 3 MB to 253 MB in
+  four hours. Still open: `telemetry/alerts.joined_later` runs one
+  JSON-filtered UPDATE per Suricata join; `apply_waf` and `apply_ids` keep the
+  write transaction open while they reach the WAF or the sensor over ssh.
+- **A past round's free actions live in Elasticsearch.** The score reads them
+  at scoring time, so after a platform rebuild an ended round's live score
+  drops them (round 175 read `detected: true` before the rebuild and `false`
+  after); the round record keeps the score frozen at the end.
+- **The jump host's key changes on every rebuild** (`/data/jump` is not
+  carried over), so a learner's saved `known_hosts` refuses the next one.
 - **Acceptance checks that read Elasticsearch directly.**
   `test/test_event_time.py`, `test/test_geoip_durable.py`,
   `test/test_origin_placement.py` and `test/test_waf_geolocation.py` query

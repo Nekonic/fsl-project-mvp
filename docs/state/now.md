@@ -5,12 +5,19 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-24.
+Updated: 2026-11-25.
 
 ## Where things stand
 
-- The working branch is `restructure`, cut from `side-split`. `dev` and
-  `main` still hold the old product; the cloud now runs `restructure`.
+- The working branch is `bot-rounds` (Player vs AI rounds), cut from
+  `restructure`, which was cut from `side-split`. `dev` and `main` still hold
+  the old product; the cloud runs `bot-rounds` since 2026-11-25.
+- On 2026-11-25 the Player vs AI build ran live (`docs/STATE.md` "Where
+  things stand", `docs/DECISIONS.md` 2026-11-25): `cr-kali-bake4`, two
+  replaces from `bot-rounds`, rounds from a PC through WireGuard (an
+  objective lost through the tunnel; an origin spent by the defence bot
+  through it), the learner reach check (only the round's kali and WAF
+  answered), a two-round baseline, four fixes.
 - `restructure` carries out the 2026-11-21 and 2026-11-22 rulings; the table
   is in `docs/STATE.md` "What exists on restructure". The rulings recorded on
   2026-11-23 (five attack origins, more benign kinds, Internet scanners, the
@@ -69,23 +76,25 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. One `pvp` round, and a bot round that loses an objective.
-3. A captured walk as a learner, a live review round with zero countable
+2. The platform under several rounds: SQLite locks, alert joins, rule
+   applies holding the write lock, free actions read from Elasticsearch
+   (`docs/STATE.md` "Open points").
+3. The attack bot: Haiku 5.5 refused it later on 2026-11-25 too, so no
+   model plays the attack side on this account for now.
+4. One `pvp` round, and a loss with response O.
+5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-4. Gate 2.
+6. Gate 2.
 
 ## Open points
 
 - The attack bot is refused on Opus 5.5 and Sonnet 5.5 (`[cyber]`: the
   account's Cyber Verification Program tier is Defense Access, which covers
-  defensive work); only Haiku 5.5 played the attack side. The defence bot on
-  Opus 5.5 was not refused.
-- The bot is launched in the repo root, so its Claude Code session inherits
-  the project: CLAUDE.md, the auto-memory, the session hook that prints this
-  file, the project permissions. The attack bots read
-  `redteam/cases/board.yaml` and `wargames/board/*.yaml`; a bot reaches more
-  than a human player does. Fixing it is a launch decision (a separate
-  working directory, `--setting-sources` or `--bare`), not decided.
+  defensive work); Haiku 5.5 played it until later on 2026-11-25, when it
+  refused it too. The defence bot was not refused on any model.
+- The bot no longer runs in the repo: the `bots` service starts Claude Code
+  from an empty directory with no setting sources, from an image holding only
+  `bots/` and the schema (live on 2026-11-25).
 - A benign case fires many times per round and the score lists one line per
   firing, against CLAUDE.md's "one case is one decision"; the acceptance
   harness reads a case as detected when any firing drew an alert. The user
