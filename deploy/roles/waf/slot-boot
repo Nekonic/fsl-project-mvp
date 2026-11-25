@@ -11,7 +11,7 @@ sed -i -e '/[[:space:]]board$/d' -e '/[[:space:]]corp-wp$/d' /etc/hosts
 printf '%s board\n%s corp-wp\n' "$BOARD_ADDRESS" "$CORP_ADDRESS" >> /etc/hosts
 
 for listening in "$LISTENERS"/*.listen; do
-  if [ "$(basename "$listening" .listen)" = "$WARGAMES" ]; then
+  if [ "$(basename "$listening" .listen)" = "${WARGAMES:-}" ]; then
     printf 'listen 80 default_server;\n'
   else
     printf 'listen 80;\n'
