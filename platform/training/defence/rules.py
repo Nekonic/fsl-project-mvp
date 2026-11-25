@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -287,12 +289,25 @@ def written_to_sensors(text: str, previous: str, sensors: Sequence[ruletest.Sens
     return tuple({"name": sensor.config.name, "ok": True} for sensor in sensors)
 
 
-def locked_head(found: Round, engine: str, base_version: int) -> RuleSet | None:
-    head = RuleSet.objects.select_for_update().filter(round=found, engine=engine).order_by("-version").first()
+def checked_head(found: Round, engine: str, base_version: int, locked: bool = False) -> RuleSet | None:
+    heads = RuleSet.objects.select_for_update() if locked else RuleSet.objects
+    head = heads.filter(round=found, engine=engine).order_by("-version").first()
     current = head.version if head else 0
     if base_version != current:
         raise errors.Conflict(code="stale_version", params={"current_version": current})
     return head
+
+
+_engine_locks: dict[tuple[int, str], threading.RLock] = {}
+_engine_locks_guard = threading.Lock()
+
+
+@contextmanager
+def engine_held(found: Round, engine: str):
+    with _engine_locks_guard:
+        held = _engine_locks.setdefault((found.pk, engine), threading.RLock())
+    with held:
+        yield
 
 
 def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str, str], sensors: Sequence[dict],
@@ -310,16 +325,24 @@ def recorded(found: Round, engine: str, head: RuleSet | None, files: Mapping[str
     return made
 
 
+def recorded_after(found: Round, engine: str, base_version: int, files: Mapping[str, str], sensors: Sequence[dict],
+                   tested: RuleTest | None, source: str, reloaded: float | None) -> RuleSet:
+    with transaction.atomic():
+        head = checked_head(found, engine, base_version, locked=True)
+        return recorded(found, engine, head, files, sensors, tested, source, reloaded)
+
+
 def apply_ids(found: Round, text: str, base_version: int, source: str = SETUP) -> Applied:
     reached = wired(found)
     if not reached.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
-    with transaction.atomic():
-        head = locked_head(found, ENGINE_IDS, base_version)
+    with engine_held(found, ENGINE_IDS):
+        head = checked_head(found, ENGINE_IDS, base_version)
         previous = (head.files.get(IDS_FILE, "") if head
                     else suricata.current(reached.sensors[0].runner, reached.sensors[0].config))
         sensors = written_to_sensors(text, previous, reached.sensors)
-        made = recorded(found, ENGINE_IDS, head, {IDS_FILE: text}, sensors, None, source, ids_reload_at(found))
+        reloaded = ids_reload_at(found)
+        made = recorded_after(found, ENGINE_IDS, base_version, {IDS_FILE: text}, sensors, None, source, reloaded)
         return Applied(rule_set=made, sensors=sensors)
 
 
@@ -334,28 +357,31 @@ def apply_waf(found: Round, files: Mapping[str, str], base_version: int, player:
         test = passed_test(found, ENGINE_WAF, ruletest.files_sha(loaded))
         if test is None:
             raise errors.Conflict(code="not_tested", path="files")
-    with transaction.atomic():
-        head = locked_head(found, ENGINE_WAF, base_version)
+    with engine_held(found, ENGINE_WAF):
+        checked_head(found, ENGINE_WAF, base_version)
         try:
             merged = crs.apply(loaded, reached.gateway, reached.waf)
         except crs.WafRefused as refused:
             raise ruletest.waf_refusal(refused) from refused
-        return Applied(rule_set=recorded(found, ENGINE_WAF, head, merged, (), test, source,
-                                         waf_reload_at(reached.gateway, reached.waf)), sensors=())
+        reloaded = waf_reload_at(reached.gateway, reached.waf)
+        return Applied(rule_set=recorded_after(found, ENGINE_WAF, base_version, merged, (), test, source, reloaded),
+                       sensors=())
 
 
 def record_live_waf(found: Round, source: str, live: Mapping[str, str] | None = None,
                     reloaded: float | None = None) -> RuleSet | None:
     gateway, waf = gateway_of(found)
-    if live is None:
-        live = crs.read(gateway, waf)
-        reloaded = waf_reload_at(gateway, waf)
-    with transaction.atomic():
-        head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_WAF).order_by("-version").first()
-        if head is not None and head.sha == ruletest.files_sha(live):
-            consumed(head, reloaded)
-            return None
-        return recorded(found, ENGINE_WAF, head, live, (), None, source, reloaded)
+    with engine_held(found, ENGINE_WAF):
+        if live is None:
+            live = crs.read(gateway, waf)
+            reloaded = waf_reload_at(gateway, waf)
+        with transaction.atomic():
+            head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_WAF).order_by(
+                "-version").first()
+            if head is not None and head.sha == ruletest.files_sha(live):
+                consumed(head, reloaded)
+                return None
+            return recorded(found, ENGINE_WAF, head, live, (), None, source, reloaded)
 
 
 def consumed(rule_set: RuleSet, reloaded: float | None) -> None:
@@ -367,16 +393,19 @@ def consumed(rule_set: RuleSet, reloaded: float | None) -> None:
 def record_live_ids(found: Round, source: str, live: str | None = None,
                     reloaded: float | None = None) -> RuleSet | None:
     runner, sensor = first_sensor(found)
-    if live is None:
-        live = suricata.current(runner, sensor)
-        reloaded = ids_reload_at(found)
-    files = {IDS_FILE: live}
-    with transaction.atomic():
-        head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_IDS).order_by("-version").first()
-        if head is not None and head.sha == ruletest.files_sha(files):
-            consumed(head, reloaded)
-            return None
-        return recorded(found, ENGINE_IDS, head, files, ({"name": sensor.name, "ok": True},), None, source, reloaded)
+    with engine_held(found, ENGINE_IDS):
+        if live is None:
+            live = suricata.current(runner, sensor)
+            reloaded = ids_reload_at(found)
+        files = {IDS_FILE: live}
+        with transaction.atomic():
+            head = RuleSet.objects.select_for_update().filter(round=found, engine=ENGINE_IDS).order_by(
+                "-version").first()
+            if head is not None and head.sha == ruletest.files_sha(files):
+                consumed(head, reloaded)
+                return None
+            return recorded(found, ENGINE_IDS, head, files, ({"name": sensor.name, "ok": True},), None, source,
+                            reloaded)
 
 
 def apply_posture(found: Round) -> None:
@@ -393,8 +422,10 @@ def apply_posture(found: Round) -> None:
 
 
 def record_terminal_reload(found: Round) -> bool:
-    waf = record_waf_terminal_reload(found)
-    ids = record_ids_terminal_reload(found)
+    with engine_held(found, ENGINE_WAF):
+        waf = record_waf_terminal_reload(found)
+    with engine_held(found, ENGINE_IDS):
+        ids = record_ids_terminal_reload(found)
     return waf or ids
 
 

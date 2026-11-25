@@ -51,12 +51,12 @@ def test_a_signature_that_names_the_mechanism_and_spares_the_benign_cases_corrob
 
 def test_the_ids_test_runs_on_the_sensor_node_in_a_scratch_and_never_touches_the_live_rules(as_defender, board_round,
                                                                                            cyber_range):
-    as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json")
+    made = as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json").json()["test"]
 
     node = cyber_range.nodes["sensor"].texts()
-    assert any("docker run --rm" in text and "/var/lib/cr-ruletest/test-1" in text for text in node)
+    assert any("docker run --rm" in text and f"/var/lib/cr-ruletest/test-{made}" in text for text in node)
     assert not any("-l /var/log/suricata" in text for text in node)
-    assert node[-1].startswith("rm -rf /var/lib/cr-ruletest/test-1-pcaps")
+    assert node[-1].startswith(f"rm -rf /var/lib/cr-ruletest/test-{made}-pcaps")
     assert cyber_range.sensors["sensor"].rules == BASELINE
     assert not any("reload-rules" in text for text in cyber_range.sensors["sensor"].texts())
 
