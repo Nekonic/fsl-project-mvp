@@ -89,6 +89,10 @@ then restructured on the working branch `restructure` (ruling 2026-11-21,
   - Fixed on the way: the bots service's Host name, answers past 30,000
     characters, a bot ending the round on a refused command, quadratic
     correlation (`docs/DECISIONS.md` 2026-11-25).
+  - Then `bin/verify --changed origin/restructure --live` from the platform
+    VM (it selected every acceptance module): acceptance 101 passed, 0
+    failed, 0 errors in 5,885 s across 15 processes; unit and API 246 and
+    268 passed.
 
 ## What exists on restructure
 
@@ -177,9 +181,10 @@ stand". Still not run on a range:
   a tunnelled sqlmap): `database is locked` past the 30 s busy timeout
   (bot notes, the judge, `bot_run_finish`), reads of a round longer than
   15 minutes until correlation was indexed, the store from 3 MB to 253 MB in
-  four hours. Still open: `telemetry/alerts.joined_later` runs one
-  JSON-filtered UPDATE per Suricata join; `apply_waf` and `apply_ids` keep the
-  write transaction open while they reach the WAF or the sensor over ssh.
+  four hours. `telemetry/alerts.joined_later` ran one JSON-filtered UPDATE
+  per Suricata join; it now reads a page's flows once (not yet run on the
+  range). Still open: `apply_waf` and `apply_ids` keep the write transaction
+  open while they reach the WAF or the sensor over ssh.
 - **A past round's free actions live in Elasticsearch.** The score reads them
   at scoring time, so after a platform rebuild an ended round's live score
   drops them (round 175 read `detected: true` before the rebuild and `false`

@@ -17,7 +17,8 @@ Updated: 2026-11-25.
   replaces from `bot-rounds`, rounds from a PC through WireGuard (an
   objective lost through the tunnel; an origin spent by the defence bot
   through it), the learner reach check (only the round's kali and WAF
-  answered), a two-round baseline, four fixes.
+  answered), a two-round baseline, four fixes, then acceptance 101 of 101
+  from the platform VM.
 - `restructure` carries out the 2026-11-21 and 2026-11-22 rulings; the table
   is in `docs/STATE.md` "What exists on restructure". The rulings recorded on
   2026-11-23 (five attack origins, more benign kinds, Internet scanners, the
@@ -76,8 +77,9 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. The platform under several rounds: SQLite locks, alert joins, rule
-   applies holding the write lock, free actions read from Elasticsearch
+2. The platform under several rounds: SQLite locks, rule applies holding
+   the write lock, free actions read from Elasticsearch (the alert-join fix
+   of 2026-11-25 has not run on the range)
    (`docs/STATE.md` "Open points").
 3. The attack bot: Haiku 5.5 refused it later on 2026-11-25 too, so no
    model plays the attack side on this account for now.

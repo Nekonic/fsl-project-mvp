@@ -11235,9 +11235,11 @@ is kept outside the repo; this entry keeps what changed the product.
   `/` as well as `/search/`, so the sort injection reaches the board while CRS alerts, or no objective can
   fall; the plain `atk_vs_bot` round and the VPN round were one round, since one account has one profile
   and a second account was not wanted; `CR_BOT_RUNS_MAX=5` for three rounds at once.
+- **Late alert joins in one query per page.** `telemetry/alerts.joined_later` ran one JSON-filtered UPDATE
+  per Suricata join over the round's IDS detections; it now reads the page's flows once and updates only the
+  rows a join matches (not yet run on the range).
 - **Found, not changed (listed for the user):** SQLite write locks past the 30 s busy timeout under three
-  rounds at once (`bot_run_report`, the judge, `bot_run_finish` timed out); `telemetry/alerts.joined_later`
-  runs one JSON-filtered UPDATE per Suricata join; `apply_waf` and `apply_ids` hold the write transaction
+  rounds at once (`bot_run_report`, the judge, `bot_run_finish` timed out); `apply_waf` and `apply_ids` hold the write transaction
   while they reach the WAF or the sensor over ssh; the free actions of a round are read from Elasticsearch
   at scoring time, so after a platform rebuild an ended round's live score loses them (round 175: detected
   true before the rebuild, false after; its round record keeps the frozen score); the jump host's key is
