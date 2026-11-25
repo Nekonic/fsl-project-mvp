@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import shlex
 import shutil
@@ -13,6 +14,8 @@ from pathlib import Path
 
 import pytest
 import yaml
+
+from training.management.commands.load_sqlite_store import converted
 
 ROOT = Path(__file__).resolve().parents[2]
 PLATFORM = ROOT / "platform"
@@ -176,3 +179,18 @@ def test_the_sqlite_store_is_loaded_into_postgresql_row_for_row_and_the_backup_i
     assert psql(name, "INSERT INTO auth_user (password, is_superuser, username, first_name, last_name, email, "
                       "is_staff, is_active, date_joined) VALUES ('x', false, 'next', '', '', '', false, true, now()) "
                       "RETURNING id", database) == str(counts["auth_user"] + 1)
+
+
+@pytest.mark.parametrize(("stored", "loaded"), [
+    ('{"body": "x=\\\\u0000.jpg"}', '{"body": "x=\\\\u0000.jpg"}'),
+    ('{"body": "a\\\\u0000"}', '{"body": "a\\\\u0000"}'),
+    ('{"body": "x=\\\\u0000n"}', '{"body": "x=\\\\u0000n"}'),
+    ('{"body": "x=\\u0000.jpg"}', '{"body": "x=.jpg"}'),
+    ('{"a\\u0000": ["b\\u0000", 1]}', '{"a": ["b", 1]}'),
+])
+def test_a_json_value_loses_only_real_nul_characters_and_keeps_an_escaped_backslash(stored, loaded):
+    cleaned = [0]
+    result = converted(stored, "jsonb", cleaned)
+
+    assert json.loads(result) == json.loads(loaded)
+    assert cleaned[0] == (stored != loaded)

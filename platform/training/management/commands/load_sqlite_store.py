@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 import subprocess
@@ -35,6 +36,22 @@ def column_types(cursor, table: str) -> list[tuple[str, str]]:
     return cursor.fetchall()
 
 
+def without_nul(item):
+    if isinstance(item, str):
+        return item.replace(NUL, "")
+    if isinstance(item, dict):
+        return {without_nul(key): without_nul(value) for key, value in item.items()}
+    if isinstance(item, list):
+        return [without_nul(value) for value in item]
+    return item
+
+
+def json_without_nul(value: str) -> str:
+    parsed = json.loads(value, strict=False)
+    cleaned = without_nul(parsed)
+    return value if cleaned == parsed else json.dumps(cleaned)
+
+
 def converted(value, kind: str, cleaned: list[int]):
     if value is None:
         return None
@@ -42,9 +59,13 @@ def converted(value, kind: str, cleaned: list[int]):
         return bool(value)
     if kind == "interval" and isinstance(value, int):
         return timedelta(microseconds=value)
-    if isinstance(value, str) and (NUL in value or (kind in ("jsonb", "json") and JSON_NUL in value)):
+    if isinstance(value, str) and kind in ("jsonb", "json") and (NUL in value or JSON_NUL in value):
+        loaded = json_without_nul(value)
+        cleaned[0] += loaded != value
+        return loaded
+    if isinstance(value, str) and NUL in value:
         cleaned[0] += 1
-        return value.replace(NUL, "").replace(JSON_NUL, "") if kind in ("jsonb", "json") else value.replace(NUL, "")
+        return value.replace(NUL, "")
     return value
 
 
