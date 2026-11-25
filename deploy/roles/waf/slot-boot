@@ -2,12 +2,21 @@
 set -eu
 
 SHARE=/usr/local/share/slot
+LISTENERS=/etc/nginx/slot
 . /etc/slot.env
 
 ip route replace default via "$GATEWAY"
 
 sed -i -e '/[[:space:]]board$/d' -e '/[[:space:]]corp-wp$/d' /etc/hosts
 printf '%s board\n%s corp-wp\n' "$BOARD_ADDRESS" "$CORP_ADDRESS" >> /etc/hosts
+
+for listening in "$LISTENERS"/*.listen; do
+  if [ "$(basename "$listening" .listen)" = "$WARGAMES" ]; then
+    printf 'listen 80 default_server;\n'
+  else
+    printf 'listen 80;\n'
+  fi > "$listening"
+done
 
 sed -e "s/@log_server@/$LOG_SERVER/g" "$SHARE/log-shipper.conf" > /etc/rsyslog.d/60-waf-logs.conf
 rsyslogd -N1 -f /etc/rsyslog.conf

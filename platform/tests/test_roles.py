@@ -456,3 +456,20 @@ def test_the_target_keeps_pristine_data_and_restores_it_into_empty_volumes_only(
     assert '[ -z "$(ls -A "$source")" ] || continue' in boot
     assert 'cp -a "$KEPT/$service$path/." "$source/"' in boot
     assert boot.index("up --no-start --pull never") < boot.index("restored ") < boot.index("up -d --wait")
+
+
+@pytest.mark.parametrize("wargame", WARGAMES)
+def test_a_request_by_the_bare_address_reaches_the_slot_s_own_wargame(wargame, tmp_path):
+    listeners = assigned("waf/slot-boot")["LISTENERS"]
+    servers = re.findall(r"^server\s*\{.*?^\}", text("waf/board.com.conf"), re.M | re.S)
+    listened = {re.search(rf"include {listeners}/(\S+)\.listen;", server)[1]: server for server in servers}
+    for site in listened:
+        (tmp_path / f"{site}.listen").write_text("")
+    loop = re.search(r'^for listening in "\$LISTENERS".*?^done$', text("waf/slot-boot"), re.M | re.S)[0]
+
+    subprocess.run(["sh", "-ec", loop], check=True, env={"LISTENERS": str(tmp_path), "WARGAMES": wargame})
+
+    defaults = [site for site in listened if "default_server" in (tmp_path / f"{site}.listen").read_text()]
+    assert defaults == [wargame], "nginx hands a Host it has no name for to its default server"
+    assert f"server_name {wargame}.com;" in listened[wargame]
+    assert all((tmp_path / f"{site}.listen").read_text().startswith("listen 80") for site in listened)

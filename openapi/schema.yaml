@@ -5382,10 +5382,10 @@ components:
         endpoint:
           type: string
           readOnly: true
-        hosts:
+        targets:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/VpnTarget'
           readOnly: true
         created:
           type: string
@@ -5401,11 +5401,11 @@ components:
       - attached_round
       - created
       - endpoint
-      - hosts
       - port
       - profile
       - public_key
       - server_public_key
+      - targets
     VpnProfile:
       type: object
       properties:
@@ -5421,10 +5421,10 @@ components:
         endpoint:
           type: string
           readOnly: true
-        hosts:
+        targets:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/VpnTarget'
           readOnly: true
         created:
           type: string
@@ -5437,10 +5437,10 @@ components:
       - attached_round
       - created
       - endpoint
-      - hosts
       - port
       - public_key
       - server_public_key
+      - targets
     VpnProfileRow:
       type: object
       properties:
@@ -5456,10 +5456,10 @@ components:
         endpoint:
           type: string
           readOnly: true
-        hosts:
+        targets:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/VpnTarget'
           readOnly: true
         created:
           type: string
@@ -5476,12 +5476,22 @@ components:
       - attached_round
       - created
       - endpoint
-      - hosts
       - port
       - public_key
       - server_public_key
+      - targets
       - user_id
       - username
+    VpnTarget:
+      type: object
+      properties:
+        wargame:
+          type: string
+        url:
+          type: string
+      required:
+      - url
+      - wargame
     WafApplied:
       type: object
       properties:

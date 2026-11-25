@@ -100,25 +100,25 @@ def kali_interface(config: VpnConfig) -> str:
     return f"{kali_address(config)}/{ipaddress.ip_network(config.network).prefixlen}"
 
 
-def named_targets(source: Path) -> dict[str, tuple[str, ...]]:
-    found: dict[str, set[str]] = {}
+def wargame_targets(source: Path) -> dict[str, tuple[str, ...]]:
+    found: dict[str, tuple[str, ...]] = {}
     for wargame in stack_plan.wargames(source):
         definition = stack_plan.read(source, wargame)
         outside = {port.lan for port in definition.ports if port.origins}
         way_in = definition.filling("edge").name
-        names = set(definition.filling("gateway").names)
-        for port in definition.ports:
-            if port.device == way_in and port.lan in outside and port.address:
-                found.setdefault(port.address, set()).update(names)
-    return {address: tuple(sorted(found[address])) for address in sorted(found, key=ipaddress.ip_address)}
+        found[wargame] = tuple(port.address for port in definition.ports
+                               if port.device == way_in and port.lan in outside and port.address)
+    return found
 
 
 def target_addresses(source: Path) -> tuple[str, ...]:
-    return tuple(named_targets(source))
+    held = {address for addresses in wargame_targets(source).values() for address in addresses}
+    return tuple(sorted(held, key=ipaddress.ip_address))
 
 
-def hosts_lines(source: Path) -> tuple[str, ...]:
-    return tuple(" ".join((address, *names)) for address, names in named_targets(source).items() if names)
+def target_urls(source: Path) -> tuple[tuple[str, str], ...]:
+    return tuple((wargame, f"http://{address}/") for wargame, addresses in wargame_targets(source).items()
+                 for address in addresses)
 
 
 def profile_text(profile: Profile) -> str:

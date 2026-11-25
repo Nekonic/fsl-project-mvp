@@ -95,9 +95,10 @@ def test_the_infra_is_told_its_slot_the_waf_s_front_its_upstream_and_where_logs_
         "0.0.0.0/0",), "the router sends the origins' packets out of its DMZ port, which port security would drop"
 
 
-def test_the_waf_routes_through_the_router_and_reaches_both_upstreams_and_the_log_server():
-    assert slot_env(planned().node("cr-waf")) == {
-        "GATEWAY": "10.30.0.1", "LOG_SERVER": "172.29.0.10",
+@pytest.mark.parametrize("wargame", ["board", "corp"])
+def test_the_waf_routes_through_the_router_and_reaches_both_upstreams_and_the_log_server(wargame):
+    assert slot_env(planned(wargame).node("cr-waf")) == {
+        "GATEWAY": "10.30.0.1", "LOG_SERVER": "172.29.0.10", "WARGAMES": wargame,
         "BOARD_ADDRESS": "10.30.128.59", "CORP_ADDRESS": "10.30.128.60"}, (
         "nginx resolves every upstream it names at start, so a board slot's WAF knows corp's address too")
 

@@ -246,7 +246,7 @@ def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot
         return {"INTERNET_ADDRESS": internet.address, "ORIGINS": " ".join(internet.extra)}
     if role == "waf":
         return {"GATEWAY": wired.facing("gateway", "edge"), "LOG_SERVER": wired.of("log-server")[0].address,
-                **wired.upstreams()}
+                "WARGAMES": definition.wargame, **wired.upstreams()}
     if role == "infra":
         edge = definition.filling("edge")
         [front] = [wired.facing("edge", definition.devices[device].roles[0]) for device in edge.forwards.values()]

@@ -12,6 +12,9 @@ services:
       WORDPRESS_DB_USER: "wordpress"
       WORDPRESS_DB_PASSWORD: "wordpress"
       CR_WP_URL: "http://corp.com"
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME', isset($$_SERVER['HTTP_HOST']) ? 'http://' . $$_SERVER['HTTP_HOST'] : getenv('CR_WP_URL'));
+        define('WP_SITEURL', WP_HOME);
     healthcheck:
       test: ["CMD", "sh", "-c", "test -f /tmp/cr-corp-ready && wp core is-installed --allow-root --path=/var/www/html && wp plugin is-active ultimate-member --allow-root --path=/var/www/html"]
       interval: 10s

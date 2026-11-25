@@ -67,3 +67,10 @@ def test_every_wargame_database_keeps_one_rollback_segment_from_its_first_start(
     for wargame, service in (("board", "board-db"), ("corp", "corp-db")):
         compose = yaml.safe_load((ROOT / f"wargames/{wargame}/compose.yaml").read_text())
         assert "--innodb-rollback-segments=1" in compose["services"][service].get("command", []), service
+
+
+def test_corp_links_and_redirects_to_the_host_it_was_asked_by_so_the_bare_address_stays_on_it():
+    extra = _corp()["corp-wp"]["environment"]["WORDPRESS_CONFIG_EXTRA"]
+
+    assert "define('WP_HOME', isset($$_SERVER['HTTP_HOST']) ? 'http://' . $$_SERVER['HTTP_HOST']" in extra
+    assert "define('WP_SITEURL', WP_HOME);" in extra

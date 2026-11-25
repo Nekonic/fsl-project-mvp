@@ -117,7 +117,7 @@ def request_host(request) -> str:
 
 def vpn_context(request, **more) -> dict:
     host = request_host(request)
-    return {"endpoint": lambda held: vpn.endpoint(held, host), "hosts": vpn.hosts(), **more}
+    return {"endpoint": lambda held: vpn.endpoint(held, host), "targets": vpn.targets(), **more}
 
 
 class VpnProfile(APIView):

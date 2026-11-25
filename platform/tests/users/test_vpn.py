@@ -32,3 +32,12 @@ def test_an_issue_returns_the_private_key_once_stores_only_public_keys_and_a_rei
     assert (again.public_key, again.server_public_key) != (stored.public_key, stored.server_public_key)
     assert (again.pk, again.port, again.address) == (stored.pk, stored.port, stored.address)
     assert VpnProfile.objects.count() == 1
+
+
+def test_the_profile_gives_each_wargames_target_as_an_address_url_and_no_hosts_line(as_learner):
+    as_learner.post("/api/vpn/profile/")
+    read = as_learner.get("/api/vpn/profile/").json()
+
+    assert "hosts" not in read
+    assert read["targets"] == [{"wargame": "board", "url": "http://121.134.88.42/"},
+                               {"wargame": "corp", "url": "http://121.134.88.42/"}]

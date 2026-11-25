@@ -2,7 +2,7 @@ import type { Schemas } from "../api/client";
 import { useAction, useResource, useSession } from "../api/hooks";
 import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
-import { t } from "../strings";
+import { t, tFor } from "../strings";
 import { Button, Card, CardHead, Code, ErrorNotice, KeyValue, Loading, Notice, PageBody, Section, Stack, Text } from "../ui";
 
 type Ssh = Schemas["Ssh"];
@@ -80,9 +80,9 @@ function Profile() {
           [t("access.vpn.endpoint"), <Text mono>{held.endpoint}</Text>],
           [t("access.vpn.attached"), held.attached_round ? t("round.name", { round: held.attached_round }) : t("access.vpn.detached")],
         ]} />}
-        {held && held.hosts.length > 0 && <>
-          <Text>{t("access.vpn.hosts")}</Text>
-          <Code>{held.hosts.join("\n")}</Code>
+        {held && held.targets.length > 0 && <>
+          <Text>{t("access.vpn.targets")}</Text>
+          <KeyValue items={held.targets.map((target) => [tFor("wargame", target.wargame), <Text mono>{target.url}</Text>])} />
         </>}
       </Stack>
     </Card>

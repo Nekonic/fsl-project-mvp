@@ -25,6 +25,7 @@ ERROR_LOG=/var/log/nginx/error.log
 PROBE_SHARE=/usr/local/share/cr
 CRS_TEST_DIR=/var/lib/cr-crstest
 SHARE=/usr/local/share/slot
+LISTENERS=/etc/nginx/slot
 
 export DEBIAN_FRONTEND=noninteractive
 APT="apt-get -y -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold"
@@ -87,6 +88,13 @@ upstreams_named() {
   printf '%s board\n%s corp-wp\n' "$1" "$2" >> /etc/hosts
 }
 
+sites_listening() {
+  install -d -m 0755 "$LISTENERS"
+  for wargame in board corp; do
+    printf 'listen 80;\n' > "$LISTENERS/$wargame.listen"
+  done
+}
+
 rsyslog_may_read_the_waf_logs() {
   grep -qxF 'global(maxMessageSize="64k")' /etc/rsyslog.conf || sed -i '1i global(maxMessageSize="64k")' /etc/rsyslog.conf
   [ -f /etc/apparmor.d/usr.sbin.rsyslogd ] || return 0
@@ -123,6 +131,7 @@ done
 
 install -m 0644 modsecurity.conf "$MODSEC_DIR/modsecurity.conf"
 install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf
+sites_listening
 rm -f /etc/nginx/sites-enabled/default
 install -d -o www-data -g adm -m 750 /var/log/modsecurity /var/log/modsecurity/audit
 install -d -o www-data -m 700 /var/cache/modsecurity

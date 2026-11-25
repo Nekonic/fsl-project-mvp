@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 
@@ -51,21 +52,27 @@ class Block(serializers.Serializer):
     until = serializers.DateTimeField()
 
 
+class VpnTarget(serializers.Serializer):
+    wargame = serializers.CharField()
+    url = serializers.CharField()
+
+
 class VpnProfile(serializers.Serializer):
     public_key = serializers.CharField()
     server_public_key = serializers.CharField()
     address = serializers.IPAddressField(protocol="IPv4")
     port = serializers.IntegerField()
     endpoint = serializers.SerializerMethodField()
-    hosts = serializers.SerializerMethodField()
+    targets = serializers.SerializerMethodField()
     created = serializers.DateTimeField()
     attached_round = serializers.IntegerField(allow_null=True)
 
     def get_endpoint(self, held) -> str:
         return self.context["endpoint"](held)
 
-    def get_hosts(self, _held) -> list[str]:
-        return list(self.context["hosts"])
+    @extend_schema_field(VpnTarget(many=True))
+    def get_targets(self, _held) -> list[dict]:
+        return [{"wargame": wargame, "url": url} for wargame, url in self.context["targets"]]
 
 
 class VpnIssued(VpnProfile):

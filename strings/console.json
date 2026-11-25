@@ -544,7 +544,7 @@
   "access.vpn.endpoint": "접속 지점",
   "access.vpn.attached": "연결된 라운드",
   "access.vpn.detached": "없음",
-  "access.vpn.hosts": "VPN에는 DNS 설정이 없으니 hosts 파일에 다음 줄을 넣으세요. Windows는 C:\\Windows\\System32\\drivers\\etc\\hosts, macOS와 Linux는 /etc/hosts입니다.",
+  "access.vpn.targets": "VPN을 연결한 다음 브라우저나 도구에 아래 주소를 그대로 입력하면 공격 대상 사이트가 열립니다.",
   "access.ssh.title": "Kali SSH 설정",
   "access.ssh.key": "아래 키를 {file}에 저장하고 권한을 600으로 바꾸세요. 이 페이지나 레드팀 콘솔을 다시 열면 키가 새로 발급되고 이전 키는 막힙니다.",
   "access.ssh.config": "~/.ssh/config에 다음을 넣으세요. 명령줄의 -J와 -i만으로는 점프 호스트에 키가 쓰이지 않아 접속이 실패합니다.",
