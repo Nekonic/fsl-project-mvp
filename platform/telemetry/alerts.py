@@ -85,13 +85,19 @@ def ingest(found, config: ElasticConfig) -> list[Detection]:
 
 
 def joined_later(found, joins: Mapping[str, Mapping[str, Any]]) -> None:
-    for join in joins.values():
-        rows = Detection.objects.filter(round=found, engine=ENGINE_IDS, raw__flow_id=join["flow_id"],
-                                        raw__tx_id=join["tx_id"])
-        if join.get("marker"):
-            rows.filter(marker__isnull=True).update(marker=join["marker"])
-        if join.get("xff"):
-            rows.update(src_ip=join["xff"])
+    wanted = {(join["flow_id"], join["tx_id"]): join for join in joins.values()}
+    if not wanted:
+        return
+    flows = sorted({flow for flow, _ in wanted}, key=str)
+    rows = Detection.objects.filter(round=found, engine=ENGINE_IDS, raw__flow_id__in=flows)
+    for pk, raw, marker in rows.values_list("pk", "raw", "marker"):
+        join = wanted.get(((raw or {}).get("flow_id"), (raw or {}).get("tx_id")))
+        if join is None:
+            continue
+        changed = {**({"marker": join["marker"]} if join.get("marker") and marker is None else {}),
+                   **({"src_ip": join["xff"]} if join.get("xff") else {})}
+        if changed:
+            Detection.objects.filter(pk=pk).update(**changed)
 
 
 def alerts(found: Round, after: int = 0, engine: str = "", rule: str = "", src: str = "") -> tuple[list, int]:
