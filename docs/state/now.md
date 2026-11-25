@@ -81,8 +81,8 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
    the write lock, free actions read from Elasticsearch (the alert-join fix
    of 2026-11-25 has not run on the range)
    (`docs/STATE.md` "Open points").
-3. The attack bot: Haiku 5.5 refused it later on 2026-11-25 too, so no
-   model plays the attack side on this account for now.
+3. The attack bot on Haiku, Sonnet and Opus 5.5 (steps 1, 2, 3) with the
+   range context and the call file: measure def_vs_bot rounds.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
@@ -90,10 +90,10 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
 
 ## Open points
 
-- The attack bot is refused on Opus 5.5 and Sonnet 5.5 (`[cyber]`: the
-  account's Cyber Verification Program tier is Defense Access, which covers
-  defensive work); Haiku 5.5 played it until later on 2026-11-25, when it
-  refused it too. The defence bot was not refused on any model.
+- The attack bot is Haiku, Sonnet and Opus 5.5 again (DECISIONS 2026-11-25:
+  the 2026-11-24 Haiku-only ruling is superseded; those refusals came from
+  runs without the range context). The defence bot was not refused on any
+  model.
 - The bot no longer runs in the repo: the `bots` service starts Claude Code
   from an empty directory with no setting sources, from an image holding only
   `bots/` and the schema (live on 2026-11-25).

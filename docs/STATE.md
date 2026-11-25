@@ -118,7 +118,7 @@ a live range and passed.
 | Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`; the acceptance suite through `bots/rest.py`, live 2026-11-23 |
 | Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
 | Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` and the 2026-11-23 cloud check | this stage |
-| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack bot Haiku 5.5 at every step, defence bot Haiku/Sonnet/Opus 5.5); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; live on 2026-11-25 ("Where things stand") |
+| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack and defence bot Haiku/Sonnet/Opus 5.5 at steps 1/2/3); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; live on 2026-11-25 ("Where things stand") |
 
 ## Not live-verified
 
@@ -161,11 +161,12 @@ stand". Still not run on a range:
 
 ## Open points
 
-- **The attack bot and the model's safeguards.** On this account Opus 5.5
-  and Sonnet 5.5 stop the attack bot with `[cyber]` (Defense Access covers
-  defensive work). Haiku 5.5 played it on 2026-11-24 and in two rounds early
-  on 2026-11-25, and refused it (`[cyber]`, four refusals) later the same
-  night. The defence bot runs on every model.
+- **The attack bot and the model's safeguards.** The attack bot is Haiku,
+  Sonnet and Opus 5.5 at steps 1, 2 and 3 again (`docs/DECISIONS.md`
+  2026-11-25: the earlier Sonnet and Opus refusals came from runs without
+  the range context and inside the repo, so they do not count). Haiku 5.5
+  refused once (`[cyber]`, round 180) and played in the other runs. Sonnet
+  and Opus with the range context and the call file are measured next.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it

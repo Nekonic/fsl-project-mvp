@@ -11245,3 +11245,23 @@ is kept outside the repo; this entry keeps what changed the product.
   true before the rebuild, false after; its round record keeps the frozen score); the jump host's key is
   made again on every rebuild, so a learner's saved `known_hosts` refuses it; a step-1 defence bot (Haiku
   5.5, no shell) did not stop a tunnelled sqlmap run within its first minutes.
+
+## 2026-11-25 — The attack bot is Haiku, Sonnet and Opus 5.5 again; quoted arguments go through a file
+
+- The entry "2026-11-24 — The attack bot runs on Haiku 5.5 at every step until the account's tier changes" is
+  superseded. The user: those runs failed because of the prompt, not the tier. The Sonnet and Opus refusals
+  it rested on came from runs whose prompt lacked the range context (where the round runs, what is in scope,
+  who authorised it) and in which the bot ran from the repository root and read it. `steps.yaml` is back to
+  the gate-1 shape: the attack bot is Haiku 5.5, Sonnet 5.5 and Opus 5.5 at steps 1, 2 and 3, like the
+  defence bot, and the attack stand-in follows step 2 (Sonnet 5.5).
+- On 2026-11-25 two of three Haiku attack runs stopped early because the bot wrote a raw `'` inside a
+  single-quoted `--json` for an SQL injection probe. The shell cannot parse that, so Claude Code's allow-list
+  refused it, and the prompt's `'` rule was not followed. Checked against Claude Code 2.1.331 in
+  `dontAsk` with the launcher's flags: the raw quote is refused; `'"'"'`, `'\''` and a double-quoted
+  `--json` are allowed; a here-doc into `bots.cli call` is refused. So the fix does not rest on the model's
+  escaping: the child gets the Write tool, allowed only `Edit(/call.json)` (anchored at its working
+  directory; writes to `other.json` and `bots/cli.py` were refused, a second write of `call.json` was
+  allowed), and the CLI takes `--json-file call.json`. Only a `.json` file can be written, so nothing the
+  bot writes is importable by `python -m bots.cli`.
+- The launcher notes the model Claude Code started on (its `init` event) as a `result` note of the run.
+- Not built: a staff override of a run's model. The step names it.

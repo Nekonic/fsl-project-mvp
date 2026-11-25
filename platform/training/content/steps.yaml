@@ -1,6 +1,4 @@
 # Difficulty steps of Player vs AI rounds (DECISIONS 2026-11-24).
-# The attack bot runs on Haiku 5.5 at every step until the account's CVP tier allows offensive work;
-# changing attack.model here is the one edit the tier change needs.
 # Pace and allowance are held by the launcher's relay, never by the server.
 # min_gap_s, budget_usd and max_turns are not ruled and not measured; tune them after rounds are played.
 stand_in:
@@ -28,7 +26,7 @@ steps:
                      defence_waf_apply, defence_forfeit]
   - id: "2"
     attack:
-      model: claude-haiku-5-5
+      model: claude-sonnet-5-5
       budget_usd: 4
       max_turns: 300
       pace: {per_window: 10, window_s: 300, min_gap_s: 15}
@@ -48,7 +46,7 @@ steps:
                      defence_ids_test, defence_ids_test_result, defence_ids_terminal]
   - id: "3"
     attack:
-      model: claude-haiku-5-5
+      model: claude-opus-5-5
       budget_usd: 8
       max_turns: 400
       pace: {per_window: 30, window_s: 300, min_gap_s: 3}
