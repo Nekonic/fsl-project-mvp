@@ -11195,3 +11195,16 @@ Three reviews read the branch against the spec and CLAUDE.md; these are the ruli
   store; origin requests are read from the log at scoring time and never stored. The default image names
   stay `cr-<role>-bake1`; the kali rebake with `set-peer` is a cloud step that sets `compute.images` in
   `cloud.yaml`, not a code default.
+
+## 2026-11-25 — External learners reach the range only through the platform's WireGuard
+
+- The cloud's own VPN (public IP to 192.168.x and 10.10.10.x) is held by a
+  few infrastructure staff for platform work; learners never get it.
+- An external learner gets only the platform's WireGuard on the platform VM
+  (UDP 51820-51919 forwarded from the public IP, `CR_VPN_HOST` set to it) and
+  must reach nothing of the private OpenStack cloud beyond the round's kali
+  and, through it, the WAF. The console and the SSH jump host reach the
+  learner the same way, from the public IP.
+- To check before any external learner: what a learner reaches from the
+  tunnel and from a kali shell (kali has sudo and a port on the management
+  network), and close what is beyond the round.
