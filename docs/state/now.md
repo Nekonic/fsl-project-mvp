@@ -9,14 +9,18 @@ Updated: 2026-11-25.
 
 ## Where things stand
 
-- The working branch is `integrate`, cut from `dev`: `bot-rounds` (Player
-  vs AI rounds, cut from `restructure`) with `pg-store` (the PostgreSQL
-  store) and `access-address` (the access page's target address) on top,
-  and the fixes of their reviews. `dev` was reset on 2026-11-25 to a tree
-  equal to `restructure`'s; `main` still holds the old product. The cloud
-  runs `bot-rounds` since 2026-11-25; `pg-store` and `access-address` are
-  tested locally only, and the access page's address needs a waf and a
-  target rebake.
+- The tree is `integrate`: `bot-rounds` (Player vs AI rounds, cut from
+  `restructure`) with `pg-store` (the PostgreSQL store) and
+  `access-address` (the access page's target address) on top, and the
+  fixes of their reviews. `main` still holds the old product.
+- The cloud runs `integrate` since 2026-11-25 (`docs/STATE.md` "Where
+  things stand"): `cr-waf-bake4` and `cr-target-bake3` baked from it, one
+  `bin/cloud up --replace` that loaded the SQLite store into PostgreSQL
+  with every row count equal, the console from the image with no hand copy,
+  an `atk_vs_bot` round through WireGuard by the bare address (all three
+  objectives lost, detection O, response X), corp by the bare address, and
+  the full `bin/verify` from the platform VM: acceptance 101 of 101, every
+  unit and API suite green.
 - On 2026-11-25 the Player vs AI build ran live (`docs/STATE.md` "Where
   things stand", `docs/DECISIONS.md` 2026-11-25): `cr-kali-bake4`, two
   replaces from `bot-rounds`, rounds from a PC through WireGuard (an
@@ -65,9 +69,9 @@ Updated: 2026-11-25.
 ## Not live-verified
 
 A `pvp` round, a captured learner walk, a live review round, a docs
-review, the edge sets after an infra reboot, and a round that loses an
-objective (neither bot round did, so the response mark and the double count
-have not run live). The list is in `docs/STATE.md` "Not live-verified".
+review, the edge sets after an infra reboot, a loss with response O, and
+three bot rounds at once on the PostgreSQL store. The list is in
+`docs/STATE.md` "Not live-verified".
 
 ## Blockers for the user
 
@@ -82,23 +86,25 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. The platform under several rounds: the PostgreSQL store and rule
-   applies without a transaction over ssh are built and tested locally (the
-   SQLite to PostgreSQL load ran on a copy of the store of 2026-11-25
-   04:22Z: 34 tables, every row count equal); deploy it with one
-   `bin/cloud up --replace` once the cloud is free. Free actions read from
-   Elasticsearch stay; the alert-join fix of 2026-11-25 has not run on the
-   range (`docs/STATE.md` "Open points").
-3. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
+2. The platform under several rounds: the PostgreSQL store, rule applies
+   outside a transaction and the one-query alert join run on the range;
+   measure three bot rounds at once on them. Free actions read from
+   Elasticsearch stay (`docs/STATE.md` "Open points").
+3. The bare address and CRS 920350: every request the learner sends to
+   `http://121.134.88.42/` alerts as "Host header is a numeric IP address",
+   so a defender can spend the origin before any attack; keeping the bare
+   address, giving a name again or leaving 920350 out of the start posture
+   needs the user's ruling (`docs/STATE.md` "Open points").
+4. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
    2026-11-25 (`docs/STATE.md` "Open points"); a fall back to Opus 4.8 at
    step 3 needs the user's ruling.
-4. One `pvp` round, and a loss with response O.
-5. A captured walk as a learner, a live review round with zero countable
+5. One `pvp` round, and a loss with response O.
+6. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-6. External learners, the last task of the Player vs AI work: the
+7. External learners, the last task of the Player vs AI work: the
    public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
    `CR_VPN_HOST`.
-7. Gate 2.
+8. Gate 2.
 
 ## Open points
 

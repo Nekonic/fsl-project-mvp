@@ -13,16 +13,21 @@ history.
 The product was rebuilt as a side split on `side-split` (user ruling
 2026-11-19: no code is kept or migrated; the old code is reference only), and
 then restructured on the branch `restructure` (ruling 2026-11-21,
-"The platform is restructured into five units, KYPO-style"). `dev` holds a
-tree equal to `restructure`'s since 2026-11-25 and `main` the old product
-until gate 2; the working branch is `integrate` (`bot-rounds` with
-`pg-store` and `access-address`). The cloud has run `bot-rounds` since
-2026-11-25; on 2026-11-23 the first range of `restructure` was built and
-checked (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
+"The platform is restructured into five units, KYPO-style"). The tree is
+`integrate`: `bot-rounds` (Player vs AI rounds) with `pg-store` (the
+PostgreSQL store) and `access-address` (the access page's target address);
+`main` holds the old product until gate 2. The cloud runs
+`integrate` since 2026-11-25; on 2026-11-23 the first range of `restructure`
+was built and checked (`docs/DECISIONS.md`, "The first cloud check of
+`restructure`").
 
 - **Images.** `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2`, baked from
   `restructure`, and since 2026-11-25 `cr-kali-bake4`, baked from `bot-rounds`
-  (the learner tunnel: `wireguard-tools`, `ip_forward`, `set-peer`). Two kali
+  (the learner tunnel: `wireguard-tools`, `ip_forward`, `set-peer`), and
+  `cr-waf-bake4` and `cr-target-bake3`, baked from `integrate` (each slot's
+  own wargame is the WAF's default server; corp's WordPress takes its address
+  from the request), which replace `cr-waf-bake3` and `cr-target-bake2` on
+  the range. Two kali
   snapshots before it failed at about 10 minutes with Nova's
   `compute_snapshot_instance: Error`; Glance's file store had 7.9 GB free
   for the 14.1 GB image, and the third bake passed after five unused images
@@ -40,7 +45,11 @@ checked (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
   restore (the `rebuild` service is now stopped with the platform), with the
   slot stacks standing through; and exit 0 in 29 min 32 s with
   `cr-kali-bake3`, every slot built again. The pool (`board: 3`, `corp: 1`)
-  converged.
+  converged. On 2026-11-25 it was replaced from `integrate` (exit 0, 25
+  min): the first replace onto PostgreSQL took the old VM's SQLite store and
+  loaded it with `load_sqlite_store`, every table's row count equal to the
+  backup's; the console came from the image's `/srv/front` with no hand
+  copy; the pool converged on the new waf and target images.
 - **Ran live and passed.** The checks of `docs/OPENSTACK.md` §3.7-§3.10, 39
   of 39 (§3.7's unused-address check by hand, after flushing kali's source
   rewriting, which the procedure now says);
@@ -95,6 +104,22 @@ checked (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
     VM (it selected every acceptance module): acceptance 101 passed, 0
     failed, 0 errors in 5,885 s across 15 processes; unit and API 246 and
     268 passed.
+- **`integrate` live**, 2026-11-25, on `cr-platform2` with the PostgreSQL
+  store:
+  - `atk_vs_bot` on board from cr-dev through the WireGuard profile, by the
+    address the access page gives (`http://121.134.88.42/`, no hosts line,
+    no Host header), against the step-2 defence bot (Sonnet 5.5): sqlmap
+    through the tunnel dumped `auth_user` and the loot took all three
+    objectives (round 216: detection O, response X, weighted 11.0; TP/FP/FN/TN
+    0/0/0/36, benign only). The bot spent the first origin by `deny` after
+    two plain `GET /`, before any attack (below, "Open points").
+  - corp by the bare address on slot 4: `GET /` answered WordPress with its
+    links on the address typed, `/wp-login.php` 200.
+  - The full `bin/verify` from the platform VM: acceptance 101 passed, 0
+    failed, 0 errors in 6,090 s across 15 processes; domain 99, seams 1,343,
+    users 34, telemetry 23, scoring 50, training 366, contract 98; unit and
+    API beside acceptance 294 and 245. `front/` built and its vitest (42)
+    passed on cr-dev; the bundle it built is the one the console serves.
 
 ## What exists on restructure
 
@@ -127,8 +152,8 @@ a live range and passed.
 What ran on the range on 2026-11-23 and 2026-11-24 is under "Where things
 stand". Still not run on a range:
 
-- one `pvp` round, and a round that loses an objective (neither bot round
-  did, so the response mark and the double count have not run live);
+- one `pvp` round, and a loss with response O (objectives were lost live
+  with response X in rounds 175, 179 and 216);
 - a captured walk of every page as a learner, against the live platform;
 - a live review round with zero countable findings, and a docs review;
 - the edge's `pool` and `spent` sets after a reboot of the infra
@@ -140,12 +165,9 @@ stand". Still not run on a range:
   `cr-platform2`; under `cr-platform` it stops before deleting anything,
   §5.3); `bin/cloud down`;
 - of the Player vs AI build: a `def_vs_bot` round the attack bot plays to
-  the end (it was refused or stopped tonight), a loss with response O (the
-  defence spent the origin before the loss), the learner's UDP reach, and
-  three rounds at once on the PostgreSQL store (built and tested locally on
-  2026-11-25, on `integrate`, not deployed: the first replace after it
-  backs the SQLite VM up and loads that backup into PostgreSQL); the access
-  page's target address on a range (it needs a waf and a target rebake);
+  the end, the learner's UDP reach, and three rounds at once on the
+  PostgreSQL store (it runs on the range since 2026-11-25; the rounds and
+  the acceptance run there did not put three bot rounds on it at once);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
@@ -155,11 +177,11 @@ stand". Still not run on a range:
 1. **The name `cr-platform`** (an admin): remove the abandoned stack's
    record from Heat's database, then one replace under that name
    (`docs/OPENSTACK.md` §5.3).
-2. **The platform under several rounds** (found 2026-11-25): the store moves
-   to PostgreSQL and rule applies no longer hold a transaction over ssh
-   (on `integrate`, not deployed yet); `joined_later`'s per-join UPDATE (fixed,
-   not run on the range) and free actions read from Elasticsearch at scoring
-   time stay.
+2. **The platform under several rounds** (found 2026-11-25): the PostgreSQL
+   store, rule applies outside a transaction and the one-query alert join
+   run on the range since 2026-11-25; three bot rounds at once on them are
+   not measured yet. Free actions read from Elasticsearch at scoring time
+   stay.
 3. **External learners** (the user, 2026-11-25: the last task of the Player
    vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
    console, and `CR_VPN_HOST`.
@@ -197,9 +219,18 @@ stand". Still not run on a range:
   (bot notes, the judge, `bot_run_finish`), reads of a round longer than
   15 minutes until correlation was indexed, the store from 3 MB to 253 MB in
   four hours. `telemetry/alerts.joined_later` ran one JSON-filtered UPDATE
-  per Suricata join; it now reads a page's flows once (not yet run on the
-  range). Still open: `apply_waf` and `apply_ids` keep the write transaction
-  open while they reach the WAF or the sensor over ssh.
+  per Suricata join; it now reads a page's flows once. The store is
+  PostgreSQL and `apply_waf` and `apply_ids` reach the WAF or the sensor
+  outside the write transaction; both run on the range since 2026-11-25,
+  not yet under three rounds at once.
+- **The bare address draws an alert on every request.** The access page
+  gives the learner the target as `http://121.134.88.42/`, and CRS 920350
+  "Host header is a numeric IP address" fires on each request sent that way
+  (2,204 of round 216's WAF alerts), so the attacker's first `GET /`
+  already alerts and a defender can spend the origin before any attack.
+  The customers send `Host: board.com`, so FP and TN do not show it. Whether
+  to keep the bare address, give a name again, or leave 920350 out of the
+  start posture is a product decision, not taken.
 - **A past round's free actions live in Elasticsearch.** The score reads them
   at scoring time, so after a platform rebuild an ended round's live score
   drops them (round 175 read `detected: true` before the rebuild and `false`
