@@ -103,9 +103,10 @@ three bot rounds at once on the PostgreSQL store. The list is in
 3. The attack bot on Sonnet and Opus 5.5: with the engagement brief every
    run of 2026-11-25 evening was stopped by the model's safeguards (4 of 4,
    `docs/STATE.md` "Open points"); a fall back to Opus 4.8 at step 3 still
-   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot ends
-   its run when nothing alerts (round 245); whether it should keep watching
-   is open.
+   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot that
+   quit when nothing alerted (round 245) now stays until the round ends,
+   fed by the launcher (`defence-watch`, `docs/DECISIONS.md` 2026-11-25);
+   run it on the range.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.

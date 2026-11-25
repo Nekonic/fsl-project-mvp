@@ -11393,3 +11393,35 @@ The reviews of the two branches found four defects; all four are fixed on `integ
   from Opus 5.5 to Opus 4.8 after a safeguard stop (round 215) is a step-3 run; it is not discarded or
   re-run. The launcher records the fallback (`model_refusal_fallback` with the original and fallback model
   and the refusal category, the entry above), so a round's record shows which model played it.
+
+## 2026-11-25 — The defence bot stays in the round until it ends; the launcher feeds it what is new
+
+- The user: "방어봇은 시간마다 로그를 집어넣어야 하는거 아니야? 누가 한번 실행하고 끝내?" In round 245 the
+  step-2 defence bot read the state, saw no alerts and ended its run after 35 s, and the attack that came
+  later met no defender. A defence run now lasts until the round ends.
+- One Claude Code session per run, kept open: the child runs with `--input-format stream-json` and the
+  launcher keeps its stdin open, writing one user message (`{"type": "user", "message": {"role": "user",
+  "content": ...}, "parent_tool_use_id": null}`, the shape Claude Code 2.1.331 accepts; it refuses a message
+  whose role is not `user`) per feed. A turn's `result` event does not end the run. The system text still
+  goes in on stdin: the run script now copies its first bytes (`head -c`, the byte count as the script's
+  first argument) into `system.md` and leaves the rest of stdin to Claude Code.
+- The launcher polls, not the model. With the player's own token, through `bots/rest.py` by operationId,
+  it reads `defence_state`, `defence_alerts` and `defence_traffic` and keeps their `next` cursors. Every
+  watch interval, while the model is between turns, it sends a feed only when something is new: an alert,
+  a refusal, a source address not in an earlier feed, or a change of phase. Requests from known addresses
+  with nothing refused are counted into the next feed but do not trigger one, because the benign customers
+  send requests all round. When the phase is `ended` it sends a last feed at once, even mid-turn (Claude Code
+  queues it), saying to read `round_score`, then closes stdin and waits for the child.
+- A feed lists at most 20 alerts and 20 source addresses and says how many more there were, with the
+  alerts cursor; it reads at most five alert pages per feed. Notes stay masked by the transcript as before.
+- The run ends when the round ends, when the step's `max_turns` is spent (counted across feeds, since
+  Claude Code's `num_turns` and `--max-turns` are per message) or its `budget_usd` (Claude Code's
+  `total_cost_usd` is the session's running total), when `CR_BOT_RUN_SECONDS` runs out, or when the
+  launcher stops it; the first two end with the exits `error_max_turns` and `error_max_budget_usd`.
+- The watch interval is per step, `watch_s` on the defence play in `steps.yaml`, handed in the claimed run
+  beside the pace: the step's window over its actions (`window_s / per_window`), so a feed comes about as
+  often as the step may act. Step 1: 75 s (4 per 300 s); step 2: 30 s (10 per 300 s); step 3: 10 s
+  (30 per 300 s). Not measured; tune it after rounds are played. A claim without `watch_s` gets 30 s.
+- Only the defence side is fed. The attack bot gets the same stream-json session with its one opening
+  message and stdin closed after it, which ends the run as before when its turn ends.
+

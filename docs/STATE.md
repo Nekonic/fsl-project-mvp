@@ -242,12 +242,13 @@ stand". Still not run on a range:
   With the engagement brief (`waf5`, rounds 273-276): Sonnet 5.5 stopped
   in 2 of 2, Opus 5.5 in 2 of 2, none fell back, none took an objective.
   The brief did not lower the stop rate in these four runs.
-- **The defence bot ends its run when nothing alerts.** With 920350 gone,
-  the start of a round draws no alert; in round 245 the step-2 defence bot
-  (Sonnet 5.5) read an empty alert list, reported, and ended its run 35 s
-  in, and no one started it again, so the attack that followed met no
-  defender. Whether the bot should keep watching until the round ends is
-  not decided.
+- **The defence bot ended its run when nothing alerted** (round 245: the
+  step-2 defence bot read an empty alert list and ended its run 35 s in, so
+  the attack that followed met no defender). Resolved on `defence-watch`
+  (`docs/DECISIONS.md` 2026-11-25): the launcher keeps the defence bot's
+  Claude Code session open until the round ends and feeds it new alerts,
+  refusals, new addresses and phase changes every `watch_s` of its step.
+  Not yet run on the range.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it

@@ -19,6 +19,7 @@ import requests
 
 from bots import play, rest, signin, tools
 from bots.relay import Relay
+from bots.watch import Watch, interval_of
 
 PLATFORM_VARIABLE = "CR_PLATFORM_URL"
 KEY_FILE_VARIABLE = "CR_BOT_LAUNCHER_KEY_FILE"
@@ -45,7 +46,7 @@ DENIED = ("mcp__*", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(less *)
           "Bash(nl *)", "Bash(tac *)", "Bash(rev *)", "Bash(hexdump *)", "Bash(cmp *)", "Bash(column *)",
           "Bash(tr *)", "Bash(sort *)", "Bash(uniq *)", "Bash(base64 *)", "Bash(sed *)", "Bash(awk *)")
 RUN_SCRIPT = ('umask 077 && rm -rf "$HOME/run" && mkdir -p "$HOME/run/work" "$HOME/run/config" '
-              '&& cat > "$HOME/run/config/system.md" && cd "$HOME/run/work" '
+              '&& head -c "$1" > "$HOME/run/config/system.md" && shift && cd "$HOME/run/work" '
               '&& export CLAUDE_CONFIG_DIR="$HOME/run/config" && exec "$@"')
 SYSTEM_FILE = "../config/system.md"
 INLINE_OUTPUT_MAX = 128000
@@ -62,6 +63,9 @@ REFUSAL_SUBTYPES = frozenset({"model_refusal_fallback", "model_refusal_no_fallba
 SAFEGUARD_NOTICE = "safeguards stopped"
 TIMED_OUT = "timed_out"
 CRASHED = "crashed"
+OUT_OF_TURNS = "error_max_turns"
+OUT_OF_BUDGET = "error_max_budget_usd"
+WATCHED_SIDES = frozenset({"defence"})
 
 
 def log(text: str) -> None:
@@ -113,7 +117,9 @@ class Transcript:
     hidden: tuple[str, ...]
     notes: list[dict] = field(default_factory=list)
     refusals: int = 0
+    turns: int = 0
     result: dict | None = None
+    ended_by: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def note(self, kind: str, text: str) -> None:
@@ -150,16 +156,29 @@ class Transcript:
             self.note("refused", event.get("content"))
         elif kind == "result":
             self.result = dict(event)
+            self.turns += int(event.get("num_turns") or 0)
             self.note("result", f"{subtype} turns={event.get('num_turns')} cost_usd={event.get('total_cost_usd')}")
+
+    def spent(self, max_turns: int, budget_usd: float) -> str | None:
+        result = self.result or {}
+        if result.get("subtype") in (OUT_OF_TURNS, OUT_OF_BUDGET):
+            return str(result["subtype"])
+        if self.turns >= max_turns:
+            return OUT_OF_TURNS
+        if float(result.get("total_cost_usd") or 0) >= budget_usd:
+            return OUT_OF_BUDGET
+        return None
 
     def finish(self, returncode: int | None, timed_out: bool) -> dict:
         result = self.result or {}
         if timed_out:
             exit_reason = TIMED_OUT
+        elif self.ended_by:
+            exit_reason = self.ended_by
         else:
             exit_reason = str(result.get("subtype") or CRASHED) if result or returncode == 0 else CRASHED
         closing = result.get("result") if isinstance(result.get("result"), str) else ""
-        return {"exit": exit_reason[:32], "cost_usd": result.get("total_cost_usd"), "turns": result.get("num_turns"),
+        return {"exit": exit_reason[:32], "cost_usd": result.get("total_cost_usd"), "turns": self.turns or None,
                 "refusals": self.refusals, "closing": masked(closing, self.hidden)[:CLOSING_MAX]}
 
 
@@ -168,9 +187,15 @@ def pace_note(pace: Mapping) -> str:
             f"{pace['min_gap_s']} seconds apart.")
 
 
+def watch_note(claimed: Mapping) -> str:
+    return f"The launcher checks the round for news every {interval_of(claimed):g} seconds."
+
+
 def system_text(claimed: Mapping) -> str:
     side = claimed["side"]
     parts = [play.system_prompt(side, driving_the_cli=True), pace_note(claimed["pace"])]
+    if side in WATCHED_SIDES:
+        parts.append(watch_note(claimed))
     stance = (claimed.get("prompt") or {}).get("stance") if side == "attack" else None
     if stance:
         parts.append(stance)
@@ -197,8 +222,9 @@ def opening_text(claimed: Mapping, state) -> str:
             f"now with {side}_state:\n{json.dumps(state, ensure_ascii=False)}")
 
 
-def claude_command(claimed: Mapping, opening: str) -> list[str]:
-    return [CLAUDE, "-p", opening, "--append-system-prompt-file", SYSTEM_FILE, "--model", str(claimed["model"]),
+def claude_command(claimed: Mapping) -> list[str]:
+    return [CLAUDE, "-p", "--input-format", "stream-json", "--append-system-prompt-file", SYSTEM_FILE,
+            "--model", str(claimed["model"]),
             "--max-budget-usd", str(claimed["budget_usd"]), "--max-turns", str(claimed["max_turns"]),
             "--output-format", "stream-json", "--verbose", "--tools", "Bash,Write", "--allowedTools", *ALLOWED,
             "--disallowedTools", *DENIED, "--permission-mode", "dontAsk", "--strict-mcp-config", "--safe-mode",
@@ -206,8 +232,8 @@ def claude_command(claimed: Mapping, opening: str) -> list[str]:
             "--no-session-persistence"]
 
 
-def child_command(claimed: Mapping, opening: str, user: str | None) -> list[str]:
-    script = ["sh", "-c", RUN_SCRIPT, "bot-run", *claude_command(claimed, opening)]
+def child_command(claimed: Mapping, system_bytes: int, user: str | None) -> list[str]:
+    script = ["sh", "-c", RUN_SCRIPT, "bot-run", str(system_bytes), *claude_command(claimed)]
     if user is None:
         return script
     return ["sudo", "-u", user, "-H", f"--preserve-env={','.join(CHILD_PASSED)}", "--", *script]
@@ -238,6 +264,63 @@ def state_of(settings: Settings, claimed: Mapping):
         return {"unread": str(unreadable)}
 
 
+def player_reader(settings: Settings, claimed: Mapping):
+    session = signin.playing(settings.platform_url, claimed["token"], 60.0)
+
+    def read(operation: str, params: dict) -> Mapping:
+        try:
+            answer = rest.request(session, operation, round_id=claimed["round"], **params)
+            found = answer.json() if answer.status_code == 200 else {}
+        except (requests.RequestException, ValueError):
+            return {}
+        return found if isinstance(found, dict) else {}
+
+    return read
+
+
+def user_message(text: str) -> str:
+    return json.dumps({"type": "user", "message": {"role": "user", "content": text},
+                       "parent_tool_use_id": None}, ensure_ascii=False) + "\n"
+
+
+class Conversation:
+    def __init__(self, stdin):
+        self.stdin = stdin
+        self.lock = threading.Lock()
+        self.closed = False
+
+    def say(self, text: str) -> None:
+        with self.lock:
+            if self.closed:
+                return
+            try:
+                self.stdin.write(user_message(text))
+                self.stdin.flush()
+            except (OSError, ValueError):
+                self.closed = True
+
+    def close(self) -> None:
+        with self.lock:
+            if self.closed:
+                return
+            self.closed = True
+            try:
+                self.stdin.close()
+            except (OSError, ValueError):
+                pass
+
+
+def followed(event: Mapping, transcript: Transcript, claimed: Mapping, watch: Watch) -> None:
+    if event.get("type") != "result":
+        return
+    spent = transcript.spent(int(claimed["max_turns"]), float(claimed["budget_usd"]))
+    if spent and not watch.closed:
+        transcript.ended_by = spent
+        watch.stop()
+    else:
+        watch.turn_ended()
+
+
 def reported(session: signin.Platform, run: int, notes: list[dict]) -> None:
     if not notes:
         return
@@ -260,14 +343,22 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
     scratch = tempfile.TemporaryDirectory(prefix="cr-bot-home-") if user is None else None
     try:
         relay_url = relay.start()
-        opening = opening_text(claimed, state_of(settings, claimed))
-        child = subprocess.Popen(child_command(claimed, opening, user), stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+        state = state_of(settings, claimed)
+        system = system_text(claimed)
+        child = subprocess.Popen(child_command(claimed, len(system.encode()), user), stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8",
                                  env=child_environment(settings, relay_url, run_key, claimed,
                                                        scratch.name if scratch else None),
                                  cwd="/")
-        child.stdin.write(system_text(claimed))
-        child.stdin.close()
+        child.stdin.write(system)
+        conversation = Conversation(child.stdin)
+        conversation.say(opening_text(claimed, state))
+        watch = None
+        if claimed["side"] in WATCHED_SIDES:
+            watch = Watch(player_reader(settings, claimed), conversation.say, conversation.close,
+                          state.get("phase"))
+        else:
+            conversation.close()
 
         def flushing():
             while not stop.wait(FLUSH_SECONDS):
@@ -278,8 +369,14 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
                 timed_out.set()
                 stopped(child, user)
 
+        def watching():
+            while not stop.wait(interval_of(claimed)) and not watch.closed:
+                watch.tick()
+
         threading.Thread(target=flushing, daemon=True).start()
         threading.Thread(target=overdue, daemon=True).start()
+        if watch is not None:
+            threading.Thread(target=watching, daemon=True).start()
         for line in child.stdout:
             try:
                 event = json.loads(line)
@@ -287,6 +384,9 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
                 continue
             if isinstance(event, dict):
                 transcript.take(event)
+                if watch is not None:
+                    followed(event, transcript, claimed, watch)
+        conversation.close()
         returncode = child.wait()
     except OSError as unstartable:
         transcript.note("result", f"the bot did not start: {unstartable}")

@@ -10,7 +10,7 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 import requests
 
-from bots import calls, cli, launcher, play, rest, shell, tools
+from bots import calls, cli, launcher, play, rest, shell, tools, watch
 from bots.pace import Pace, counted, pace_wait
 from bots.relay import Relay
 from bots.provider import ProviderNotFound, ToolCall, Turn, load
@@ -660,7 +660,7 @@ def claimed_run(side, stance=None):
 
 def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_directory_with_the_step_s_model():
     attack = claimed_run("attack", stance="Assigned technique for this engagement, as MITRE ATT&CK describes it (T1190 ...)")
-    command = launcher.child_command(attack, "opening", "bot3")
+    command = launcher.child_command(attack, 1234, "bot3")
     claude = command[command.index("claude"):]
 
     assert command[:3] == ["sudo", "-u", "bot3"] and "CR_PLAYER_TOKEN" in command[4] and TOKEN not in command
@@ -669,13 +669,17 @@ def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_di
     assert claude[claude.index("--max-budget-usd") + 1] == "2.0" and claude[claude.index("--max-turns") + 1] == "200"
     assert "Bash(python -m bots.cli *)" in claude and "Bash(cat *)" in claude[claude.index("--disallowedTools"):]
     assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(claude)
+    assert claude[1:4] == ["-p", "--input-format", "stream-json"] and command[command.index("bot-run") + 1] == "1234"
     assert claude[claude.index("--setting-sources") + 1] == "" and claude[claude.index("--permission-mode") + 1] == "dontAsk"
     assert json.loads(claude[claude.index("--settings") + 1]) == {"bashOutputMaxChars": 128000}
     script = command[command.index("-c") + 1]
     assert 'mkdir -p "$HOME/run/work"' in script and 'cd "$HOME/run/work"' in script
+    assert 'head -c "$1" > "$HOME/run/config/system.md" && shift' in script
     assert not any(str(REPO) in word or "redteam" in word for word in command)
     assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
     assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Assigned technique for this engagement"))
+    assert "every 75 seconds" in launcher.system_text({**claimed_run("defence"), "watch_s": 75})
+    assert "checks the round" not in launcher.system_text(attack)
 
 
 def test_the_attack_opening_is_the_engagement_brief_and_the_defence_opening_keeps_the_range_context():
@@ -736,3 +740,114 @@ def test_notes_are_masked_of_the_player_token_the_run_key_and_any_anthropic_key(
     assert TOKEN not in texts and "run-key-placeholder" not in texts and "sk-ant-" not in texts
     assert finished == {"exit": "success", "cost_usd": 0.5, "turns": 3, "refusals": 0,
                         "closing": "closing [hidden] [hidden]"}
+
+
+class RoundSeen:
+    def __init__(self, phase="running"):
+        self.phase = phase
+        self.alerts = []
+        self.origins = []
+        self.said = []
+        self.closed = 0
+
+    def read(self, operation, params):
+        if operation == "defence_state":
+            return {"phase": self.phase, "end_reason": "time" if self.phase == "ended" else ""}
+        if operation == "defence_alerts":
+            fresh = [alert for alert in self.alerts if alert["id"] > params["after"]]
+            return {"alerts": fresh, "next": max([params["after"], *(alert["id"] for alert in fresh)])}
+        given, self.origins = self.origins, []
+        return {"by_origin": given, "next": f"c{len(self.said)}"}
+
+    def watch(self):
+        return watch.Watch(self.read, self.said.append, self.close, "running")
+
+    def close(self):
+        self.closed += 1
+
+
+def alert(number, src="198.51.100.10"):
+    return {"id": number, "time": "2026-11-25T10:00:00Z", "engine": "waf", "rule": "942100",
+            "signature": "SQL Injection Attack Detected via libinjection", "src_ip": src, "uri": "/search",
+            "blocked": True, "request_id": None}
+
+
+def test_a_defence_feed_goes_out_only_when_an_alert_a_refusal_or_a_new_address_is_new():
+    seen = RoundSeen()
+    seen.origins = [{"ip": "203.0.113.5", "requests": 4, "refused": 0, "last_at": None}]
+    watching = seen.watch()
+
+    watching.turn_ended()
+    watching.tick()
+    watching.turn_ended()
+    seen.origins = [{"ip": "203.0.113.5", "requests": 6, "refused": 0, "last_at": None}]
+    watching.tick()
+    seen.alerts = [alert(number) for number in range(1, 26)]
+    watching.tick()
+    watching.turn_ended()
+    watching.tick()
+
+    assert len(seen.said) == 2 and "203.0.113.5" in seen.said[0] and "No new alerts" in seen.said[0]
+    assert "25 new alerts" in seen.said[1] and "5 more alerts" in seen.said[1] and '"requests": 6' in seen.said[1]
+    assert seen.said[1].count("942100") == watch.LINES_MAX and seen.closed == 0
+
+
+class Typed:
+    def __init__(self):
+        self.lines = []
+        self.closed = False
+
+    def write(self, text):
+        self.lines.append(json.loads(text))
+
+    def flush(self):
+        pass
+
+    def close(self):
+        self.closed = True
+
+
+def test_a_turn_s_result_does_not_end_a_defence_run_while_the_round_runs():
+    seen = RoundSeen()
+    typed = Typed()
+    conversation = launcher.Conversation(typed)
+    watching = watch.Watch(seen.read, conversation.say, conversation.close, "running")
+    transcript = launcher.Transcript(hidden=())
+    result = {"type": "result", "subtype": "success", "num_turns": 2, "total_cost_usd": 0.1, "result": "watching"}
+
+    transcript.take(result)
+    launcher.followed(result, transcript, claimed_run("defence"), watching)
+    seen.alerts = [alert(1)]
+    watching.tick()
+
+    assert not typed.closed and not watching.closed and transcript.ended_by is None
+    assert [line["type"] for line in typed.lines] == ["user"] and typed.lines[0]["message"]["role"] == "user"
+    assert "1 new alerts" in typed.lines[0]["message"]["content"]
+
+
+def test_a_defence_run_ends_with_a_final_feed_when_the_round_ends_even_mid_turn():
+    seen = RoundSeen()
+    watching = seen.watch()
+
+    watching.tick()
+    seen.phase = "ended"
+    watching.tick()
+    watching.tick()
+
+    assert len(seen.said) == 1 and "The round has ended (end_reason time)" in seen.said[0]
+    assert "round_score" in seen.said[0] and seen.closed == 1 and watching.closed
+
+
+def test_a_defence_run_ends_when_the_step_s_turns_are_spent_across_feeds():
+    seen = RoundSeen()
+    watching = seen.watch()
+    transcript = launcher.Transcript(hidden=())
+    claimed = claimed_run("defence")
+
+    for _ in range(2):
+        result = {"type": "result", "subtype": "success", "num_turns": 100, "total_cost_usd": 0.5}
+        transcript.take(result)
+        launcher.followed(result, transcript, claimed, watching)
+
+    assert seen.closed == 1 and transcript.finish(0, False)["exit"] == "error_max_turns"
+    assert transcript.finish(0, False)["turns"] == 200

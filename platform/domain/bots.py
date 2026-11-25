@@ -35,6 +35,7 @@ class Play:
     allowance: Allowance
     budget_usd: float
     max_turns: int
+    watch_s: int | None = None
 
     @property
     def family(self) -> str:
@@ -43,7 +44,7 @@ class Play:
 
     def shown(self) -> dict[str, Any]:
         return {"model": self.model, "family": self.family, "budget_usd": self.budget_usd,
-                "max_turns": self.max_turns,
+                "max_turns": self.max_turns, "watch_s": self.watch_s,
                 "pace": {"per_window": self.pace.per_window, "window_s": self.pace.window_s,
                          "min_gap_s": self.pace.min_gap_s},
                 "allowance": {"operations": list(self.allowance.operations), "cases": list(self.allowance.cases)}}
@@ -103,8 +104,11 @@ def play_from(doc: Mapping) -> Play:
     cases = tuple(str(name) for name in allowance.get("cases") or (ALL_CASES,))
     if not operations or not isinstance(doc["model"], str) or not doc["model"]:
         raise ValueError(f"play {doc!r} names no model or no operation")
+    watch_s = None if doc.get("watch_s") is None else int(doc["watch_s"])
+    if watch_s is not None and watch_s < 1:
+        raise ValueError(f"watch_s {watch_s} is out of range")
     return Play(model=doc["model"], pace=pace_from(doc["pace"]), allowance=Allowance(operations, cases),
-                budget_usd=float(doc["budget_usd"]), max_turns=int(doc["max_turns"]))
+                budget_usd=float(doc["budget_usd"]), max_turns=int(doc["max_turns"]), watch_s=watch_s)
 
 
 def steps_from(doc: Mapping) -> tuple[Step, ...]:

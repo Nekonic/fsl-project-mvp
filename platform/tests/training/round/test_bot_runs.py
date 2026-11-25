@@ -38,6 +38,7 @@ def test_starting_a_round_queues_one_run_per_bot_seat_and_a_claim_hands_the_toke
     assert (shown["round"], shown["side"], shown["model"], shown["pace"]["per_window"]) == (started.pk, "attack",
                                                                                            "claude-haiku-5-5", 4)
     assert shown["card"]["technique"] and shown["prompt"]["stance"].startswith("Assigned technique for this engagement")
+    assert shown["watch_s"] is None
     assert second.status_code == 204
     launcher.credentials(HTTP_AUTHORIZATION=f"Bearer {shown['token']}")
     assert launcher.get(url(started, "attack/state/")).status_code == 200

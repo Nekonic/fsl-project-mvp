@@ -3193,6 +3193,9 @@ components:
           format: double
         max_turns:
           type: integer
+        watch_s:
+          type: integer
+          nullable: true
         pace:
           $ref: '#/components/schemas/PaceLine'
         allowance:
@@ -3216,6 +3219,7 @@ components:
       - side
       - step
       - token
+      - watch_s
     Closed:
       type: object
       properties:

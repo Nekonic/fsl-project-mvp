@@ -17,6 +17,7 @@ only the launcher names a program, Claude Code, and the model of each difficulty
 | `prompts/` | `attacker.md` (the engagement brief), `defender.md` (rules of play) and `claude_code.md` (the CLI) |
 | `signin.py` | Signed-in and playing sessions (`requests`), shared with `test/` and `bin/` |
 | `launcher.py` | The `bots` compose service: claims bot runs, starts one relay and one Claude Code child per run, reports notes and the finish |
+| `watch.py` | The defence run's watch: what is new since the last feed, and the feed text |
 | `relay.py` | The per-run relay the child calls instead of the platform: holds the player token, applies the step's pace and allowance |
 | `pace.py` | Which calls count as actions and how long the next one waits |
 | `Dockerfile` | The `bots` image: Python, `openssh-client`, the Claude Code CLI, `bots/` and `openapi/schema.yaml` only |
@@ -113,7 +114,7 @@ only when the target's own data says so.
 
 A seat made with `{bot: {step}}` is played by the `bots` compose service (`python -m bots.launcher`). It polls
 `bot_run_claim` with the launcher key (`/run/secrets/bots_launcher_key`), which answers with the round, the side, a
-fresh player token, the step's model, budget, turn cap, pace and allowance and, for attack, the card. Per run it
+fresh player token, the step's model, budget, turn cap, pace and allowance, for defence the watch interval (`watch_s`) and, for attack, the card. Per run it
 starts a relay on `127.0.0.1` and Claude Code behind it. The child gets the relay's address as `CR_PLATFORM_URL` and a
 random run key as `CR_PLAYER_TOKEN`; only the relay holds the player token and swaps it in, so a call that goes
 around the relay reaches the platform with the run key and is refused. The relay forwards everything else unchanged.
@@ -122,7 +123,17 @@ declared case the step does not give answers `403` with the code `not_at_this_st
 action is every call that is not a `GET`, and the three terminal grants; forfeit and the allocation heartbeat are never held back.
 `bots.cli tools` hides the operations the step does not give (`CR_BOT_OPERATIONS`).
 
-Claude Code runs in print mode with Bash and Write as its only tools. Bash is allowed only `python -m bots.cli` and
+Claude Code runs in print mode with stream-json input: the launcher writes the system text, then the opening as
+one user message. An attack run's stdin is closed after the opening, so the run ends when its turn does. A defence
+run stays open until the round ends: every `watch_s` seconds of its step (75, 30 and 10 at steps 1 to 3), while
+the model is between turns, the launcher reads `defence_state`, `defence_alerts` and `defence_traffic` with the
+player token and its own cursors and, when there is a new alert, a refusal, a source address not fed before or a
+change of phase, sends one more user message listing them (at most 20 alerts and 20 addresses, with how many
+more). A turn's end does not end the run. When the phase is `ended` it sends a last message saying to read
+`round_score` and closes stdin. The run also ends when the step's turns (counted across messages) or budget are
+spent (`error_max_turns`, `error_max_budget_usd`).
+
+Claude Code has Bash and Write as its only tools. Bash is allowed only `python -m bots.cli` and
 `sleep`; Write only `.json` files at the top of its working directory (`Edit(/*.json)`), so arguments holding a quote reach
 the CLI through `--json-file` and never through the shell's quoting (a raw `'` inside a single-quoted `--json`
 leaves the command unparsed, and Claude Code refuses it). It runs with the read-only commands that could reach a

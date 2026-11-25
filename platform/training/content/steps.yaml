@@ -1,6 +1,7 @@
 # Difficulty steps of Player vs AI rounds (DECISIONS 2026-11-24).
 # Pace and allowance are held by the launcher's relay, never by the server.
 # min_gap_s, budget_usd and max_turns are not ruled and not measured; tune them after rounds are played.
+# watch_s: how often the launcher feeds the defence bot what is new, window_s / per_window (DECISIONS 2026-11-25).
 stand_in:
   attack: "2"
   defence: "2"
@@ -16,6 +17,7 @@ steps:
         operations: [attack_state, attack_cases, attack_fire_case, attack_tool_output, attack_stop_tool,
                      attack_next_origin, attack_send, attack_loot, attack_forfeit]
     defence:
+      watch_s: 75
       model: claude-haiku-5-5
       budget_usd: 2
       max_turns: 200
@@ -35,6 +37,7 @@ steps:
         operations: [attack_state, attack_cases, attack_fire_case, attack_tool_output, attack_stop_tool,
                      attack_next_origin, attack_send, attack_loot, attack_forfeit, attack_tools, attack_start_tool]
     defence:
+      watch_s: 30
       model: claude-sonnet-5-5
       budget_usd: 4
       max_turns: 300
@@ -56,6 +59,7 @@ steps:
                      attack_next_origin, attack_send, attack_loot, attack_forfeit, attack_tools, attack_start_tool,
                      attack_terminal]
     defence:
+      watch_s: 10
       model: claude-opus-5-5
       budget_usd: 8
       max_turns: 400

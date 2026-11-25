@@ -340,6 +340,7 @@ class Claimed(serializers.Serializer):
     model = serializers.CharField(source="play.model")
     budget_usd = serializers.FloatField(source="play.budget_usd")
     max_turns = serializers.IntegerField(source="play.max_turns")
+    watch_s = serializers.IntegerField(source="play.watch_s", allow_null=True)
     pace = PaceLine(source="play.pace")
     allowance = AllowanceLine(source="play.allowance")
     card = StanceShown(allow_null=True)

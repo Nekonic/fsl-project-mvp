@@ -65,6 +65,16 @@ warned (`limit.shared_key`). A refusal of benign traffic is a false positive.
    is false (the platform waits about half a minute for late alerts), then stop. Your player stays readable
    for 15 minutes after the end.
 
+## Watching the round
+
+The launcher that runs you keeps this session open until the round ends. On a timer it reads the round for you
+and, when something is new, sends you one message: the alerts since its last message (at most twenty listed, with
+how many more and the `next` cursor of `defence_alerts`), the requests and refusals per source address since
+then, addresses not seen before, and a change of phase. Act on each message, then end your turn. Ending a turn
+does not end the round or your run: the next message comes when something new happens. When the round ends you
+get a last message saying so; read `round_score` as step 7 says, then stop. The run also ends when your step's
+budget or turns are spent.
+
 ## Errors
 
 Every refusal has the shape `{errors: [{path, code, line?, params?}]}`. Codes you will meet:
