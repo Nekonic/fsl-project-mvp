@@ -17,6 +17,7 @@ MOST_PAGES = 5
 MOST_JOINS = 2000
 ALERTS_PAGE = 200
 DEFENCE = "defence"
+NUL = "\x00"
 
 
 def rule_of(detection: Mapping[str, Any]) -> str:
@@ -44,7 +45,18 @@ def blocked(detection: Mapping[str, Any]) -> bool:
     return str(((detection.get("raw") or {}).get("alert") or {}).get("action") or "") == "blocked"
 
 
+def without_nul(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.replace(NUL, "")
+    if isinstance(value, Mapping):
+        return {without_nul(key): without_nul(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [without_nul(item) for item in value]
+    return value
+
+
 def stored(found, detection: Mapping[str, Any]) -> Detection | None:
+    detection = without_nul(detection)
     engine = ENGINE_OF.get(detection["source"])
     if engine is None:
         return None

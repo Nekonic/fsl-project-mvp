@@ -66,6 +66,22 @@ def test_alerts_requests_store_each_alert_once_with_its_engine_rule_and_marker(a
     assert seen.count() == 3 and {event.player_side for event in seen} == {"defence"}
 
 
+def test_an_alert_carrying_a_nul_character_is_stored_without_it_and_the_cursor_moves_on(board_round, cyber_range,
+                                                                                       es, at):
+    alert = suricata(stamp(at))
+    alert["alert"]["signature"] = "Null byte\x00 in request"
+    alert["http"]["url"] = "/?a=\x00"
+    es.add("s1", alert)
+    alert_feed.ingest_alerts(board_round)
+    es.add("s2", suricata(stamp(at, 1), marker="m3"))
+    alert_feed.ingest_alerts(board_round)
+
+    rows = Detection.objects.filter(round=board_round).order_by("id")
+    assert [(row.detection_id, row.signature, row.uri) for row in rows] == [
+        ("s1", "Null byte in request", "/?a="), ("s2", "SQL injection in search", "/search/?q=x")]
+    assert "\x00" not in str(rows[0].raw)
+
+
 @pytest.mark.parametrize("first", ["alert", "http"])
 def test_an_alert_and_its_transaction_s_http_record_read_apart_still_join_marker_and_client(board_round, cyber_range,
                                                                                           es, at, first):
