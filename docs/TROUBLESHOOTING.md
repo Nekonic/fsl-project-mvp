@@ -516,7 +516,9 @@ Not changed: a moved-to lesson sends its benign seed case on the learner's
 first hint, skip or pass there, inside that request (`_seed_once_worked`,
 one harness fire from Kali), and the platform database is
 SQLite with no journal mode set in `cr/settings.py` (a rollback journal by
-default), where a write waits for the reads running at the time.
+default), where a write waits for the reads running at the time. Since
+2026-11-25 the store is PostgreSQL whenever `CR_DB_HOST` is set, as on the
+range; SQLite is left for the unit tests (`docs/ARCHITECTURE.md`).
 
 ### F5's first answer counted as a wrong try
 

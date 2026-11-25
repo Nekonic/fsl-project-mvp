@@ -14,8 +14,10 @@ The product was rebuilt as a side split on `side-split` (user ruling
 2026-11-19: no code is kept or migrated; the old code is reference only), and
 then restructured on the branch `restructure` (ruling 2026-11-21,
 "The platform is restructured into five units, KYPO-style"). The tree is
-`integrate`: `bot-rounds` (Player vs AI rounds) with `pg-store` (the
-PostgreSQL store) and `access-address` (the access page's target address);
+`waf5`: `integrate` (`bot-rounds`, the Player vs AI rounds, with
+`pg-store`, the PostgreSQL store, and `access-address`, the access page's
+target address) with CRS 920350 removed at the WAF and the attack bot's
+prompt rewritten as an engagement brief;
 `main` holds the old product until gate 2. The cloud runs
 `integrate` since 2026-11-25; on 2026-11-23 the first range of `restructure`
 was built and checked (`docs/DECISIONS.md`, "The first cloud check of
@@ -27,7 +29,10 @@ was built and checked (`docs/DECISIONS.md`, "The first cloud check of
   `cr-waf-bake4` and `cr-target-bake3`, baked from `integrate` (each slot's
   own wargame is the WAF's default server; corp's WordPress takes its address
   from the request), which replace `cr-waf-bake3` and `cr-target-bake2` on
-  the range. Two kali
+  the range, and `cr-waf-bake5`, baked from `waf-920350` (CRS 920350
+  removed), which replaces `cr-waf-bake4`. `compute.images` holds
+  `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2` and `cr-target-bake3`.
+  Two kali
   snapshots before it failed at about 10 minutes with Nova's
   `compute_snapshot_instance: Error`; Glance's file store had 7.9 GB free
   for the 14.1 GB image, and the third bake passed after five unused images
@@ -112,7 +117,8 @@ was built and checked (`docs/DECISIONS.md`, "The first cloud check of
     through the tunnel dumped `auth_user` and the loot took all three
     objectives (round 216: detection O, response X, weighted 11.0; TP/FP/FN/TN
     0/0/0/36, benign only). The bot spent the first origin by `deny` after
-    two plain `GET /`, before any attack (below, "Open points").
+    two plain `GET /`, before any attack: CRS 920350 alerted on the
+    numeric `Host` (removed since, `docs/DECISIONS.md` 2026-11-25).
   - corp by the bare address on slot 4: `GET /` answered WordPress with its
     links on the address typed, `/wp-login.php` 200.
   - The full `bin/verify` from the platform VM: acceptance 101 passed, 0
@@ -223,14 +229,6 @@ stand". Still not run on a range:
   PostgreSQL and `apply_waf` and `apply_ids` reach the WAF or the sensor
   outside the write transaction; both run on the range since 2026-11-25,
   not yet under three rounds at once.
-- **The bare address draws an alert on every request.** The access page
-  gives the learner the target as `http://121.134.88.42/`, and CRS 920350
-  "Host header is a numeric IP address" fires on each request sent that way
-  (2,204 of round 216's WAF alerts), so the attacker's first `GET /`
-  already alerts and a defender can spend the origin before any attack.
-  The customers send `Host: board.com`, so FP and TN do not show it. Whether
-  to keep the bare address, give a name again, or leave 920350 out of the
-  start posture is a product decision, not taken.
 - **A past round's free actions live in Elasticsearch.** The score reads them
   at scoring time, so after a platform rebuild an ended round's live score
   drops them (round 175 read `detected: true` before the rebuild and `false`

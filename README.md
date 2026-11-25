@@ -189,7 +189,7 @@ flowchart TB
   여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(`409 objective_fallen`). board 비밀번호는
   이제 라운드마다 새로 정하지만 이 규칙은 아직 그대로입니다.
 - 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
-  `cr-<역할>-bake1`이고, 이 클라우드의 WAF는 `cr-waf-bake2`입니다. 부팅할 때 인터넷에 나가지 않습니다.
+  `cr-<역할>-bake1`이고, 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`을 씁니다. 부팅할 때 인터넷에 나가지 않습니다.
 - Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지 5.188.10.10을 첫 주소로
   둡니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를 모두 쓰고, MAC은 Neutron이 준 것만
   통과합니다.
@@ -242,7 +242,7 @@ flowchart TB
 - Heat 필요
 - [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
-- Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드의 WAF는 `cr-waf-bake2`).
+- Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
   스냅샷의 `min_disk`는 빌더의 디스크 크기가 되므로, 빌더 flavor의 디스크가 훈련 환경 VM의 flavor보다 크면 스택이 뜨지 않습니다.
   절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. target 이미지는 구울 때 받은 board, corp
@@ -532,24 +532,10 @@ sudo docker compose start platform rebuild
 
 ## 현재 상태
 
-`restructure` 브랜치는 `side-split` 코드를 다섯 단위로 다시 나누고, 주기 작업(tick), HP, WAF JSON 튜닝, 생성
-클라이언트, 기존 레슨을 걷어 낸 코드입니다. 단위·API 테스트는 돌렸지만 이 브랜치의 어떤 것도 훈련 환경에서는 아직
-돌리지 않았습니다.
-
-- 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
-  nginx가 `/srv/front`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
-  아직 화면에 없습니다. 플레이어별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
-  열어 보지 않았습니다.
-- WAF 접근 로그와 오류 로그 전송, 방어 파일(`/etc/nginx/defence/`), infra 라우터의 `pool`·`spent` 집합, CRS 룰
-  테스트용 임시 인스턴스, WAF와 infra의 `analyst` 계정, infra의 고객 프로그램(`cr-customers.service`), board의
-  `set_passwords`는 배포 파일과 코드에만 있고 역할 이미지에는 아직 없습니다. infra, waf, kali, target 이미지를 다시
-  구워야 합니다(`docs/OPENSTACK.md` §3.7~§3.10). target을 다시 굽기 전에는 라운드 시작이
-  `ground_truth_unavailable`로 실패합니다.
-- 룰 테스트용 녹화(`wargames/<id>/probes/`)가 아직 없습니다. 지금 룰 테스트는 케이스를 미탐이 아니라
-  `untested`(`not_recorded`, WAF 도구 케이스는 `tool_case`)로 돌려주고, 시험한 정상 케이스가 없으므로 어떤 룰도
-  오탐 없이 통과합니다. 녹화가 있어야 "오탐이 나는 룰은 올라가지 않는다"가 성립합니다.
-- 테스트 필수, 대응 증명, 늦은 판정은 단위 테스트만 거쳤습니다. WAF와 infra를 다시 구워야 reload 래퍼가 통과
-  목록을 확인합니다.
+지금 트리는 `integrate`(Player vs AI 라운드, PostgreSQL 저장소, IP 주소로 접속하는 안내)에 CRS 920350 제거와 공격 봇
+프롬프트를 더한 것이고, 클라우드의 `cr-platform2`에서 돌아갑니다. 역할 이미지는 이 트리로 다시 구웠고, 룰 테스트용
+녹화는 `wargames/<id>/probes/`에 커밋되어 있으며, 콘솔은 플랫폼 이미지의 `/srv/front`에서 나갑니다. 훈련 환경에서
+돌린 것과 그 결과, 아직 돌리지 않은 것은 [docs/STATE.md](docs/STATE.md)에 있습니다.
 
 다음 순서는 [docs/state/now.md](docs/state/now.md)에 있습니다.
 

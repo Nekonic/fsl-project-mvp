@@ -556,7 +556,7 @@ sequenceDiagram
 시작되면 `training/round/bots.py`가 봇 자리마다 `BotRun`을 만들고, 실행기가 `bot_run_claim`(태그 `bots`, 실행기 키
 `IsLauncher`)으로 가져가 플레이어 토큰, 모델, 속도, 허용 동작, 공격이면 카드를 받습니다. 실행기는 `bot_run_report`로
 메모를, `bot_run_finish`로 종료를 알립니다. 서버는 봇 자리를 사람 자리와 똑같이 다루고, 속도와 허용 동작은 실행기의
-프록시가 겁니다. 실행기는 compose 서비스 `bots`(`bots/launcher.py`, 이미지 `cr-bots`)입니다. 실행마다 `127.0.0.1`에 `relay.py`를 띄우고 그 뒤에 Claude Code를 print 모드로 실행합니다. 자식은 relay 주소와 실행 키만 받고, 플레이어 토큰은 relay만 쥡니다. 속도를 넘긴 호출은 `429 pace_limited`, 난이도가 주지 않는 동작이나 케이스는 `403 not_at_this_step`으로 플랫폼에 닿기 전에 거부합니다. 자식은 실행마다 빈 작업 디렉터리와 자기 설정 디렉터리에서 `--safe-mode`, 설정 소스 없이, Bash 하나(`python -m bots.cli`와 `sleep`만 허용)로 돌고, 비밀을 못 읽는 별도 uid(`bot0`..`bot7`)로 실행됩니다. 명령줄 설정은 `bashOutputMaxChars` 128000 하나입니다. 기본값 30,000자를 넘는 응답(`defence_waf`는 약 42 KB)은 파일로 빠지는데, 자식은 파일을 읽는 명령이 전부 막혀 있어 그 파일을 못 엽니다. 실행기는 플랫폼을 compose 이름 `http://platform:8000`으로 부르므로 플랫폼 스택이 `DJANGO_ALLOWED_HOSTS`에 `platform`을 넣습니다. 이미지에는 `bots/`와 `openapi/schema.yaml`만 있습니다. nginx는 세션 쿠키 없이 Bearer 헤더로 온 요청을 그 헤더로 묶어(`api_client`) 봇 자리마다 사람 세션처럼 따로 셉니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
+프록시가 겁니다. 실행기는 compose 서비스 `bots`(`bots/launcher.py`, 이미지 `cr-bots`)입니다. 실행마다 `127.0.0.1`에 `relay.py`를 띄우고 그 뒤에 Claude Code를 print 모드로 실행합니다. 자식은 relay 주소와 실행 키만 받고, 플레이어 토큰은 relay만 쥡니다. 속도를 넘긴 호출은 `429 pace_limited`, 난이도가 주지 않는 동작이나 케이스는 `403 not_at_this_step`으로 플랫폼에 닿기 전에 거부합니다. 자식은 실행마다 빈 작업 디렉터리와 자기 설정 디렉터리에서 `--safe-mode`, 설정 소스 없이, Bash(`python -m bots.cli`와 `sleep`만 허용)와 Write(작업 디렉터리 최상위의 `.json`만 허용, `Edit(/*.json)`) 두 도구로 돌고, 비밀을 못 읽는 별도 uid(`bot0`..`bot7`)로 실행됩니다. 명령줄 설정은 `bashOutputMaxChars` 128000 하나입니다. 기본값 30,000자를 넘는 응답(`defence_waf`는 약 42 KB)은 파일로 빠지는데, 자식은 파일을 읽는 명령이 전부 막혀 있어 그 파일을 못 엽니다. 따옴표가 든 인자는 명령줄에 쓰지 않고 Write로 `call.json`에 적은 뒤 `python -m bots.cli <도구> --json-file call.json`으로 넘깁니다. 실행기는 플랫폼을 compose 이름 `http://platform:8000`으로 부르므로 플랫폼 스택이 `DJANGO_ALLOWED_HOSTS`에 `platform`을 넣습니다. 이미지에는 `bots/`와 `openapi/schema.yaml`만 있습니다. nginx는 세션 쿠키 없이 Bearer 헤더로 온 요청을 그 헤더로 묶어(`api_client`) 봇 자리마다 사람 세션처럼 따로 셉니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
 엽니다(`403 bot_rounds_closed`). `{name}` 자리(토큰을 한 번 돌려주는 외부 드라이버)는 스태프만 만듭니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
 도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
 SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
@@ -567,8 +567,8 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 
 훈련 환경은 이전 구조와 같습니다. 할당마다 Heat 스택 `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
 워게임별 풀에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
-`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 배포 파일은 고쳤고, infra, waf, kali, target 이미지는 아직 다시 굽지
-않았습니다(`docs/OPENSTACK.md` §3.7~§3.9).
+`docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 네 역할 이미지는 이 내용으로 다시 구웠고(`docs/OPENSTACK.md` §3.6), §3.7~§3.10 점검을
+훈련 환경에서 통과했습니다.
 
 - `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 `spent` drop 규칙. `slot-boot`가
   테이블을 다시 읽으면 집합이 비고, 라운드 중에는 아무도 다시 채우지 않으므로 다음 라운드 시작까지 kali에서
@@ -632,12 +632,6 @@ SQLite에서 옮겼습니다. SQLite는 파일 하나에 쓰는 쪽이 하나뿐
 
 ## 아직 없는 것
 
-- `front/`는 가짜 응답(`front/mock/`)으로만 확인했고 훈련 환경에서는 아직 돌리지 않았습니다. 플랫폼 Dockerfile의
-  node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
-  `/srv/front`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다.
 - API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
-- infra, waf, kali, target 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐
-  두었습니다.
-- `restructure`의 어떤 것도 훈련 환경에서 돌리지 않았습니다. 전체 `bin/verify`(acceptance 포함)와 매치업마다 Player
-  vs AI 라운드가 남았습니다(`docs/STATE.md`).
+- 훈련 환경에서 아직 돌리지 않은 것(`pvp` 라운드, 대응 O인 손실 등)은 `docs/STATE.md`의 "Not live-verified"에 있습니다.

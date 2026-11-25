@@ -14,7 +14,7 @@ only the launcher names a program, Claude Code, and the model of each difficulty
 | `cli.py` | The command line: tool specs, prompts, one call, or a provider playing as the player |
 | `play.py` | The turn loop a provider plays in |
 | `provider.py` | The provider interface: `turn(system, tools, transcript) -> Turn(text, calls)` |
-| `prompts/` | `attacker.md`, `defender.md` (rules of play) and `claude_code.md` (the CLI) |
+| `prompts/` | `attacker.md` (the engagement brief), `defender.md` (rules of play) and `claude_code.md` (the CLI) |
 | `signin.py` | Signed-in and playing sessions (`requests`), shared with `test/` and `bin/` |
 | `launcher.py` | The `bots` compose service: claims bot runs, starts one relay and one Claude Code child per run, reports notes and the finish |
 | `relay.py` | The per-run relay the child calls instead of the platform: holds the player token, applies the step's pace and allowance |

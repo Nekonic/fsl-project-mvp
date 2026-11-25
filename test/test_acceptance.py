@@ -52,7 +52,7 @@ def test_the_stack_does_not_attack_itself(full_run):
 
     assert own == [], (
         f"the stack raised alerts on traffic it sent from its own addresses {sorted(full_run['own_sources'])}: "
-        f"{own}. Rule 920350 among them ({numeric_host}) means the WAF runs without the removal modsecurity.conf bakes in, "
+        f"{own}. Rule 920350 among them ({numeric_host}) means the WAF runs on an image without the 920350 removal, "
         f"filing a false positive against the defence it is scoring."
     )
 
