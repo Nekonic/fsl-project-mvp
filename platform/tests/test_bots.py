@@ -233,6 +233,16 @@ def test_the_one_line_form_names_the_tool_and_infers_the_side(platform):
     assert platform.seen[0]["query"] == {"engine": ["ids"], "after": ["4"], "src": ["198.51.100.10"]}
 
 
+def test_arguments_read_from_a_file_go_out_with_both_quote_kinds_as_written(platform, tmp_path):
+    platform.on("POST", f"/api/rounds/{ROUND}/attack/requests/", body={"action": 3, "status": 200})
+    written = tmp_path / "call.json"
+    written.write_text('{"method": "GET", "path": "/search", "query": {"q": "x\' ORDER BY \\"a\\"-- -"}}')
+
+    code, _ = run_cli(["attack_send", "--json-file", str(written)], platform)
+
+    assert code == 0 and platform.seen[0]["body"]["query"] == {"q": 'x\' ORDER BY "a"-- -'}
+
+
 def test_path_parameters_and_an_empty_answer_reach_the_right_route(platform):
     path = f"/api/rounds/{ROUND}/attack/tools/12/"
     platform.on("DELETE", path, status=204)
@@ -648,13 +658,14 @@ def claimed_run(side, stance=None):
             "card": None, "prompt": {"side": "attacker" if side == "attack" else "defender", "stance": stance}}
 
 
-def test_launcher_command_runs_claude_code_on_bash_alone_in_an_empty_directory_of_its_own_with_the_step_s_model():
+def test_launcher_command_runs_claude_code_on_bash_and_one_call_file_in_an_empty_directory_with_the_step_s_model():
     attack = claimed_run("attack", stance="Your stance this round, quoted from MITRE ATT&CK (T1190 ...)")
     command = launcher.child_command(attack, "opening", "bot3")
     claude = command[command.index("claude"):]
 
     assert command[:3] == ["sudo", "-u", "bot3"] and "CR_PLAYER_TOKEN" in command[4] and TOKEN not in command
-    assert claude[claude.index("--tools") + 1] == "Bash" and claude[claude.index("--model") + 1] == "claude-haiku-5-5"
+    assert claude[claude.index("--tools") + 1] == "Bash,Write" and claude[claude.index("--model") + 1] == "claude-haiku-5-5"
+    assert "Edit(/call.json)" in claude[claude.index("--allowedTools"):claude.index("--disallowedTools")]
     assert claude[claude.index("--max-budget-usd") + 1] == "2.0" and claude[claude.index("--max-turns") + 1] == "200"
     assert "Bash(python -m bots.cli *)" in claude and "Bash(cat *)" in claude[claude.index("--disallowedTools"):]
     assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(claude)
@@ -678,6 +689,14 @@ def test_the_launcher_profile_is_the_prompt_hashes_and_the_claude_code_version_a
 
     assert before["claude_code"] == "2.1.331" and set(before["prompts"]) == {"attacker.md"}
     assert launcher.launcher_profile(environment)["prompts"] != before["prompts"]
+
+
+def test_the_model_claude_code_started_on_is_a_note_of_the_run():
+    transcript = launcher.Transcript(hidden=())
+
+    transcript.take({"type": "system", "subtype": "init", "model": "claude-sonnet-5-5"})
+
+    assert [(note["kind"], note["text"]) for note in transcript.taken()] == [("result", "model claude-sonnet-5-5")]
 
 
 def test_notes_are_masked_of_the_player_token_the_run_key_and_any_anthropic_key():

@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+from pathlib import Path
 from typing import TextIO
 
 from bots import calls, play, provider, tools
@@ -54,8 +55,19 @@ def operation_parser(name: str) -> argparse.ArgumentParser:
     made = argparse.ArgumentParser(prog=f"python -m bots.cli {name}")
     side_argument(made, required=False)
     player_arguments(made)
-    made.add_argument("--json", default="{}", help="the tool's arguments as a JSON object")
+    given = made.add_mutually_exclusive_group()
+    given.add_argument("--json", default="{}", help="the tool's arguments as a JSON object")
+    given.add_argument("--json-file", default=None, help="a file holding the tool's arguments as a JSON object")
     return made
+
+
+def arguments_text(arguments: argparse.Namespace) -> str:
+    if arguments.json_file is None:
+        return arguments.json
+    try:
+        return Path(arguments.json_file).read_text()
+    except OSError as unreadable:
+        raise Unusable(f"--json-file could not be read: {unreadable.strerror}") from unreadable
 
 
 def player_from(arguments: argparse.Namespace, side: str, environment: dict) -> calls.Player:
@@ -112,9 +124,9 @@ def operation_mode(argv: list[str], out: TextIO, environment: dict) -> int:
     name, rest = argv[0], argv[1:]
     arguments = operation_parser(name).parse_args(rest)
     try:
-        given = json.loads(arguments.json)
+        given = json.loads(arguments_text(arguments))
     except ValueError as wrong:
-        raise Unusable(f"--json is not JSON: {wrong}") from wrong
+        raise Unusable(f"the arguments are not JSON: {wrong}") from wrong
     player = player_from(arguments, side_of_operation(name, arguments.side), environment)
     return made_call(player, name, given, out)
 

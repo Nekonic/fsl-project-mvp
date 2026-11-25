@@ -40,6 +40,7 @@ python -m bots.cli prompt --side attack
 echo '{"name": "attack_state", "arguments": {}}' | python -m bots.cli call --side attack
 python -m bots.cli attack_fire_case --json '{"case": "board-sqli-search"}'
 python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'
+python -m bots.cli attack_send --json-file call.json
 python -m bots.cli run --side defence --provider mypackage.mymodule:make_provider
 ```
 
@@ -121,8 +122,10 @@ declared case the step does not give answers `403` with the code `not_at_this_st
 action is every call that is not a `GET`, and the three terminal grants; forfeit and the allocation heartbeat are never held back.
 `bots.cli tools` hides the operations the step does not give (`CR_BOT_OPERATIONS`).
 
-Claude Code runs in print mode with Bash as its only tool, allowed only `python -m bots.cli` and `sleep`, with the
-read-only commands that could reach a file or the environment denied, in `--safe-mode` with no setting sources,
+Claude Code runs in print mode with Bash and Write as its only tools. Bash is allowed only `python -m bots.cli` and
+`sleep`; Write only `call.json` in its working directory (`Edit(/call.json)`), so arguments holding a quote reach
+the CLI through `--json-file` and never through the shell's quoting (a raw `'` inside a single-quoted `--json`
+leaves the command unparsed, and Claude Code refuses it). The read-only commands that could reach a file or the environment denied, in `--safe-mode` with no setting sources,
 from an empty working directory and a configuration directory of its own. One setting is passed on the command
 line: `bashOutputMaxChars` 128000, so an answer such as `defence_waf` (about 42 KB) comes back inline; past
 Claude Code's default of 30,000 characters it is saved to a file the child cannot read, since every file-reading

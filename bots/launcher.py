@@ -35,7 +35,8 @@ CREDENTIAL_VARIABLE = "CLAUDE_CODE_OAUTH_TOKEN"
 CLAUDE = "claude"
 CLAUDE_CODE_VERSION_VARIABLE = "CR_CLAUDE_CODE_VERSION"
 STOP_GRACE_SECONDS = 15.0
-ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)")
+CALL_FILE = "call.json"
+ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)", f"Edit(/{CALL_FILE})")
 DENIED = ("mcp__*", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(less *)", "Bash(more *)", "Bash(grep *)",
           "Bash(rg *)", "Bash(find *)", "Bash(ls *)", "Bash(tree *)", "Bash(stat *)", "Bash(file *)", "Bash(wc *)",
           "Bash(diff *)", "Bash(strings *)", "Bash(od *)", "Bash(xxd *)", "Bash(env *)", "Bash(printenv *)",
@@ -136,6 +137,8 @@ class Transcript:
                     self.note("call", given.get("command") or f"{block.get('name')} {json.dumps(given)}")
             if message.get("stop_reason") == "refusal":
                 self.refusals += 1
+        elif kind == "system" and subtype == "init":
+            self.note("result", f"model {event.get('model')}")
         elif kind == "system" and subtype == "permission_denied":
             self.note("denied", event.get("message") or json.dumps(event.get("tool_input") or {}))
         elif kind == "system" and subtype in REFUSAL_SUBTYPES:
@@ -184,7 +187,7 @@ def opening_text(claimed: Mapping, state) -> str:
 def claude_command(claimed: Mapping, opening: str) -> list[str]:
     return [CLAUDE, "-p", opening, "--append-system-prompt-file", SYSTEM_FILE, "--model", str(claimed["model"]),
             "--max-budget-usd", str(claimed["budget_usd"]), "--max-turns", str(claimed["max_turns"]),
-            "--output-format", "stream-json", "--verbose", "--tools", "Bash", "--allowedTools", *ALLOWED,
+            "--output-format", "stream-json", "--verbose", "--tools", "Bash,Write", "--allowedTools", *ALLOWED,
             "--disallowedTools", *DENIED, "--permission-mode", "dontAsk", "--strict-mcp-config", "--safe-mode",
             "--setting-sources", "", "--settings", CHILD_SETTINGS, "--disable-slash-commands",
             "--no-session-persistence"]

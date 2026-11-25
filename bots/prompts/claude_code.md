@@ -11,15 +11,17 @@ Commands:
 
 - `python -m bots.cli tools --side <attack|defence>` prints the tool specs: one JSON Schema per API operation
   your player may call. Read them once.
-- `python -m bots.cli <tool> --json '{...}'` makes one call and prints `{operation, ok, status, body, headers?}`.
+- `python -m bots.cli <tool> --json '{...}'` (or `--json-file call.json`, below) makes one call and prints `{operation, ok, status, body, headers?}`.
   `headers` carries `X-Origin` and `X-Origins-Left` on attack answers. The `shell` tool is on both sides, so name
   the side: `python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'` prints
   `{operation, ok, exit_code, stdout, stderr}`.
 - `sleep <seconds>` waits.
 
 Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.
-Anything else is refused before it runs. Keep the `--json` value inside one pair of single quotes: write a single
-quote inside it as `\u0027`, never as `'"'"'` or `'\''`, which is refused the same way. A refused command sent
+Anything else is refused before it runs. When a value holds a quote of
+either kind, keep the arguments off the command line: write the JSON object with the Write tool to `call.json` in
+your working directory, then run `python -m bots.cli <tool> --json-file call.json`. Write may change that one file
+and no other. A refused command sent
 nothing; write it again as one plain call and carry on, the round is not over. An answer longer than the tool's
 window is saved to a file you cannot open; ask again with fewer items (a later `after` cursor, a narrower query).
 Never run a command in the background: its output goes to a file you cannot open.
