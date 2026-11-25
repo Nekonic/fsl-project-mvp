@@ -11246,6 +11246,29 @@ is kept outside the repo; this entry keeps what changed the product.
   made again on every rebuild, so a learner's saved `known_hosts` refuses it; a step-1 defence bot (Haiku
   5.5, no shell) did not stop a tunnelled sqlmap run within its first minutes.
 
+## 2026-11-25 — The access page gives the target as an address, not a hosts line
+
+User ruling. The learner's access page gives the target as an address the
+learner types as is (`http://<address>/`), not a name to add to a hosts file.
+The line that told the learner to put a hosts line in (`access.vpn.hosts`) and
+the hosts-line block are removed; no DNS is added to the VPN.
+
+- `/api/vpn/profile/` answers `targets`, one `{wargame, url}` per wargame from
+  the edge's Internet address in its topology, in place of `hosts`. The page
+  shows each under the wargame's Korean name.
+- Every slot stack gives the same public IP to both wargames, and a slot runs
+  one wargame, so the WAF tells the sites apart by name only. Each `server`
+  now reads its `listen` from `/etc/nginx/slot/<wargame>.listen`, and the
+  WAF's `slot-boot` gives `default_server` to the slot's own wargame
+  (`WARGAMES`, now in the WAF's `/etc/slot.env`). A request by the bare
+  address reaches the slot's site; the platform's probes, cases and customers
+  keep sending `Host: board.com` or `corp.com` and are routed as before.
+- corp's WordPress takes `WP_HOME` and `WP_SITEURL` from the request's `Host`
+  (`WORDPRESS_CONFIG_EXTRA`, falling back to `CR_WP_URL` with no request), so
+  it no longer redirects a learner who came by address to `corp.com`.
+- The waf image needs a rebake (the listen files and the new `slot-boot`),
+  and the target image too, since it bakes the rendered corp compose file.
+
 ## 2026-11-25 — The platform store moves from SQLite to PostgreSQL; opening the range to external learners comes last
 
 Two rulings of the user, 2026-11-25.

@@ -199,7 +199,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                        BaselinePanel(기준 분포 버튼과 진행 표)
   src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby(대전 방식, 봇 쪽 난이도)
                RoundAttack  RoundDefence  Result(기준 분포 대비, 복기 링크)  Debrief(복기: 봇, 카드, 의도, 타임라인, 점수)
-               Records(내 기록 목록과 기록 한 건)  Access(VPN 프로필, hosts 줄, kali SSH 설정)
+               Records(내 기록 목록과 기록 한 건)  Access(VPN 프로필, 워게임별 공격 대상 주소, kali SSH 설정)
                staff/(Problems  Postures  Users  Range)
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
   src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
@@ -577,6 +577,10 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라지기 때문입니다.
   같은 파일이 오류 로그 `error_log /var/log/nginx/error.log warn;`을 정합니다.
+  각 server 블록의 `listen`은 `/etc/nginx/slot/<워게임>.listen`에서 읽고, WAF의 `slot-boot`가 `/etc/slot.env`의
+  `WARGAMES`(그 스택의 워게임)에만 `default_server`를 붙입니다. 그래서 `Host`가 공인 IP인 요청도 그 스택의 사이트로
+  가고, `board.com`·`corp.com` 이름으로 보낸 요청은 전처럼 이름으로 갈립니다. corp의 WordPress는
+  `WORDPRESS_CONFIG_EXTRA`로 `WP_HOME`을 요청의 `Host`에 맞춰, 주소로 들어온 학습자를 `corp.com`으로 돌려보내지 않습니다.
   `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다. 오류 로그는 Tag `nginx-error`, 모듈
   `nginx_error`입니다.

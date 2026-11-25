@@ -194,7 +194,8 @@ flowchart TB
   둡니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를 모두 쓰고, MAC은 Neutron이 준 것만
   통과합니다.
 - 라우터는 infra VM의 nftables입니다. `wan`은 공인 IP 121.134.88.42/29 하나이고, 80/tcp를 WAF의 DMZ 주소로
-  포트포워딩합니다. Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다.
+  포트포워딩합니다. Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다. VPN으로 들어온 학습자는 이름 없이
+  `http://121.134.88.42/`를 그대로 입력합니다. WAF는 이름이 없는 `Host`를 그 스택의 워게임 사이트로 보냅니다.
 - board와 corp는 target VM의 Docker 컨테이너이고 WAF 뒤 `web-inner`에 있습니다. DB는 target VM 안의 Docker
   내부망에만 있습니다. Kali의 공격은 모두 WAF를 지나갑니다.
 - 센서는 스택마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스 브리지 `br0`에 인라인으로
