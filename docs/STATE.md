@@ -202,7 +202,7 @@ stand". Still not run on a range:
   idle): Haiku 1 of 1 played, no safeguard stop; Sonnet 5.5 stopped by its
   safeguards in 1 of 2; Opus 5.5 in 2 of 2, and in round 215 Claude Code
   fell back to Opus 4.8 on `[cyber]`, which took all three objectives.
-  Whether a run that falls back is still step 3 is the user's call.
+  A run that falls back still counts as step 3 (`docs/DECISIONS.md` 2026-11-25).
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it

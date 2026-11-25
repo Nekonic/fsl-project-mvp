@@ -90,21 +90,16 @@ three bot rounds at once on the PostgreSQL store. The list is in
    outside a transaction and the one-query alert join run on the range;
    measure three bot rounds at once on them. Free actions read from
    Elasticsearch stay (`docs/STATE.md` "Open points").
-3. The bare address and CRS 920350: every request the learner sends to
-   `http://121.134.88.42/` alerts as "Host header is a numeric IP address",
-   so a defender can spend the origin before any attack; keeping the bare
-   address, giving a name again or leaving 920350 out of the start posture
-   needs the user's ruling (`docs/STATE.md` "Open points").
-4. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
+3. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
    2026-11-25 (`docs/STATE.md` "Open points"); a fall back to Opus 4.8 at
-   step 3 needs the user's ruling.
-5. One `pvp` round, and a loss with response O.
-6. A captured walk as a learner, a live review round with zero countable
+   step 3 still counts as step 3 (`docs/DECISIONS.md` 2026-11-25).
+4. One `pvp` round, and a loss with response O.
+5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-7. External learners, the last task of the Player vs AI work: the
+6. External learners, the last task of the Player vs AI work: the
    public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
    `CR_VPN_HOST`.
-8. Gate 2.
+7. Gate 2.
 
 ## Open points
 

@@ -11373,3 +11373,23 @@ The reviews of the two branches found four defects; all four are fixed on `integ
 - **`slot-boot` stopped on a `/etc/slot.env` without `WARGAMES`** (written by an older platform) under
   `set -u`, before rsyslog was set up. It reads `${WARGAMES:-}`; with none, no listen file gets
   `default_server` and board stays nginx's implicit default.
+
+## 2026-11-25 — CRS 920350 is removed at the WAF
+
+- The user: "CRS 920350 이거 빼야지 도메인으로 이제 접근 안하는데". Since 2026-11-25 a learner reaches
+  the target by its bare address (no hostname, no hosts-file line), so every learner request carries a
+  numeric `Host` and CRS 920350 ("Host header is a numeric IP address") fired on all of them from the first
+  `GET /`. In round 216 it was 2,204 of the round's WAF alerts, and the step-2 defence bot spent the attack's
+  first origin on two plain `GET /` requests.
+- `deploy/waf/modsecurity.conf` removes it with `SecRuleRemoveById 920350` after the
+  `Include .../crs/rules/*.conf` line, baked into the WAF image (`cr-waf-bake5`), not written into the
+  defender's editable exclusion file: it is noise of how the range is reached, not part of the defence's
+  starting posture, so the defender can neither see it as their own tuning nor undo it. The rule test's
+  scratch instance copies the live CRS tree with `modsecurity.conf`, so it carries the same removal.
+
+## 2026-11-25 — An attack-bot run Claude Code falls back to Opus 4.8 still counts as step 3
+
+- The user: "거절당하면 어쩔수없고 그래도 같은 opus인데". A step-3 attack run that Claude Code moves
+  from Opus 5.5 to Opus 4.8 after a safeguard stop (round 215) is a step-3 run; it is not discarded or
+  re-run. The launcher records the fallback (`model_refusal_fallback` with the original and fallback model
+  and the refusal category, the entry above), so a round's record shows which model played it.
