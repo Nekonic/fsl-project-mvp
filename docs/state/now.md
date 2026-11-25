@@ -9,11 +9,21 @@ Updated: 2026-11-25.
 
 ## Where things stand
 
-- The tree is `integrate`: `bot-rounds` (Player vs AI rounds, cut from
-  `restructure`) with `pg-store` (the PostgreSQL store) and
-  `access-address` (the access page's target address) on top, and the
-  fixes of their reviews. `main` still holds the old product.
-- The cloud runs `integrate` since 2026-11-25 (`docs/STATE.md` "Where
+- The tree is `waf5`: `integrate` (`bot-rounds`, the Player vs AI rounds
+  cut from `restructure`, with `pg-store`, the PostgreSQL store, and
+  `access-address`, the access page's target address, and the fixes of
+  their reviews) with CRS 920350 removed at the WAF (`cr-waf-bake5`)
+  and the attack bot's prompt rewritten as an engagement brief. `main`
+  still holds the old product. `waf5` runs on
+  the cloud since the evening of 2026-11-25 (`docs/STATE.md` "Where things
+  stand"): one `bin/cloud up --replace` (exit 0, every slot on
+  `cr-waf-bake5`); a WireGuard `atk_vs_bot` round by the bare address with
+  no 920350 alert and no origin spent before the attack (round 245, all
+  three objectives lost, detection X, response X: the step-2 defence bot
+  ended its run 35 s in, with nothing alerting); acceptance 101 of 101 from
+  the platform VM; the attack bot stopped by its safeguards in 4 of 4 runs
+  (Sonnet 5.5 2 of 2, Opus 5.5 2 of 2), no fall back, no objective taken.
+- Before that the cloud ran `integrate` (2026-11-25, `docs/STATE.md` "Where
   things stand"): `cr-waf-bake4` and `cr-target-bake3` baked from it, one
   `bin/cloud up --replace` that loaded the SQLite store into PostgreSQL
   with every row count equal, the console from the image with no hand copy,
@@ -90,9 +100,12 @@ three bot rounds at once on the PostgreSQL store. The list is in
    outside a transaction and the one-query alert join run on the range;
    measure three bot rounds at once on them. Free actions read from
    Elasticsearch stay (`docs/STATE.md` "Open points").
-3. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
-   2026-11-25 (`docs/STATE.md` "Open points"); a fall back to Opus 4.8 at
-   step 3 still counts as step 3 (`docs/DECISIONS.md` 2026-11-25).
+3. The attack bot on Sonnet and Opus 5.5: with the engagement brief every
+   run of 2026-11-25 evening was stopped by the model's safeguards (4 of 4,
+   `docs/STATE.md` "Open points"); a fall back to Opus 4.8 at step 3 still
+   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot ends
+   its run when nothing alerts (round 245); whether it should keep watching
+   is open.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
