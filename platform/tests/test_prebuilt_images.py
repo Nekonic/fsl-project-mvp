@@ -382,6 +382,28 @@ def test_a_sqlite_backup_is_loaded_into_postgresql_by_the_platform_image_once(tm
         "the first replace after the move to PostgreSQL backs the old VM up as SQLite; the new VM must load it")
 
 
+def test_the_row_counts_the_restore_writes_are_printed_so_the_operator_can_hold_them_against_the_backup(tmp_path, capsys):
+    module = rebuild()
+    store = tmp_path / "db-20261125T042248Z.sqlite3"
+    store.write_bytes(b"SQLite format 3\x00")
+    key = tmp_path / "range-key"
+    key.write_bytes(b"-----BEGIN OPENSSH PRIVATE KEY-----\n")
+
+    class Loading(NewPlatform):
+        target = "ubuntu@203.0.113.7"
+
+        def ssh(self, command, stdin=None, check=True):
+            done = super().ssh(command, stdin, check)
+            if "load_sqlite_store" in command:
+                return subprocess.CompletedProcess([], 0, b"auth_user    7\n", b"rows training_round 5\n")
+            return done
+
+    module.hand_over(Loading(), "secret", key, store)
+
+    printed = capsys.readouterr().out
+    assert "auth_user    7" in printed and "rows training_round 5" in printed
+
+
 def test_a_postgresql_archive_is_restored_by_bin_backup_s_own_restore_program(tmp_path):
     module = rebuild()
     store = tmp_path / "store-20261126T000000Z.pgdump"

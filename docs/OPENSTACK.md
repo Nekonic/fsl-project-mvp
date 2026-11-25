@@ -1368,7 +1368,8 @@ This command replaces the platform VM without losing data. It does these steps:
    `docker compose run ... platform ... manage.py load_sqlite_store`: it
    migrates a copy of the file to the new code, empties PostgreSQL, applies the
    same migrations and copies every table, checking each table's row count, in
-   one transaction.
+   one transaction. The command prints what either restore writes, the row
+   count of each table, to hold against the backup's own counts.
 8. It writes the password into `/opt/cr/openstack-password` in place, so the
    file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
    an older hand-over left in `/opt/cr/openstack.env` and writes the

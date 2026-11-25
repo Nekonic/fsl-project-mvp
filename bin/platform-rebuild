@@ -615,10 +615,18 @@ def hand_over(new: Host, password: str, range_key: Path, store: Path | None,
     if store is not None:
         new.ssh(f"mkdir -p {CHECKOUT}/backups")
         new.copy(store, f"{CHECKOUT}/backups/{store.name}")
-        new.ssh(f"cd {CHECKOUT} && {compose} stop {STORE_SERVICES} && {restore_command(store)}")
+        restored = new.ssh(f"cd {CHECKOUT} && {compose} stop {STORE_SERVICES} && {restore_command(store)}")
+        print_what_the_restore_said(restored)
     new.ssh(settings_rewrite(sideload), platform_settings(sideload).encode())
     new.ssh(password_write(), password.encode())
     new.ssh(f"cd {CHECKOUT} && {compose} up -d --force-recreate" + ("" if sideload else f" {STORE_SERVICES}"))
+
+
+def print_what_the_restore_said(restored: subprocess.CompletedProcess) -> None:
+    for said in (restored.stdout, restored.stderr):
+        text = (said or b"").decode(errors="replace").strip()
+        if text:
+            print(text, flush=True)
 
 
 def restore_command(store: Path) -> str:
