@@ -12,11 +12,13 @@ history.
 
 The product was rebuilt as a side split on `side-split` (user ruling
 2026-11-19: no code is kept or migrated; the old code is reference only), and
-then restructured on the working branch `restructure` (ruling 2026-11-21,
-"The platform is restructured into five units, KYPO-style"). `dev` and
-`main` still hold the old product until gate 2, but the cloud now runs
-`restructure`: on 2026-11-23 its first range was built and checked
-(`docs/DECISIONS.md`, "The first cloud check of `restructure`").
+then restructured on the branch `restructure` (ruling 2026-11-21,
+"The platform is restructured into five units, KYPO-style"). `dev` holds a
+tree equal to `restructure`'s since 2026-11-25 and `main` the old product
+until gate 2; the working branch is `integrate` (`bot-rounds` with
+`pg-store` and `access-address`). The cloud has run `bot-rounds` since
+2026-11-25; on 2026-11-23 the first range of `restructure` was built and
+checked (`docs/DECISIONS.md`, "The first cloud check of `restructure`").
 
 - **Images.** `cr-infra-bake2`, `cr-waf-bake3`, `cr-target-bake2`, baked from
   `restructure`, and since 2026-11-25 `cr-kali-bake4`, baked from `bot-rounds`
@@ -118,7 +120,7 @@ a live range and passed.
 | Bots | the bots get the human's shell (`bots/shell.py`); no generated client: `bots/`, `test/` and `bin/` call the API by `operationId` through `bots/rest.py` | `platform/tests/test_bots.py`; the acceptance suite through `bots/rest.py`, live 2026-11-23 |
 | Lessons | the lesson content is gone; `training/lessons/` is an empty package; `front/` builds again | `npm run build`, `npx vitest run` |
 | Docs | README, ARCHITECTURE, OPENSTACK, this file and `now.md` describe `restructure` and the 2026-11-23 cloud check | this stage |
-| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24) | three difficulty steps (`training/content/steps.yaml`; attack and defence bot Haiku/Sonnet/Opus 5.5 at steps 1/2/3); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; live on 2026-11-25 ("Where things stand") |
+| Player vs AI rounds (branch `bot-rounds`, gate 1 of 2026-11-24; with `pg-store` and `access-address` on `integrate` since 2026-11-25) | three difficulty steps (`training/content/steps.yaml`; attack and defence bot Haiku/Sonnet/Opus 5.5 at steps 1/2/3); attack cards A1-A8 (`cards.yaml`, one ATT&CK id each, drawn at random per round, shown only in the debrief); the `bots` compose service launches Claude Code behind a per-run relay that holds the token, pace and allowance; bot runs, notes, round records kept 90 days, the debrief, the bot-vs-bot baseline started from the problem editor and the percentile; one WireGuard profile per account attached to the human attack seat's kali (`sandbox/vpn.py`, kali `set-peer`); attribution by origin (WAF access-log requests from the round's attacker origins are the attacker's free actions); console: lobby step picker, debrief, records, access page, staff card and step choice and baseline panel | the unit tests of spec §17, `front/` vitest and build; live on 2026-11-25 ("Where things stand") |
 
 ## Not live-verified
 
@@ -140,9 +142,10 @@ stand". Still not run on a range:
 - of the Player vs AI build: a `def_vs_bot` round the attack bot plays to
   the end (it was refused or stopped tonight), a loss with response O (the
   defence spent the origin before the loss), the learner's UDP reach, and
-  three rounds at once on the PostgreSQL store (branch `pg-store`, built and
-  tested locally on 2026-11-25, not deployed: the first replace after it
-  backs the SQLite VM up and loads that backup into PostgreSQL);
+  three rounds at once on the PostgreSQL store (built and tested locally on
+  2026-11-25, on `integrate`, not deployed: the first replace after it
+  backs the SQLite VM up and loads that backup into PostgreSQL); the access
+  page's target address on a range (it needs a waf and a target rebake);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).
@@ -154,7 +157,7 @@ stand". Still not run on a range:
    (`docs/OPENSTACK.md` §5.3).
 2. **The platform under several rounds** (found 2026-11-25): the store moves
    to PostgreSQL and rule applies no longer hold a transaction over ssh
-   (`pg-store`, not deployed yet); `joined_later`'s per-join UPDATE (fixed,
+   (on `integrate`, not deployed yet); `joined_later`'s per-join UPDATE (fixed,
    not run on the range) and free actions read from Elasticsearch at scoring
    time stay.
 3. **External learners** (the user, 2026-11-25: the last task of the Player

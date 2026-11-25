@@ -11351,3 +11351,25 @@ What the build settled (branch `pg-store`, local tests only, not deployed):
   215 a step-3 attack run recorded as Opus 5.5 with one refusal fell back to Opus 4.8 on `[cyber]` and
   played most of the round on it (42 of 68 assistant messages), which the record did not show.
 - Not built: a staff override of a run's model. The step names it.
+
+## 2026-11-25 — `pg-store` and `access-address` on `bot-rounds`, and the fixes of their reviews
+
+`dev` was reset on 2026-11-25 to a tree equal to `restructure`'s. The branch `integrate`, cut from it, carries
+`bot-rounds` and then the commits of `pg-store` and `access-address` (both cut from an older `bot-rounds`).
+The reviews of the two branches found four defects; all four are fixed on `integrate` (local tests only):
+
+- **The SQLite load broke a JSON value holding the literal text `\u0000`.** It dropped the six characters by a
+  plain replace, which also matched after an escaped backslash: a stored attack body `x=\u0000.jpg` became
+  invalid JSON and failed the whole load, and `x=\u0000n` became a newline. The load now parses the value,
+  drops NUL only from its strings and keys, and writes it back only when one was dropped.
+- **One alert carrying a NUL stalled alert ingestion for the rest of the allocation**, not one write as the
+  pg-store entry above said: the cursor is saved only after a page is stored, so every later read failed on
+  the same page. `telemetry/alerts.stored` now drops NUL from the alert before it stores it. Not checked on a
+  range: whether CRS 920270 puts a decoded NUL in `details.data`.
+- **The rule test replayed a bare-address request to the board site in a corp slot.** The scratch instance
+  (`deploy/roles/waf/probe.conf`) keeps board as `default_server`, while a corp slot's live WAF sends an
+  unnamed `Host` to corp. The replay now sends an origin request whose `Host` names no wargame with the
+  round's wargame name, so it meets the same site files as live; `probe.conf` is unchanged and needs no rebake.
+- **`slot-boot` stopped on a `/etc/slot.env` without `WARGAMES`** (written by an older platform) under
+  `set -u`, before rsyslog was set up. It reads `${WARGAMES:-}`; with none, no listen file gets
+  `default_server` and board stays nginx's implicit default.

@@ -9,9 +9,14 @@ Updated: 2026-11-25.
 
 ## Where things stand
 
-- The working branch is `bot-rounds` (Player vs AI rounds), cut from
-  `restructure`, which was cut from `side-split`. `dev` and `main` still hold
-  the old product; the cloud runs `bot-rounds` since 2026-11-25.
+- The working branch is `integrate`, cut from `dev`: `bot-rounds` (Player
+  vs AI rounds, cut from `restructure`) with `pg-store` (the PostgreSQL
+  store) and `access-address` (the access page's target address) on top,
+  and the fixes of their reviews. `dev` was reset on 2026-11-25 to a tree
+  equal to `restructure`'s; `main` still holds the old product. The cloud
+  runs `bot-rounds` since 2026-11-25; `pg-store` and `access-address` are
+  tested locally only, and the access page's address needs a waf and a
+  target rebake.
 - On 2026-11-25 the Player vs AI build ran live (`docs/STATE.md` "Where
   things stand", `docs/DECISIONS.md` 2026-11-25): `cr-kali-bake4`, two
   replaces from `bot-rounds`, rounds from a PC through WireGuard (an
