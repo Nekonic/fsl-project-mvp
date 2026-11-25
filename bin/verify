@@ -36,7 +36,10 @@ unit_suite() {
   local dir n=0 code=0 file list
   dir="$(mktemp -d)"
   for file in $(cd platform && ls -S "$@"); do
-    echo "$file" >> "$dir/$((n % UNIT_JOBS)).files"
+    case "$file" in
+      tests/domain/*) echo "$file" >> "$dir/domain.files" ;;
+      *) echo "$file" >> "$dir/$((n % UNIT_JOBS)).files" ;;
+    esac
     n=$((n + 1))
   done
   if [ "$n" = 0 ]; then
