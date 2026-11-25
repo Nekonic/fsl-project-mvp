@@ -205,12 +205,15 @@ def attack_requests(found: Round) -> list[dict]:
 
 def origin_lines(found: Round) -> list[dict]:
     lines: dict[tuple[str, str | None, str], dict] = {}
+    own = list(found.snapshot["wargame"]["hosts"])[0]
+    named = {host for wargame in content.read_catalog().values() for host in wargame.hosts}
     for request in waf_log.origin_requests(found):
-        line = (request.method, request.host, request.path)
+        host = request.host if request.host in named else own
+        line = (request.method, host, request.path)
         if line in lines:
             lines[line]["markers"].append(request.marker)
             continue
-        sent = ruletest.sent_request(request.marker, {"method": request.method, "host": request.host,
+        sent = ruletest.sent_request(request.marker, {"method": request.method, "host": host,
                                                       "path": request.path})
         lines[line] = {**sent, "markers": [request.marker], "body_missing": request.method in BODY_METHODS}
     return list(lines.values())

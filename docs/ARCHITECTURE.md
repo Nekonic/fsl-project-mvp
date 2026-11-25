@@ -581,6 +581,9 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   `WARGAMES`(그 스택의 워게임)에만 `default_server`를 붙입니다. 그래서 `Host`가 공인 IP인 요청도 그 스택의 사이트로
   가고, `board.com`·`corp.com` 이름으로 보낸 요청은 전처럼 이름으로 갈립니다. corp의 WordPress는
   `WORDPRESS_CONFIG_EXTRA`로 `WP_HOME`을 요청의 `Host`에 맞춰, 주소로 들어온 학습자를 `corp.com`으로 돌려보내지 않습니다.
+  룰 테스트의 임시 인스턴스(`probe.conf`)는 board를 `default_server`로 두므로, 룰 테스트가 origin 요청을 다시 보낼 때
+  어느 워게임의 이름도 아닌 `Host`(공인 IP 등)는 라운드 워게임의 이름으로 바꿔 보냅니다(`training/defence/rules.py`
+  `origin_lines`). 그래야 라이브 WAF와 같은 사이트 설정이 적용됩니다.
   `log-shipper.conf`가 Tag `nginx-access`로 보내고(`refused.log` 대체), infra의 `log-relay.conf`가 collector로 넘기며, `deploy/filebeat/filebeat.yml`과
   `deploy/elastic/ingest-pipeline.json`이 모듈 `nginx_access`로 받습니다. 오류 로그는 Tag `nginx-error`, 모듈
   `nginx_error`입니다.
