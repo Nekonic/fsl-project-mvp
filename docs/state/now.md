@@ -81,8 +81,9 @@ have not run live). The list is in `docs/STATE.md` "Not live-verified".
    the write lock, free actions read from Elasticsearch (the alert-join fix
    of 2026-11-25 has not run on the range)
    (`docs/STATE.md` "Open points").
-3. The attack bot on Haiku, Sonnet and Opus 5.5 (steps 1, 2, 3) with the
-   range context and the call file: measure def_vs_bot rounds.
+3. The attack bot on Sonnet and Opus 5.5: measured once each per wave on
+   2026-11-25 (`docs/STATE.md` "Open points"); a fall back to Opus 4.8 at
+   step 3 needs the user's ruling.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.

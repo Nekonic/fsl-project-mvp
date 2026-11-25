@@ -35,8 +35,7 @@ CREDENTIAL_VARIABLE = "CLAUDE_CODE_OAUTH_TOKEN"
 CLAUDE = "claude"
 CLAUDE_CODE_VERSION_VARIABLE = "CR_CLAUDE_CODE_VERSION"
 STOP_GRACE_SECONDS = 15.0
-CALL_FILE = "call.json"
-ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)", f"Edit(/{CALL_FILE})")
+ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)", "Edit(/*.json)")
 DENIED = ("mcp__*", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(less *)", "Bash(more *)", "Bash(grep *)",
           "Bash(rg *)", "Bash(find *)", "Bash(ls *)", "Bash(tree *)", "Bash(stat *)", "Bash(file *)", "Bash(wc *)",
           "Bash(diff *)", "Bash(strings *)", "Bash(od *)", "Bash(xxd *)", "Bash(env *)", "Bash(printenv *)",
@@ -60,6 +59,7 @@ NOTE_TEXT_MAX = 2000
 CLOSING_MAX = 10000
 FLUSH_SECONDS = 5.0
 REFUSAL_SUBTYPES = frozenset({"model_refusal_fallback", "model_refusal_no_fallback"})
+SAFEGUARD_NOTICE = "safeguards stopped"
 TIMED_OUT = "timed_out"
 CRASHED = "crashed"
 
@@ -143,6 +143,11 @@ class Transcript:
             self.note("denied", event.get("message") or json.dumps(event.get("tool_input") or {}))
         elif kind == "system" and subtype in REFUSAL_SUBTYPES:
             self.refusals += 1
+            self.note("refused", f"{subtype} {event.get('original_model')} -> {event.get('fallback_model')} "
+                                 f"[{event.get('api_refusal_category')}]: {event.get('content')}")
+        elif kind == "system" and subtype == "informational" and SAFEGUARD_NOTICE in str(event.get("content")):
+            self.refusals += 1
+            self.note("refused", event.get("content"))
         elif kind == "result":
             self.result = dict(event)
             self.note("result", f"{subtype} turns={event.get('num_turns')} cost_usd={event.get('total_cost_usd')}")

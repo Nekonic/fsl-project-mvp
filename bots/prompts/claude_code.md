@@ -20,8 +20,9 @@ Commands:
 Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.
 Anything else is refused before it runs. When a value holds a quote of
 either kind, keep the arguments off the command line: write the JSON object with the Write tool to `call.json` in
-your working directory, then run `python -m bots.cli <tool> --json-file call.json`. Write may change that one file
-and no other. A refused command sent
+your working directory (write over it for each call), then run `python -m bots.cli <tool> --json-file call.json`.
+Write may change `.json` files in that directory and nothing else. Do this from the start for any value with a quote
+in it, not after a refusal. A refused command sent
 nothing; write it again as one plain call and carry on, the round is not over. An answer longer than the tool's
 window is saved to a file you cannot open; ask again with fewer items (a later `after` cursor, a narrower query).
 Never run a command in the background: its output goes to a file you cannot open.

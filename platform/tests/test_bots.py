@@ -658,14 +658,14 @@ def claimed_run(side, stance=None):
             "card": None, "prompt": {"side": "attacker" if side == "attack" else "defender", "stance": stance}}
 
 
-def test_launcher_command_runs_claude_code_on_bash_and_one_call_file_in_an_empty_directory_with_the_step_s_model():
+def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_directory_with_the_step_s_model():
     attack = claimed_run("attack", stance="Your stance this round, quoted from MITRE ATT&CK (T1190 ...)")
     command = launcher.child_command(attack, "opening", "bot3")
     claude = command[command.index("claude"):]
 
     assert command[:3] == ["sudo", "-u", "bot3"] and "CR_PLAYER_TOKEN" in command[4] and TOKEN not in command
     assert claude[claude.index("--tools") + 1] == "Bash,Write" and claude[claude.index("--model") + 1] == "claude-haiku-5-5"
-    assert "Edit(/call.json)" in claude[claude.index("--allowedTools"):claude.index("--disallowedTools")]
+    assert "Edit(/*.json)" in claude[claude.index("--allowedTools"):claude.index("--disallowedTools")]
     assert claude[claude.index("--max-budget-usd") + 1] == "2.0" and claude[claude.index("--max-turns") + 1] == "200"
     assert "Bash(python -m bots.cli *)" in claude and "Bash(cat *)" in claude[claude.index("--disallowedTools"):]
     assert {"--safe-mode", "--strict-mcp-config", "--no-session-persistence"} <= set(claude)
@@ -697,6 +697,20 @@ def test_the_model_claude_code_started_on_is_a_note_of_the_run():
     transcript.take({"type": "system", "subtype": "init", "model": "claude-sonnet-5-5"})
 
     assert [(note["kind"], note["text"]) for note in transcript.taken()] == [("result", "model claude-sonnet-5-5")]
+
+
+def test_a_safeguard_stop_and_a_fallback_to_another_model_are_counted_and_noted_with_both_models():
+    transcript = launcher.Transcript(hidden=())
+
+    transcript.take({"type": "system", "subtype": "informational", "level": "notice",
+                     "content": "Opus 5.5's safeguards stopped the response above · continuing once with that noted"})
+    transcript.take({"type": "system", "subtype": "model_refusal_fallback", "original_model": "claude-opus-5-5",
+                     "fallback_model": "claude-opus-4-8", "api_refusal_category": "cyber",
+                     "content": "Opus 4.8 is answering instead"})
+
+    texts = [note["text"] for note in transcript.taken()]
+    assert transcript.refusals == 2 and "safeguards stopped" in texts[0]
+    assert texts[1] == "model_refusal_fallback claude-opus-5-5 -> claude-opus-4-8 [cyber]: Opus 4.8 is answering instead"
 
 
 def test_notes_are_masked_of_the_player_token_the_run_key_and_any_anthropic_key():

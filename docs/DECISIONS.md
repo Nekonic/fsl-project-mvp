@@ -11259,9 +11259,16 @@ is kept outside the repo; this entry keeps what changed the product.
   refused it, and the prompt's `'` rule was not followed. Checked against Claude Code 2.1.331 in
   `dontAsk` with the launcher's flags: the raw quote is refused; `'"'"'`, `'\''` and a double-quoted
   `--json` are allowed; a here-doc into `bots.cli call` is refused. So the fix does not rest on the model's
-  escaping: the child gets the Write tool, allowed only `Edit(/call.json)` (anchored at its working
-  directory; writes to `other.json` and `bots/cli.py` were refused, a second write of `call.json` was
-  allowed), and the CLI takes `--json-file call.json`. Only a `.json` file can be written, so nothing the
-  bot writes is importable by `python -m bots.cli`.
-- The launcher notes the model Claude Code started on (its `init` event) as a `result` note of the run.
+  escaping: the child gets the Write tool, allowed only `Edit(/*.json)` (anchored at its working
+  directory: `call2.json` and a second write of `call.json` were allowed; `sub/x.json`, `bots/cli.py`,
+  `call.py` and `.claude/settings.json` were refused), and the CLI takes `--json-file call.json`. Only a
+  top-level `.json` file can be written, so nothing the bot writes is importable by `python -m bots.cli`.
+  The first form allowed only `call.json`; in the first live round a Haiku bot wrote `call2.json`, was
+  refused and stopped using the file.
+- The launcher notes the model Claude Code started on (its `init` event) as a `result` note of the run,
+  and counts and notes each safeguard stop: Claude Code's `informational` notice "<model>'s safeguards
+  stopped the response above · continuing once with that noted", and `model_refusal_fallback` with the
+  original and fallback model and the refusal category. Before, the notice was not counted, and in round
+  215 a step-3 attack run recorded as Opus 5.5 with one refusal fell back to Opus 4.8 on `[cyber]` and
+  played most of the round on it (42 of 68 assistant messages), which the record did not show.
 - Not built: a staff override of a run's model. The step names it.

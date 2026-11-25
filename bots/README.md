@@ -123,9 +123,10 @@ action is every call that is not a `GET`, and the three terminal grants; forfeit
 `bots.cli tools` hides the operations the step does not give (`CR_BOT_OPERATIONS`).
 
 Claude Code runs in print mode with Bash and Write as its only tools. Bash is allowed only `python -m bots.cli` and
-`sleep`; Write only `call.json` in its working directory (`Edit(/call.json)`), so arguments holding a quote reach
+`sleep`; Write only `.json` files at the top of its working directory (`Edit(/*.json)`), so arguments holding a quote reach
 the CLI through `--json-file` and never through the shell's quoting (a raw `'` inside a single-quoted `--json`
-leaves the command unparsed, and Claude Code refuses it). The read-only commands that could reach a file or the environment denied, in `--safe-mode` with no setting sources,
+leaves the command unparsed, and Claude Code refuses it). It runs with the read-only commands that could reach a
+file or the environment denied, in `--safe-mode` with no setting sources,
 from an empty working directory and a configuration directory of its own. One setting is passed on the command
 line: `bashOutputMaxChars` 128000, so an answer such as `defence_waf` (about 42 KB) comes back inline; past
 Claude Code's default of 30,000 characters it is saved to a file the child cannot read, since every file-reading
@@ -135,7 +136,9 @@ no cases, `expect` strings, target source or WAF roles are in it. The launcher r
 the secrets; each child runs as one of `bot0`..`bot7`, its own uid with its own home, so one bot cannot read another
 run's key. The Claude Code credential is `/run/secrets/claude_oauth_token`, passed to the child as
 `CLAUDE_CODE_OAUTH_TOKEN`; with no credential or no key the launcher claims nothing. The bot's text, its calls,
-permission denials and relay refusals are reported as notes (`bot_run_report`) with the player token, the run key,
+permission denials, relay refusals, the model Claude Code started on and each safeguard stop (Claude Code's
+"safeguards stopped the response" notice, and a `model_refusal_fallback` with the model it fell back to) are
+reported as notes (`bot_run_report`) with the player token, the run key,
 the credential and any `sk-ant-` string masked, and the closing text, cost, turns and refusal count with
 `bot_run_finish`. A run that outlasts `CR_BOT_RUN_SECONDS` (two hours) is stopped as `timed_out`: SIGTERM, which
 `sudo` passes on, then after 15 s SIGKILL to every process of the run's `botN` uid; a launcher that
