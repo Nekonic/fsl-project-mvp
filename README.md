@@ -510,7 +510,7 @@ sudo docker compose start platform rebuild
 돌리지 않았습니다.
 
 - 콘솔(`front/`)은 만들었지만 가짜 응답(`front/mock/`)으로만 확인했습니다. 플랫폼 이미지의 node 단계가 빌드하고
-  nginx가 `/app/front/dist`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
+  nginx가 `/srv/front`로 내줍니다. API에 없는 값(지난 라운드의 결과, 로비의 연 시각 등)은
   아직 화면에 없습니다. 플레이어별 터미널(`nginx.conf`, `vm-terminal.sh`)은 오프라인 테스트만 거쳤고 훈련 환경에서는 아직
   열어 보지 않았습니다.
 - WAF 접근 로그와 오류 로그 전송, 방어 파일(`/etc/nginx/defence/`), infra 라우터의 `pool`·`spent` 집합, CRS 룰

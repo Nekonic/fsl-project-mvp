@@ -185,7 +185,7 @@ redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
 deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/
                kali/  waf/  proxy/   역할 디렉터리가 링크로 가리키는 원본(proxy/stamp.py는 사본 없이 하나)
-front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /app/front/dist로 내줌
+front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /srv/front로 내줌
   src/theme/   tokens.css(색, 글꼴, 크기, 간격, 둥글기, 그림자 값)  components.css(모든 컴포넌트 클래스)
   src/ui/      props만 받아 클래스를 그리는 작은 컴포넌트: Button, Badge, Card, Hero, Table, Field, Notice, Shell(TopNav,
                PageShell), Console(Rail, Pane, PaneHeader, Aside), Site, Editor, Ops, Record, Tiles, Text, Icon
@@ -611,7 +611,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 
 - `front/`는 가짜 응답(`front/mock/`)으로만 확인했고 훈련 환경에서는 아직 돌리지 않았습니다. 플랫폼 Dockerfile의
   node 단계가 `npm run types`(openapi-typescript)로 `front/src/api/schema.d.ts`를 만들고 빌드한 뒤 `dist`를
-  `/app/front/dist`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다.
+  `/srv/front`에 넣습니다. `strings/server.json`은 빌드에 쓰이지만 `dist`에는 들어가지 않습니다.
 - API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
 - infra, waf, kali, target 이미지 다시 굽기와 `wargames/<id>/probes/` 녹화(`bin/record-probes`). 배포 파일은 고쳐

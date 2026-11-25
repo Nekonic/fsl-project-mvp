@@ -316,11 +316,11 @@ def test_the_console_is_the_front_build_served_last_with_every_other_path_fallin
     last = console().block[-1]
 
     assert (last.name, last.args) == ("location", ["/"])
-    assert last.values("root") == [["/app/front/dist"]]
+    assert last.values("root") == [["/srv/front"]]
     assert last.values("try_files") == [["$uri", "/index.html"]]
     assert "proxy_pass" not in last.text(), "Django serves the API, not the console"
     assets = location(console(), "/assets/")
-    assert assets.values("root") == [["/app/front/dist"]]
+    assert assets.values("root") == [["/srv/front"]]
     assert assets.values("try_files") == [["$uri", "=404"]]
     assert http().values("include")[0] == ["/etc/nginx/mime.types"]
 
@@ -562,3 +562,14 @@ def test_a_terminal_check_that_answers_nothing_known_is_unavailable_and_a_sign_i
     assert browser_sees(side, 502, "") == (503, errors.Unavailable().shown())
     found = regex_location(console(), f"/vm-terminal/{side}/12/ws")
     assert ["401", "=", "@sign-in"] in found.values("error_page")
+
+
+def test_no_compose_mount_covers_the_console_the_image_carries():
+    roots = {root[0] for block in (console().block[-1], location(console(), "/assets/"))
+             for root in block.values("root")}
+    for name, service in composed.services().items():
+        for volume in service.get("volumes") or ():
+            target = volume.split(":")[1] if isinstance(volume, str) else volume["target"]
+            for root in roots:
+                assert not (root == target or root.startswith(target.rstrip("/") + "/")), (
+                    f"{name} mounts {target} over the console root {root}, hiding the built front end")
