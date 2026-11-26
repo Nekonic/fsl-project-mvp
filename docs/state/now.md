@@ -9,7 +9,20 @@ Updated: 2026-11-26.
 
 ## Where things stand
 
-- The tree is `bundle-1126` (2026-11-26): `defence-watch` with the bot
+- The tree is `review-fix` (2026-11-26): `bundle-1126` with the fixes of
+  a live review round. The score pane shows each objective's difficulty and
+  the points each lost one adds; the loot pane names every objective that
+  fell; board and corp objective names are Korean; the VPN profile lists
+  only the target of the round it is attached to; the runner keeps a
+  command's bytes as sent; a Claude child that failed finishes as error and
+  its run as failed; the kali command log stamps a command when it starts.
+  On the cloud: one replace (exit 0, 13 min 43 s), then the full
+  acceptance from the platform VM 101 of 101 in 1 h 36 min. Not on the
+  range yet: the kali change (`deploy/kali/operator-log.sh`) needs a kali
+  bake, deferred, so the slots still run `cr-kali-bake4`'s command log.
+  The bot OAuth token on the VM is revoked; bot runs fail until the user
+  gives a new one.
+- Before that the tree was `bundle-1126` (2026-11-26): `defence-watch` with the bot
   polling the rule test as a detached job, the rule test replayed in one
   curl over one SSH call, the attack prompt rewritten to name the round's
   attack profile for the debrief, and the watch check timed from the last
@@ -117,18 +130,20 @@ review, the edge sets after an infra reboot. The list is in
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. The attack bot still meets 2 refusals a run on Sonnet and Opus 5.5
+2. A new bot OAuth token from the user, then a kali bake for
+   `deploy/kali/operator-log.sh`.
+3. The attack bot still meets 2 refusals a run on Sonnet and Opus 5.5
    and goes on; it took no objective in rounds 310 and 311.
-3. A platform read now and then takes over 5 s with three rounds at once
+4. A platform read now and then takes over 5 s with three rounds at once
    (the watch skips that check); the ingest inside each read is the
    suspect (`docs/STATE.md` "Open points").
-4. One `pvp` round.
-5. A captured walk as a learner, a live review round with zero countable
+5. One `pvp` round.
+6. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-6. External learners, the last task of the Player vs AI work: the
+7. External learners, the last task of the Player vs AI work: the
    public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
    `CR_VPN_HOST`.
-7. Gate 2.
+8. Gate 2.
 
 ## Open points
 

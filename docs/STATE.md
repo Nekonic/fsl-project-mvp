@@ -22,8 +22,18 @@ round and fed by the launcher until it ends, and `bundle-1126` on top
 (the bot polls the rule test as a detached job, the rule test replays in
 one curl over one SSH call, the attack prompt names the round's attack
 profile for the debrief, the watch check is timed from the last start and
-capped); `main` holds the old product until gate 2. The cloud runs
-`bundle-1126` since 2026-11-26: one replace; rounds 309 (`atk_vs_bot`,
+capped), and `review-fix` on top (the fixes of a live review round: each
+objective's difficulty and points in the score pane, every fallen objective
+in the loot pane, Korean objective names, the VPN profile listing only its
+round's target, the runner keeping a command's bytes as sent, a failed
+Claude child finishing as error, the kali command log stamping a command
+when it starts); `main` holds the old product until gate 2. The cloud runs
+`review-fix` since the evening of 2026-11-26: one replace (exit 0,
+13 min 43 s), the full acceptance from the platform VM 101 of 101 in
+1 h 36 min. The kali bake for `deploy/kali/operator-log.sh` is deferred,
+so the slots run `cr-kali-bake4`'s command log; the bot OAuth token on the
+VM is revoked, and bot runs fail until the user gives a new one. Before
+that it ran `bundle-1126`: one replace; rounds 309 (`atk_vs_bot`,
 step 2: all three objectives lost, detection O and response O, the bot's
 WAF version live 118 s after the first alert), 310 (`def_vs_bot`, step 2,
 Sonnet 5.5: 118 turns, 2 refusals, the bot went on, no objective lost) and
