@@ -155,6 +155,19 @@ def test_the_shell_hook_logs_what_is_typed_where_the_box_reads_it_and_not_the_la
     assert [(c.marker, c.text) for c in box.commands(logged, CONFIG)] == [("case-1", "nmap --version")]
 
 
+def test_the_shell_hook_stamps_a_command_when_it_starts_not_when_its_prompt_returns(tmp_path):
+    shell = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-c",
+         'source "$1"; __log_command; history -s "sleep 3"; date -u +%s; sleep 3; __log_command',
+         "bash", str(_hook(tmp_path))],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    started = datetime.fromtimestamp(int(shell.stdout.split()[0]), tz=timezone.utc)
+    logged = FakeRunner().answer("cat", (tmp_path / "commands.log").read_text())
+    assert [(c.at - started).total_seconds() <= 1 for c in box.commands(logged, CONFIG)] == [True]
+
+
 def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_s_shell_does(tmp_path):
     shell = subprocess.run(
         ["bash", "--noprofile", "--norc", "-c", 'source "$1"; __log_command; __log_command; __log_command',
