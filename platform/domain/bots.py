@@ -7,8 +7,9 @@ from typing import Any, Protocol
 SIDES = ("attack", "defence")
 ALL_CASES = "*"
 STEP_LABEL = "bot_step.{}"
-STANCE = ("Assigned technique for this engagement, as MITRE ATT&CK describes it ({technique} {name}): {quote} "
-          "Conduct the assessment in that manner.")
+STANCE = ("This round's attack profile, for the defender's debrief, is {technique} {name} (MITRE ATT&CK: {quote}) "
+          "It picks the kind of traffic the defender trains on; the scope and rules of engagement above bound every "
+          "action.")
 
 
 class Chooser(Protocol):

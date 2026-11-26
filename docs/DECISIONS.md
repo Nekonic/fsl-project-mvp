@@ -11455,3 +11455,36 @@ The reviews of the two branches found four defects; all four are fixed on `integ
   a read that fails returns nothing, so a tick passed silently. A failed read now writes one line to the
   launcher log (`run <n>: watch read <operation> failed: <why>`, the exception or the status and the first
   200 characters of the answer, secrets masked) and the tick passes as before. The cause is not measured.
+
+
+## 2026-11-26 — The attack-bot prompt says what the round is, not how to get past the defender
+
+- In the four attack-bot runs of 2026-11-25 that stopped with a refusal, every stop came where the bot left the
+  declared cases for its own blind SQL extraction or brute force. Three parts of the prompt read as an
+  adversary's evasion brief: the card stance ended "Conduct the assessment in that manner"; card A6 (T1110
+  Brute Force) quoted the passage on changing infrastructure to bypass location-based conditional access; and
+  the Origins section told the bot to aim each request because a defender bans scanning and brute force first,
+  and to move origin once the defender started refusing it.
+- Rewritten to say truthfully what the round is. The stance (`platform/domain/bots.py`) names the round's
+  attack profile for the defender's debrief, with the ATT&CK quote, and says it picks the kind of traffic the
+  defender trains on while the scope and rules of engagement bound every action. A6 now quotes the opening
+  sentence of its own page (https://attack.mitre.org/versions/v20/techniques/T1110/, copied on 2026-11-26):
+  "Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when
+  password hashes are obtained." The Origins section of `bots/prompts/attacker.md` says each origin is an
+  attacker address the range gives, a ban at the WAF is the response the score measures, the next address
+  shows in the defender's traffic view, and to move when the current address no longer reaches the target.
+  The objectives say the accounts are the practice application's own placeholder accounts (the board's
+  `seed` command creates them when its container starts, the platform sets fresh random passwords at round
+  start) and that retrieved data goes only to `attack_loot`, which checks it against the target's stored data.
+- Nothing asks the bot to conceal, obfuscate or split its requests. Not measured yet; the next bot rounds
+  measure it.
+
+## 2026-11-26 — A defence watch check holds the cadence and logs one line
+
+- Round 278 had no feed for 5 min 35 s under sqlmap load. A check made up to seven reads in a row, each with a
+  60 s timeout, and the next wait began only after the check ended, so slow reads pushed every feed back.
+- Now each check is timed from the start of the one before (a check that overran skips the slots it missed),
+  has 80% of the interval for its reads, and each read waits at most 5 s and never past that time; a read
+  past it is not sent. A read that fails or is not sent ends the check without moving the alert or traffic
+  cursor, so the next check reads the same rows. Each check writes one launcher log line with its duration and
+  every read's status, secrets masked; it replaces the per-read failure line of the entry above.
