@@ -1,4 +1,5 @@
 import http.client
+import http.server
 import importlib.util
 import re
 import shlex
@@ -198,3 +199,40 @@ def test_a_recorded_response_written_by_the_probe_recorder_is_what_the_stub_answ
                                    marker="probe-1", in_manifest=True, folder=tmp_path)
 
     assert stub.answers([ruletest.probe_request(recording)]) == {"probe-1": (403, b"denied", "text/html; charset=utf-8")}
+
+
+def test_the_replay_script_sends_each_probe_through_one_curl_and_reads_each_status_by_its_place(tmp_path):
+    seen = []
+
+    class Capturing(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def answer(self) -> None:
+            body = self.rfile.read(int(self.headers.get("Content-Length") or 0)).decode()
+            seen.append((self.command, self.path, self.headers["Host"], self.headers["X-Request-ID"], body))
+            self.send_response(403 if "evil" in self.path else 200)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+        do_GET = do_POST = do_PUT = answer
+
+        def log_message(self, shape, *args) -> None:
+            return
+
+    probes = [{"marker": "probe-1", "method": "GET", "host": "board.com", "path": '/s/?q=1%27&x=a"b\\c',
+               "headers": {"Host": "evil", "Content-Length": "9"}},
+              {"marker": "probe-2", "method": "POST", "path": "/evil/", "body": "@/etc/passwd\nnext"},
+              {"marker": "probe-3", "method": "PUT", "path": "/../up", "body": ""}]
+    with http.server.ThreadingHTTPServer(("127.0.0.1", 0), Capturing) as serving:
+        threading.Thread(target=serving.serve_forever, daemon=True).start()
+        scratch = crs.Scratch(prefix=str(tmp_path), port=serving.server_address[1], upstream_port=0)
+        try:
+            ran = subprocess.run(["sh"], input=crs.replay_script(scratch, probes), capture_output=True, text=True,
+                                 timeout=30)
+        finally:
+            serving.shutdown()
+
+    assert crs.replayed_statuses(ran.stdout, probes) == {"probe-1": 200, "probe-2": 403, "probe-3": 200}
+    assert seen == [("GET", '/s/?q=1%27&x=a"b\\c', "board.com", "probe-1", ""),
+                    ("POST", "/evil/", "localhost", "probe-2", "@/etc/passwd\nnext"),
+                    ("PUT", "/../up", "localhost", "probe-3", "")]

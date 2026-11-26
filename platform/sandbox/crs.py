@@ -34,6 +34,9 @@ PROXIED = re.compile(r"proxy_pass\s+[^;]+;")
 LOOPBACK = "127.0.0.1"
 PROBE_TIMEOUT = 15
 SCRATCH_TIMEOUT = 600.0
+READY_POLLS = 50
+REPLAYED_TAG = "cr.probe"
+REPLAYED = re.compile(r"^cr\.probe (\d+) (\d{3})$", re.M)
 
 
 def workers_of(pid: str) -> str:
@@ -330,16 +333,51 @@ def scratch_check(files, gateway, config: WafConfig, test_id: int) -> list[dict]
         _removed(gateway, scratch)
 
 
-def probe_argv(scratch: Scratch, probe: dict) -> list[str]:
-    argv = ["curl", "-sS", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", str(PROBE_TIMEOUT),
-            "--path-as-is", "-X", str(probe.get("method") or "GET"),
-            "-H", f"Host: {probe.get('host') or 'localhost'}", "-H", f"X-Request-ID: {probe['marker']}"]
-    for name, value in (probe.get("headers") or {}).items():
-        if name.lower() not in ("host", "x-request-id", "content-length"):
-            argv += ["-H", f"{name}: {value}"]
+def _config_value(value: str) -> str:
+    escaped = (value.replace("\\", "\\\\").replace('"', '\\"')
+               .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"))
+    return f'"{escaped}"'
+
+
+def body_path(scratch: Scratch, at: int) -> str:
+    return f"{scratch.prefix}/bodies/{at}"
+
+
+def probe_config(scratch: Scratch, at: int, probe: dict) -> list[str]:
+    headers = [f"Host: {probe.get('host') or 'localhost'}", f"X-Request-ID: {probe['marker']}"]
+    headers += [f"{name}: {value}" for name, value in (probe.get("headers") or {}).items()
+                if name.lower() not in ("host", "x-request-id", "content-length")]
+    lines = ['output = "/dev/null"', f'write-out = "{REPLAYED_TAG} {at} %{{http_code}}\\n"',
+             f"max-time = {PROBE_TIMEOUT}", "path-as-is", f"request = {_config_value(str(probe.get('method') or 'GET'))}"]
+    lines += [f"header = {_config_value(header)}" for header in headers]
     if probe.get("body") is not None:
-        argv += ["--data-binary", "@-"]
-    return argv + [f"http://{LOOPBACK}:{scratch.port}{probe.get('path') or '/'}"]
+        lines.append(f"data-binary = {_config_value('@' + body_path(scratch, at))}")
+    return lines + [f"url = {_config_value(f'http://{LOOPBACK}:{scratch.port}' + (probe.get('path') or '/'))}"]
+
+
+def _laid(text: str, path: str) -> str:
+    return f"printf %s {base64.b64encode(text.encode()).decode()} | base64 -d > {path}"
+
+
+def replay_script(scratch: Scratch, probes: Sequence[dict]) -> str:
+    config = "\nnext\n".join("\n".join(probe_config(scratch, at, probe)) for at, probe in enumerate(probes))
+    return "\n".join([
+        "set -e", f"mkdir -p {scratch.prefix}/bodies",
+        *(_laid(probe["body"], body_path(scratch, at)) for at, probe in enumerate(probes)
+          if probe.get("body") is not None),
+        _laid(config + "\n", f"{scratch.prefix}/probes.curl"),
+        f"curl -s --config {scratch.prefix}/probes.curl 2>/dev/null || true",
+    ]) + "\n"
+
+
+def replayed_statuses(output: str, probes: Sequence[dict]) -> dict[str, int]:
+    answered = {int(at): int(status) for at, status in REPLAYED.findall(output)}
+    return {probe["marker"]: answered.get(at, 0) for at, probe in enumerate(probes)}
+
+
+def upstream_ready(port: int) -> str:
+    return (f"tries=0; until curl -s -o /dev/null http://{LOOPBACK}:{port}/; do "
+            f"tries=$((tries+1)); [ $tries -lt {READY_POLLS} ] || exit 1; sleep 0.1; done")
 
 
 def audit_alerts(text: str) -> dict[str, list[dict]]:
@@ -375,16 +413,15 @@ def scratch_test(files, gateway, config: WafConfig, test_id: int, probes: Sequen
             f"nohup python3 {shlex.quote(config.probe_upstream)} --port {scratch.upstream_port} "
             f"--probes {scratch.prefix}/probes.json >{scratch.prefix}/logs/upstream.log 2>&1 & "
             f"echo $! > {scratch.prefix}/run/upstream.pid; "
-            f"nginx -p {scratch.prefix} -c {scratch.conf}")], stdin=json.dumps(list(probes)))
+            f"nginx -p {scratch.prefix} -c {scratch.conf}; {upstream_ready(scratch.upstream_port)}")],
+            stdin=json.dumps(list(probes)))
         if not started.ok:
             raise refused(f"the scratch WAF did not start: {started.output.strip()[-300:]}",
                           [problem(None, None, f"the scratch WAF did not start: {started.output.strip()[-300:]}")])
-        statuses = {}
-        for probe in probes:
-            body = probe.get("body")
-            ran = gateway(probe_argv(scratch, probe), stdin=body if body is not None else None,
-                          timeout=PROBE_TIMEOUT + 15)
-            statuses[probe["marker"]] = int(ran.output.strip()[-3:]) if ran.output.strip()[-3:].isdigit() else 0
+        replayed = gateway(["sh", "-c", f"cat > {scratch.prefix}/replay.sh && sh {scratch.prefix}/replay.sh"],
+                           stdin=replay_script(scratch, probes),
+                           timeout=SCRATCH_TIMEOUT + PROBE_TIMEOUT * len(probes)) if probes else None
+        statuses = replayed_statuses(replayed.output if replayed else "", probes)
         alerts = audit_alerts(gateway(["sh", "-c", f"cat {scratch.audit} 2>/dev/null; true"]).output)
         return {marker: {"status": status, "alerts": alerts.get(marker, [])} for marker, status in statuses.items()}
     finally:
