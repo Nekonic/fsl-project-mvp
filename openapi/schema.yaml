@@ -3738,6 +3738,10 @@ components:
           allOf:
           - $ref: '#/components/schemas/LootedObjective'
           nullable: true
+        objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/LootedObjective'
         remaining:
           $ref: '#/components/schemas/Remaining'
       required:
