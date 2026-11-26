@@ -63,8 +63,10 @@ python -m bots.cli defence_waf_test_result --job 1
 
 It prints `{running: true, running_s}` until the answer is stored, then the test's own answer; its `body.test`
 is the test id for `defence_waf_apply`'s `tested` and for `defence_waf_test_result` by id. A second test of the
-same engine while one runs is refused locally with `test_running`, before the relay counts it. `run` keeps the
-blocking call.
+same engine while one runs is refused locally with `test_running`, before the relay counts it. The poll answers
+`unknown_job` when no job of that number exists in the round, `job_lost` when the job's worker stopped without an
+answer (start the test again) and `job_failed` when the job's call raised, with the error in the message. `run`
+keeps the blocking call.
 
 ## The shell
 
@@ -198,10 +200,6 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 | `origins_spent` | 409 | every attack origin is spent |
 | `stale_version` | 409 | `base_version` is not the applied version; `params` has the current one |
 | `test_busy` | 409 | another rule test of this engine is running |
-| `test_running` | local | this bot already has a rule test job running; `params.job` names it |
-| `unknown_job` | local | no rule test job of that number in this round |
-| `job_lost` | local | the job's worker stopped without an answer; start the test again |
-| `job_failed` | local | the job's call raised; the message names the error |
 | `not_tested` | 409 | no rule test of this round passed with the same WAF files |
 | `suricata_syntax` | 422 | the Suricata text was refused, with `line` |
 | `crs_refused`, `apply_refused` | 422 | the WAF files or the apply was refused |
