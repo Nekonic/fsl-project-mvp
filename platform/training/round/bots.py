@@ -16,7 +16,7 @@ from users import players as player_tokens
 
 QUEUED, RUNNING, FINISHED, FAILED = "queued", "running", "finished", "failed"
 OVER = (FINISHED, FAILED)
-FAILED_EXITS = frozenset({"launcher_restarted", "crashed", "round_ended", "timed_out"})
+FAILED_EXITS = frozenset({"launcher_restarted", "crashed", "error", "round_ended", "timed_out"})
 NOTE_TEXT_MAX = 2000
 SIDE_PROMPTS = {"attack": "attacker", "defence": "defender"}
 

@@ -65,6 +65,7 @@ REFUSAL_SUBTYPES = frozenset({"model_refusal_fallback", "model_refusal_no_fallba
 SAFEGUARD_NOTICE = "safeguards stopped"
 TIMED_OUT = "timed_out"
 CRASHED = "crashed"
+FAILED_RUN = "error"
 OUT_OF_TURNS = "error_max_turns"
 OUT_OF_BUDGET = "error_max_budget_usd"
 WATCHED_SIDES = frozenset({"defence"})
@@ -146,7 +147,7 @@ class Transcript:
             if message.get("stop_reason") == "refusal":
                 self.refusals += 1
         elif kind == "system" and subtype == "init":
-            self.note("result", f"model {event.get('model')}")
+            log(f"model {event.get('model')}")
         elif kind == "system" and subtype == "permission_denied":
             self.note("denied", event.get("message") or json.dumps(event.get("tool_input") or {}))
         elif kind == "system" and subtype in REFUSAL_SUBTYPES:
@@ -159,7 +160,10 @@ class Transcript:
         elif kind == "result":
             self.result = dict(event)
             self.turns += int(event.get("num_turns") or 0)
-            self.note("result", f"{subtype} turns={event.get('num_turns')} cost_usd={event.get('total_cost_usd')}")
+            log(masked(f"{subtype} error={bool(event.get('is_error'))} turns={event.get('num_turns')} "
+                       f"cost_usd={event.get('total_cost_usd')}", self.hidden))
+            if event.get("is_error") and isinstance(event.get("result"), str):
+                log(masked(event["result"], self.hidden)[:NOTE_TEXT_MAX])
 
     def spent(self, max_turns: int, budget_usd: float) -> str | None:
         result = self.result or {}
@@ -177,9 +181,11 @@ class Transcript:
             exit_reason = TIMED_OUT
         elif self.ended_by:
             exit_reason = self.ended_by
+        elif result.get("is_error") and result.get("subtype") not in (OUT_OF_TURNS, OUT_OF_BUDGET):
+            exit_reason = FAILED_RUN
         else:
             exit_reason = str(result.get("subtype") or CRASHED) if result or returncode == 0 else CRASHED
-        closing = result.get("result") if isinstance(result.get("result"), str) else ""
+        closing = result.get("result") if isinstance(result.get("result"), str) and not result.get("is_error") else ""
         return {"exit": exit_reason[:32], "cost_usd": result.get("total_cost_usd"), "turns": self.turns or None,
                 "refusals": self.refusals, "closing": masked(closing, self.hidden)[:CLOSING_MAX]}
 
@@ -437,7 +443,7 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
         conversation.close()
         returncode = child.wait()
     except OSError as unstartable:
-        transcript.note("result", f"the bot did not start: {unstartable}")
+        log(f"run {run}: the bot did not start: {unstartable}")
     finally:
         stop.set()
         relay.stop()

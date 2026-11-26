@@ -354,7 +354,8 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
         unknown_tools = tool_like - names - codes
         assert not unknown_tools, f"{text.name}: {sorted(unknown_tools)}"
         errors_section = text.read_text().partition("## Errors")[2]
-        named_codes = set(re.findall(r"`([a-z]+(?:_[a-z]+)*)`", errors_section)) - not_codes
+        local_codes = set(re.findall(r"^\| `([a-z_]+)` \| local \|", errors_section, re.MULTILINE))
+        named_codes = set(re.findall(r"`([a-z]+(?:_[a-z]+)*)`", errors_section)) - not_codes - local_codes
         assert named_codes <= codes, f"{text.name}: {sorted(named_codes - codes)}"
 
 
@@ -705,12 +706,25 @@ def test_the_launcher_profile_is_the_prompt_hashes_and_the_claude_code_version_a
     assert launcher.launcher_profile(environment)["prompts"] != before["prompts"]
 
 
-def test_the_model_claude_code_started_on_is_a_note_of_the_run():
+def test_the_launcher_s_own_lines_go_to_its_log_and_never_to_the_learner_s_notes(capsys):
     transcript = launcher.Transcript(hidden=())
 
     transcript.take({"type": "system", "subtype": "init", "model": "claude-sonnet-5-5"})
+    transcript.take({"type": "result", "subtype": "success", "num_turns": 2, "total_cost_usd": 0.1, "result": "done"})
 
-    assert [(note["kind"], note["text"]) for note in transcript.taken()] == [("result", "model claude-sonnet-5-5")]
+    assert transcript.taken() == []
+    assert "model claude-sonnet-5-5" in capsys.readouterr().err
+
+
+def test_a_claude_child_that_failed_finishes_as_an_error_with_its_text_only_in_the_log(capsys):
+    transcript = launcher.Transcript(hidden=())
+
+    transcript.take({"type": "result", "subtype": "success", "is_error": True, "num_turns": 1, "total_cost_usd": 0,
+                     "result": "OAuth token revoked"})
+
+    finished = transcript.finish(1, False)
+    assert (finished["exit"], finished["closing"]) == ("error", "")
+    assert transcript.taken() == [] and "OAuth token revoked" in capsys.readouterr().err
 
 
 def test_a_safeguard_stop_and_a_fallback_to_another_model_are_counted_and_noted_with_both_models():

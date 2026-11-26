@@ -3,6 +3,7 @@ from rest_framework.test import APIClient
 
 from tests.training.round.conftest import bot_round, pvp, url
 from training.models import BotRun, Round
+from training.round import debrief
 from training.round import lifecycle as service
 
 KEY = "launcher-placeholder-key"
@@ -71,3 +72,12 @@ def test_the_server_treats_a_bot_seat_as_a_human_seat(started, launcher, allocat
     assert [answer.status_code for answer in as_bot] == [answer.status_code for answer in as_human] == [200, 200, 403]
     assert [sorted(answer.json()) for answer in as_bot[:1]] == [sorted(answer.json()) for answer in as_human[:1]]
     assert len(as_bot[1].json()) == len(as_human[1].json())
+
+
+def test_a_run_that_finished_with_an_error_is_failed_in_the_debrief(started, launcher):
+    run = claim(launcher).json()["run"]
+
+    launcher.post(f"/api/bot-runs/{run}/finish/", {"exit": "error"}, format="json",
+                  HTTP_AUTHORIZATION=f"Bearer {KEY}")
+
+    assert [(line["status"], line["exit"]) for line in debrief.bot_lines(started)] == [("failed", "error")]
