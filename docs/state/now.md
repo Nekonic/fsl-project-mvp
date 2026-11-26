@@ -117,10 +117,11 @@ three bot rounds at once on the PostgreSQL store. The list is in
    `docs/STATE.md` "Open points"); a fall back to Opus 4.8 at step 3 still
    counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot now
    stays until the round ends (rounds 277, 278), but cannot get a WAF
-   change live: the rule test outlasts Claude Code's 120 s Bash timeout
-   and the bot cannot read the background result (`docs/STATE.md` "Open
-   points"); decide how the bot waits on the test, then a loss with
-   response O from the bot.
+   change live. `bot-test-wait` (2026-11-26) runs the rule test as a
+   detached job the bot polls: in round 306 (step 2) the bot polled it, but
+   the test (3 to 6.5 min) ran past the fall of all three objectives, so
+   response stayed X; acceptance `test_bot_rounds` 3 of 3 from the platform
+   VM. Next: a faster rule test, then a loss with response O from the bot.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
