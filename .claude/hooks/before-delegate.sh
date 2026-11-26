@@ -1,0 +1,4 @@
+#!/bin/sh
+cat <<'JSON'
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"Before this delegation, check the brief against the mistakes the user has caught: (1) Live scope: every live step names the changed file that needs it; acceptance only the modules `bin/verify --changed --live` lists; one live round per behaviour the change adds; nothing a unit test already proves; no second round to see a parameter. (2) Every fact in the brief (what a doc says, what a branch holds, what the cloud runs) was read this session from origin, not recalled. (3) No SendMessage to a workflow agent; to change a running workflow, stop it only when no replace or bake is mid-way. (4) The user's own words decide; no CVP or account tier. If the brief breaks one, rewrite it before sending."}}
+JSON
