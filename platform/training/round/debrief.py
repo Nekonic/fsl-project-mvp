@@ -4,7 +4,6 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any
 
-from domain.scoring.correlate import WINDOW_SLACK
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.content import bots as catalog
@@ -35,30 +34,27 @@ def events_of(found: Round) -> list[dict]:
         cursor = page.next
 
 
-def action_rows(found: Round) -> list[dict]:
-    detections = alert_feed.detections(found)
-    alerted = Counter(detection.marker for detection in detections if detection.marker)
+def action_rows(found: Round, free_alerts: dict[str, int]) -> list[dict]:
+    alerted = Counter(detection.marker for detection in alert_feed.detections(found) if detection.marker)
     rows, free = [], defaultdict(list)
     for action in Action.objects.filter(round=found).order_by("started", "id"):
         if action.case_id:
             rows.append({"lane": ATTACK, "kind": "case", "at": when(action.started), "case": action.case_id,
                          "origin": action.source_ip, "alerts": alerted[action.marker]})
         else:
-            free[action.source_ip or ""].append((action.started, action.ended, alerted[action.marker]))
+            free[action.source_ip or ""].append((action.started, action.ended))
     for request in sorted(attack.origin_records(found), key=lambda record: record.started_at):
-        free[request.source_ip or ""].append((request.started_at, request.ended_at, 0))
+        free[request.source_ip or ""].append((request.started_at, request.ended_at))
     for origin, actions in free.items():
         actions.sort(key=lambda action: action[0])
         rows.append({"lane": ATTACK, "kind": "free_actions", "at": when(actions[0][0]), "origin": origin or None,
                      "count": len(actions), "until": when(max(action[1] or action[0] for action in actions)),
-                     "alerts": sum(action[2] for action in actions)
-                     + origin_alerts(detections, origin, actions[0][0], actions[-1][0])})
+                     "alerts": free_alerts.get(origin, 0)})
     return rows
 
 
-def origin_alerts(detections, origin: str, first: datetime, last: datetime) -> int:
-    return sum(1 for detection in detections if origin and detection.src_ip == origin and detection.marker is None
-               and first - WINDOW_SLACK <= detection.timestamp <= last + WINDOW_SLACK)
+def free_alerts_of(score: dict) -> dict[str, int]:
+    return {origin["ip"]: origin["alerts"] for origin in score["free_actions"]["by_origin"]}
 
 
 def alert_rows(found: Round) -> list[dict]:
@@ -108,7 +104,7 @@ def objective_marks(score: dict) -> list[dict]:
 
 def compose(found: Round) -> dict[str, Any]:
     score = lifecycle.score(found).shown()
-    timeline = action_rows(found) + alert_rows(found) + event_rows(found) + note_rows(found)
+    timeline = action_rows(found, free_alerts_of(score)) + alert_rows(found) + event_rows(found) + note_rows(found)
     timeline.sort(key=lambda row: row["at"] or "")
     return {
         "round": found.pk, "matchup": found.matchup, "pending": lifecycle.pending(found),
