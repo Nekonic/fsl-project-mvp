@@ -163,6 +163,15 @@ def test_an_argument_reaches_the_host_as_the_argument_it_was(host):
     )
 
 
+def test_an_http_answer_comes_back_with_its_crlf_line_ends(host):
+    ran = attacker(host)(["printf", "HTTP/1.1 200 OK\\r\\nSet-Cookie: a=b\\r\\n\\r\\n<p>\\352\\270\\200</p>"])
+
+    assert ran.output == "HTTP/1.1 200 OK\r\nSet-Cookie: a=b\r\n\r\n<p>\uae00</p>", (
+        "curl -i ends header lines with CRLF and the site pane splits the headers from the body at the "
+        f"first blank CRLF line, so the runner must hand the bytes back as sent: {ran.output!r}"
+    )
+
+
 def test_an_argument_that_looks_like_an_option_stays_on_the_host(host):
     landed = host["home"] / "ran-on-the-platform"
 
