@@ -533,8 +533,9 @@ sudo docker compose start platform rebuild
 
 ## 현재 상태
 
-지금 트리는 `integrate`(Player vs AI 라운드, PostgreSQL 저장소, IP 주소로 접속하는 안내)에 CRS 920350 제거와 공격 봇
-프롬프트를 더한 것이고, 클라우드의 `cr-platform2`에서 돌아갑니다. 역할 이미지는 이 트리로 다시 구웠고, 룰 테스트용
+지금 트리는 `integrate`(Player vs AI 라운드, PostgreSQL 저장소, IP 주소로 접속하는 안내)에 CRS 920350 제거, 공격 봇
+프롬프트, 라운드가 끝날 때까지 남는 방어 봇, 봇이 결과를 받아 가는 룰 테스트 작업, 한 번의 SSH 호출로 끝나는 룰 테스트
+재생을 더한 것이고, 클라우드의 `cr-platform2`에서 돌아갑니다. 역할 이미지는 이 트리로 다시 구웠고, 룰 테스트용
 녹화는 `wargames/<id>/probes/`에 커밋되어 있으며, 콘솔은 플랫폼 이미지의 `/srv/front`에서 나갑니다. 훈련 환경에서
 돌린 것과 그 결과, 아직 돌리지 않은 것은 [docs/STATE.md](docs/STATE.md)에 있습니다.
 

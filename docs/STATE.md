@@ -242,8 +242,8 @@ stand". Still not run on a range:
   rounds the attack bot played to the end ran on 2026-11-26, rounds 309 to
   311);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
-  origins, more benign kinds, Internet scanners, the board's attack paths,
-  the response replay of the attack's own logged requests).
+  origins, more benign kinds, Internet scanners, the board's attack paths).
+  The response replay of the attack's own logged requests ran in round 309.
 
 ## Next steps, in order
 
@@ -252,9 +252,10 @@ stand". Still not run on a range:
    (`docs/OPENSTACK.md` §5.3).
 2. **The platform under several rounds** (found 2026-11-25): the PostgreSQL
    store, rule applies outside a transaction and the one-query alert join
-   run on the range since 2026-11-25; three bot rounds at once on them are
-   not measured yet. Free actions read from Elasticsearch at scoring time
-   stay.
+   run on the range since 2026-11-25; three bot rounds at once ran on them
+   on 2026-11-26 (rounds 309 to 311): no round stopped, and a platform read
+   now and then took over 5 s. Free actions read from Elasticsearch at
+   scoring time stay.
 3. **External learners** (the user, 2026-11-25: the last task of the Player
    vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
    console, and `CR_VPN_HOST`.
@@ -286,18 +287,11 @@ stand". Still not run on a range:
   Claude Code session open until the round ends and feeds it new alerts,
   refusals, new addresses and phase changes every `watch_s` of its step.
   On the range (rounds 277, 278) both runs lasted the round.
-- **The defence bot cannot finish a WAF change in time.** In rounds 277
-  and 278 the rule test took 6 min 36 s and about 3 min: it replays every
-  benign case of the round and the attack's own requests. Claude Code
-  moves a Bash call past 120 s into the background, and the bot cannot read
-  that output (its `cat` is denied), so it kept calling apply and got
-  `409 not_tested` until the round ended. Not changed: how long the test
-  may take, and whether the bot's Bash timeout or the CLI should wait on
-  the test, are open.
-- **A watch tick can pass silently.** In round 278 no feed came for 5 min
-  35 s while alerts flowed; a tick whose reads fail sends nothing and says
-  nothing. Not measured; the reads under sqlmap's load are a guess, not
-  shown.
+- **A platform read can take over 5 s under three rounds at once.** In
+  rounds 309 to 311 a watch check's `defence_state` read now and then hit
+  its 5 s cap; the launcher logs the check and the next one reads the same
+  rows again. The ingest each read runs (`lifecycle.catch_up`) is the
+  suspect; not measured.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it
@@ -317,7 +311,7 @@ stand". Still not run on a range:
   per Suricata join; it now reads a page's flows once. The store is
   PostgreSQL and `apply_waf` and `apply_ids` reach the WAF or the sensor
   outside the write transaction; both run on the range since 2026-11-25,
-  not yet under three rounds at once.
+  and under three bot rounds at once on 2026-11-26.
 - **A past round's free actions live in Elasticsearch.** The score reads them
   at scoring time, so after a platform rebuild an ended round's live score
   drops them (round 175 read `detected: true` before the rebuild and `false`

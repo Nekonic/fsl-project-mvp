@@ -122,7 +122,7 @@ review, the edge sets after an infra reboot. The list is in
 3. A platform read now and then takes over 5 s with three rounds at once
    (the watch skips that check); the ingest inside each read is the
    suspect (`docs/STATE.md` "Open points").
-4. One `pvp` round, and a loss with response O.
+4. One `pvp` round.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
 6. External learners, the last task of the Player vs AI work: the

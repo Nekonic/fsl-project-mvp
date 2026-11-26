@@ -198,6 +198,10 @@ Every refusal is `{errors: [{path, code, line?, params?}]}`. Codes a bot meets:
 | `origins_spent` | 409 | every attack origin is spent |
 | `stale_version` | 409 | `base_version` is not the applied version; `params` has the current one |
 | `test_busy` | 409 | another rule test of this engine is running |
+| `test_running` | local | this bot already has a rule test job running; `params.job` names it |
+| `unknown_job` | local | no rule test job of that number in this round |
+| `job_lost` | local | the job's worker stopped without an answer; start the test again |
+| `job_failed` | local | the job's call raised; the message names the error |
 | `not_tested` | 409 | no rule test of this round passed with the same WAF files |
 | `suricata_syntax` | 422 | the Suricata text was refused, with `line` |
 | `crs_refused`, `apply_refused` | 422 | the WAF files or the apply was refused |
