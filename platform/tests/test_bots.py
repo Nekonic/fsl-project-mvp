@@ -354,8 +354,7 @@ def test_every_tool_and_code_the_prompts_and_readme_name_exists():
         unknown_tools = tool_like - names - codes
         assert not unknown_tools, f"{text.name}: {sorted(unknown_tools)}"
         errors_section = text.read_text().partition("## Errors")[2]
-        local_codes = set(re.findall(r"^\| `([a-z_]+)` \| local \|", errors_section, re.MULTILINE))
-        named_codes = set(re.findall(r"`([a-z]+(?:_[a-z]+)*)`", errors_section)) - not_codes - local_codes
+        named_codes = set(re.findall(r"`([a-z]+(?:_[a-z]+)*)`", errors_section)) - not_codes
         assert named_codes <= codes, f"{text.name}: {sorted(named_codes - codes)}"
 
 
