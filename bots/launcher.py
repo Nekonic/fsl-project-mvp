@@ -19,7 +19,7 @@ import requests
 
 from bots import play, rest, signin, tools
 from bots.relay import Relay
-from bots.watch import Watch, interval_of
+from bots.watch import Unread, Watch, interval_of, next_start
 
 PLATFORM_VARIABLE = "CR_PLATFORM_URL"
 KEY_FILE_VARIABLE = "CR_BOT_LAUNCHER_KEY_FILE"
@@ -59,6 +59,8 @@ SECRET_SHAPE = re.compile(r"sk-ant-[A-Za-z0-9_\-]+")
 NOTE_TEXT_MAX = 2000
 CLOSING_MAX = 10000
 FLUSH_SECONDS = 5.0
+WATCH_READ_TIMEOUT_S = 5.0
+CHECK_SHARE = 0.8
 REFUSAL_SUBTYPES = frozenset({"model_refusal_fallback", "model_refusal_no_fallback"})
 SAFEGUARD_NOTICE = "safeguards stopped"
 TIMED_OUT = "timed_out"
@@ -264,29 +266,58 @@ def state_of(settings: Settings, claimed: Mapping):
         return {"unread": str(unreadable)}
 
 
-def player_reader(settings: Settings, claimed: Mapping):
-    session = signin.playing(settings.platform_url, claimed["token"], 60.0)
-    hidden = (claimed["token"], settings.launcher_key, settings.credential)
+class CheckReader:
+    def __init__(self, settings: Settings, claimed: Mapping, read_timeout_s: float = WATCH_READ_TIMEOUT_S):
+        self.session = signin.playing(settings.platform_url, claimed["token"], read_timeout_s)
+        self.claimed = claimed
+        self.hidden = (claimed["token"], settings.launcher_key, settings.credential)
+        self.read_timeout_s = read_timeout_s
+        self.deadline = 0.0
+        self.statuses: list[str] = []
 
-    def failed(operation: str, why: str) -> Mapping:
-        line = f"run {claimed['run']}: watch read {operation} failed: {why}"
-        log(" ".join(masked(line, hidden).split())[:NOTE_TEXT_MAX])
-        return {}
+    def begin(self, budget_s: float) -> None:
+        self.deadline = time.monotonic() + budget_s
+        self.statuses = []
 
-    def read(operation: str, params: dict) -> Mapping:
+    def failed(self, operation: str, why: str):
+        self.statuses.append(f"{operation} failed ({why})")
+        raise Unread(operation)
+
+    def __call__(self, operation: str, params: dict) -> Mapping:
+        left = self.deadline - time.monotonic()
+        if left <= 0:
+            return self.failed(operation, "not sent, the check's time is spent")
+        self.session.timeout = min(self.read_timeout_s, left)
         try:
-            answer = rest.request(session, operation, round_id=claimed["round"], **params)
+            answer = rest.request(self.session, operation, round_id=self.claimed["round"], **params)
         except requests.RequestException as unreachable:
-            return failed(operation, f"{type(unreachable).__name__}: {unreachable}")
+            return self.failed(operation, f"{type(unreachable).__name__}: {unreachable}")
         if answer.status_code != 200:
-            return failed(operation, f"answered {answer.status_code}: {answer.text[:200]}")
+            return self.failed(operation, f"answered {answer.status_code}: {answer.text[:200]}")
         try:
             found = answer.json()
         except ValueError:
-            return failed(operation, f"answered 200 with no JSON: {answer.text[:200]}")
-        return found if isinstance(found, dict) else failed(operation, "answered 200 with no JSON object")
+            return self.failed(operation, f"answered 200 with no JSON: {answer.text[:200]}")
+        if not isinstance(found, dict):
+            return self.failed(operation, "answered 200 with no JSON object")
+        self.statuses.append(f"{operation} 200")
+        return found
 
-    return read
+    def summary(self, took_s: float, budget_s: float) -> str:
+        line = (f"run {self.claimed['run']}: watch check {took_s:.1f} s of {budget_s:.1f} s: "
+                f"{', '.join(self.statuses) or 'no reads'}")
+        return " ".join(masked(line, self.hidden).split())[:NOTE_TEXT_MAX]
+
+
+def check_budget(interval: float) -> float:
+    return interval * CHECK_SHARE
+
+
+def checked(watch: Watch, reader: CheckReader, budget_s: float) -> None:
+    reader.begin(budget_s)
+    started = time.monotonic()
+    watch.tick()
+    log(reader.summary(time.monotonic() - started, budget_s))
 
 
 def user_message(text: str) -> str:
@@ -365,9 +396,10 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
         conversation = Conversation(child.stdin)
         conversation.say(opening_text(claimed, state))
         watch = None
+        reader = None
         if claimed["side"] in WATCHED_SIDES:
-            watch = Watch(player_reader(settings, claimed), conversation.say, conversation.close,
-                          state.get("phase"))
+            reader = CheckReader(settings, claimed)
+            watch = Watch(reader, conversation.say, conversation.close, state.get("phase"))
         else:
             conversation.close()
 
@@ -381,8 +413,13 @@ def played(settings: Settings, claimed: Mapping, user: str | None) -> None:
                 stopped(child, user)
 
         def watching():
-            while not stop.wait(interval_of(claimed)) and not watch.closed:
-                watch.tick()
+            interval = interval_of(claimed)
+            started = time.monotonic()
+            while not watch.closed:
+                started = next_start(started, interval, time.monotonic())
+                if stop.wait(max(0.0, started - time.monotonic())) or watch.closed:
+                    return
+                checked(watch, reader, check_budget(interval))
 
         threading.Thread(target=flushing, daemon=True).start()
         threading.Thread(target=overdue, daemon=True).start()

@@ -660,7 +660,7 @@ def claimed_run(side, stance=None):
 
 
 def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_directory_with_the_step_s_model():
-    attack = claimed_run("attack", stance="Assigned technique for this engagement, as MITRE ATT&CK describes it (T1190 ...)")
+    attack = claimed_run("attack", stance="This round's attack profile, for the defender's debrief, is T1190 ... (MITRE ATT&CK: ...)")
     command = launcher.child_command(attack, 1234, "bot3")
     claude = command[command.index("claude"):]
 
@@ -678,7 +678,7 @@ def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_di
     assert 'head -c "$1" > "$HOME/run/config/system.md" && shift' in script
     assert not any(str(REPO) in word or "redteam" in word for word in command)
     assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
-    assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="Assigned technique for this engagement"))
+    assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="This round's attack profile (MITRE ATT&CK: ...)"))
     assert "every 75 seconds" in launcher.system_text({**claimed_run("defence"), "watch_s": 75})
     assert "checks the round" not in launcher.system_text(attack)
 
@@ -913,14 +913,61 @@ def test_a_test_job_is_polled_until_the_worker_stores_the_platform_s_answer(plat
     assert json.loads(unknown)["errors"][0]["code"] == "unknown_job"
 
 
-def test_a_failed_watch_read_is_logged_as_one_masked_line(platform, capsys):
-    settings = launcher.Settings(platform_url=platform.url, launcher_key="launcher-key-placeholder",
-                                 credential="credential-placeholder", runs_max=1, poll_s=5, run_seconds=60,
-                                 users=(None,))
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/state/", status=502, body={"detail": f"bad {TOKEN}\nupstream"})
-    read = launcher.player_reader(settings, claimed_run("defence"))
+def watch_settings(platform):
+    return launcher.Settings(platform_url=platform.url, launcher_key="launcher-key-placeholder",
+                             credential="credential-placeholder", runs_max=1, poll_s=5, run_seconds=60,
+                             users=(None,))
 
-    assert read("defence_state", {}) == {}
-    logged = [line for line in capsys.readouterr().err.splitlines() if "watch read" in line]
-    assert len(logged) == 1 and "run 4: watch read defence_state failed: answered 502" in logged[0]
-    assert TOKEN not in logged[0] and launcher.HIDDEN in logged[0]
+
+def test_a_watch_check_logs_one_masked_line_with_its_duration_and_each_read_s_status(platform, capsys):
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/state/", body={"phase": "running"})
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/alerts/", status=502, body={"detail": f"bad {TOKEN}\nupstream"})
+    reader = launcher.CheckReader(watch_settings(platform), claimed_run("defence"))
+    said = []
+    watching = watch.Watch(reader, said.append, lambda: None, "running")
+
+    watching.turn_ended()
+    launcher.checked(watching, reader, 8.0)
+
+    logged = [line for line in capsys.readouterr().err.splitlines() if "watch check" in line]
+    assert len(logged) == 1 and said == []
+    assert re.search(r"run 4: watch check \d+\.\d s of 8\.0 s: defence_state 200, defence_alerts failed \(answered 502",
+                     logged[0])
+    assert TOKEN not in logged[0] and launcher.HIDDEN in logged[0] and "defence_traffic" not in logged[0]
+
+
+def test_a_read_is_not_sent_once_the_check_s_time_is_spent_and_never_waits_past_what_is_left(platform):
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/state/", body={"phase": "running"})
+    reader = launcher.CheckReader(watch_settings(platform), claimed_run("defence"))
+
+    reader.begin(0.0)
+    with pytest.raises(watch.Unread):
+        reader("defence_state", {})
+    assert platform.seen == [] and "not sent" in reader.statuses[0]
+    reader.begin(2.0)
+    assert reader("defence_state", {}) == {"phase": "running"}
+    assert reader.session.timeout <= 2.0 < launcher.WATCH_READ_TIMEOUT_S
+
+
+def test_a_failed_read_skips_the_check_and_the_next_tick_feeds_what_it_missed():
+    seen = RoundSeen()
+    failing = {"defence_traffic"}
+
+    def read(operation, params):
+        if operation in failing:
+            failing.discard(operation)
+            raise watch.Unread(operation)
+        return seen.read(operation, params)
+
+    watching = watch.Watch(read, seen.said.append, seen.close, "running")
+    seen.alerts = [alert(1)]
+    watching.turn_ended()
+    watching.tick()
+    assert seen.said == [] and watching.seen.alerts_after == 0
+    watching.tick()
+    assert len(seen.said) == 1 and "1 new alerts" in seen.said[0]
+
+
+def test_the_next_watch_check_is_timed_from_the_start_of_the_last_one_and_skips_slots_an_overrun_missed():
+    assert watch.next_start(100.0, 10.0, 103.5) == 110.0
+    assert watch.next_start(100.0, 10.0, 125.0) == 130.0

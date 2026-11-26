@@ -14,6 +14,10 @@ ALERT_FIELDS = ("id", "time", "engine", "rule", "signature", "src_ip", "uri", "b
 Read = Callable[[str, dict], Mapping]
 
 
+class Unread(Exception):
+    pass
+
+
 @dataclass
 class Seen:
     phase: str | None
@@ -45,6 +49,11 @@ class Feed:
 def interval_of(claimed: Mapping) -> float:
     given = claimed.get("watch_s")
     return float(given) if given else DEFAULT_WATCH_S
+
+
+def next_start(previous: float, interval: float, now: float) -> float:
+    missed = max(0, int((now - previous) // interval))
+    return previous + interval * (missed + 1)
 
 
 def new_alerts(read: Read, after: int) -> tuple[list[dict], int]:
@@ -127,8 +136,9 @@ class Watch:
     def gathered(self, state: Mapping) -> Feed:
         seen = self.seen
         phase = state.get("phase")
-        alerts, seen.alerts_after = new_alerts(self.read, seen.alerts_after)
+        alerts, alerts_after = new_alerts(self.read, seen.alerts_after)
         traffic = self.read("defence_traffic", {"after": seen.traffic_after})
+        seen.alerts_after = alerts_after
         seen.traffic_after = str(traffic.get("next") or seen.traffic_after)
         merged(seen.origins, traffic.get("by_origin") or [])
         changed = phase != seen.phase
@@ -145,6 +155,12 @@ class Watch:
         self.seen.origins = {}
 
     def tick(self) -> None:
+        try:
+            self.checked()
+        except Unread:
+            return
+
+    def checked(self) -> None:
         if self.closed:
             return
         state = self.read("defence_state", {})

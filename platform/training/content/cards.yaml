@@ -1,5 +1,6 @@
 # Attack persona cards (DECISIONS 2026-11-24): one ATT&CK technique or sub-technique per card, its name as
-# ATT&CK writes it and a verbatim quote of its v20 page, copied from attack.mitre.org on 2026-11-24.
+# ATT&CK writes it and a verbatim quote of its v20 page, copied from attack.mitre.org on 2026-11-24; A6 quotes
+# the opening sentence of its page, copied on 2026-11-26.
 # Only the attack bot draws a card; the defence bot has none.
 # © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.
 release: v20.1
@@ -58,9 +59,8 @@ cards:
     object_version: "2.8"
     wargames: [board, corp]
     quote: >-
-      If an adversary guesses the correct password but fails to log in to a compromised account due to
-      location-based conditional access policies, they may change their infrastructure until they match the
-      victim’s location and therefore bypass those policies.
+      Adversaries may use brute force techniques to gain access to accounts when passwords are unknown or when
+      password hashes are obtained.
   - id: A7
     technique: T1068
     name: Exploitation for Privilege Escalation
