@@ -170,11 +170,13 @@ no cases, `expect` strings, target source or WAF roles are in it. The launcher r
 the secrets; each child runs as one of `bot0`..`bot7`, its own uid with its own home, so one bot cannot read another
 run's key. The Claude Code credential is `/run/secrets/claude_oauth_token`, passed to the child as
 `CLAUDE_CODE_OAUTH_TOKEN`; with no credential or no key the launcher claims nothing. The bot's text, its calls,
-permission denials, relay refusals, the model Claude Code started on and each safeguard stop (Claude Code's
+permission denials, relay refusals and each safeguard stop (Claude Code's
 "safeguards stopped the response" notice, and a `model_refusal_fallback` with the model it fell back to) are
 reported as notes (`bot_run_report`) with the player token, the run key,
 the credential and any `sk-ant-` string masked, and the closing text, cost, turns and refusal count with
-`bot_run_finish`. A run that outlasts `CR_BOT_RUN_SECONDS` (two hours) is stopped as `timed_out`: SIGTERM, which
+`bot_run_finish`. The model Claude Code started on, each result line and a failed child's error text go to the
+launcher's log only, never to the notes the learner reads. A child whose result says `is_error` (a revoked OAuth
+token, say) finishes as exit `error`, no closing text, and the platform marks the run `failed`. A run that outlasts `CR_BOT_RUN_SECONDS` (two hours) is stopped as `timed_out`: SIGTERM, which
 `sudo` passes on, then after 15 s SIGKILL to every process of the run's `botN` uid; a launcher that
 restarts marks the runs it held `launcher_restarted`. `CR_BOT_RUNS_MAX` (2) runs at once.
 

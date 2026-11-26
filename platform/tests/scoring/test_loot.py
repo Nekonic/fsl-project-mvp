@@ -96,7 +96,7 @@ def test_a_loss_is_announced_to_both_sides_and_its_attribution_only_to_staff(boa
     losses.submit_loot(found, {"admin": TRUTH["admin"]}, actions=[attack], at=AT)
 
     assert lost_events(found, Viewer(sides=frozenset({"defence"})))[-1] == {"key": "board-auth-user-admin",
-                                                                           "name": "Board admin account"}
+                                                                           "name": "게시판 관리자 계정 탈취"}
     assert lost_events(found, Viewer(staff=True))[-1]["attributed_marker"] == "act-7"
 
 

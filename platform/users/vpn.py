@@ -130,5 +130,9 @@ def endpoint(held: VpnProfile, request_host: str) -> str:
     return f"{endpoint_host(request_host)}:{held.port}"
 
 
-def targets() -> tuple[tuple[str, str], ...]:
-    return tunnel.target_urls(Path(configured().range.source))
+def targets(held: VpnProfile) -> tuple[tuple[str, str], ...]:
+    if held.attached_slot is None:
+        return ()
+    attached = slot_range(held.attached_slot).wargame
+    return tuple((wargame, url) for wargame, url in tunnel.target_urls(Path(configured().range.source))
+                 if wargame == attached)

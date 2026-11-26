@@ -6,17 +6,17 @@ secret:
   rotate: [python, manage.py, set_passwords]
 tiers:
   - key: board-auth-user-partial
-    name: Board accounts (partial)
+    name: 게시판 계정 일부 탈취
     category: Credential Access
     difficulty: 2
     min_matched: 1
   - key: board-auth-user-admin
-    name: Board admin account
+    name: 게시판 관리자 계정 탈취
     category: Credential Access
     difficulty: 4
     account: admin
   - key: board-auth-user-full
-    name: Board accounts (full)
+    name: 게시판 전체 계정 탈취
     category: Credential Access
     difficulty: 5
     coverage: 1.0

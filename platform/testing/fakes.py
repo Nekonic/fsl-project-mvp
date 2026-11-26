@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from cr.config import WAF_FILES
 from sandbox import crs, suricata
 from sandbox.crs import READ_FILES, WRITE_FILE
-from sandbox.runner import Ran, RangeUnavailable
+from sandbox.runner import Ran, RangeUnavailable, decoded
 
 SID = re.compile(r"sid\s*:\s*(\d+)")
 OK = Ran(exit_code=0, output="")
@@ -43,7 +43,7 @@ class FakeRunner:
             self.sent.append(one)
             output, code = next(((said, code) for matching, said, code in self.answers if matching in one.text),
                                 ("", 0))
-        return Ran(exit_code=code, output=output)
+        return Ran(exit_code=code, output=decoded(output.encode()))
 
     def texts(self) -> list[str]:
         return [one.text for one in self.sent]

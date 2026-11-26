@@ -157,6 +157,7 @@ class LootedObjective(serializers.Serializer):
 class Looted(serializers.Serializer):
     lost = serializers.BooleanField()
     objective = LootedObjective(allow_null=True)
+    objectives = LootedObjective(many=True, required=False)
     remaining = Remaining()
 
 

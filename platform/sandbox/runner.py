@@ -93,13 +93,16 @@ def reported(done: subprocess.CompletedProcess) -> Ran | None:
         return None
     return Ran(exit_code=int(found[2]), output=(done.stdout or "") + found[1] + found[3])
 
+def decoded(raw: bytes | None) -> str:
+    return (raw or b"").decode("utf-8", errors="replace")
+
 def execute(
     host: str, command: list[str], stdin: str | None, timeout: float
 ) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(
-            command, input=stdin, capture_output=True,
-            text=True, errors="replace", timeout=timeout,
+        done = subprocess.run(
+            command, input=None if stdin is None else stdin.encode(),
+            capture_output=True, timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise RangeUnavailable(
@@ -108,3 +111,4 @@ def execute(
         ) from exc
     except (OSError, subprocess.SubprocessError) as exc:
         raise RangeUnavailable(f"could not reach {host}: {exc}") from exc
+    return subprocess.CompletedProcess(done.args, done.returncode, decoded(done.stdout), decoded(done.stderr))

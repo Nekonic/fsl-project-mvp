@@ -71,8 +71,8 @@ class VpnProfile(serializers.Serializer):
         return self.context["endpoint"](held)
 
     @extend_schema_field(VpnTarget(many=True))
-    def get_targets(self, _held) -> list[dict]:
-        return [{"wargame": wargame, "url": url} for wargame, url in self.context["targets"]]
+    def get_targets(self, held) -> list[dict]:
+        return [{"wargame": wargame, "url": url} for wargame, url in self.context["targets"](held)]
 
 
 class VpnIssued(VpnProfile):

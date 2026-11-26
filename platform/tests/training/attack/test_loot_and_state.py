@@ -25,6 +25,13 @@ def test_loot_is_judged_by_the_referee_and_never_echoes_the_secret(as_attacker, 
     assert TRUTH["admin"] not in json.dumps(body)
 
 
+def test_loot_that_takes_several_tiers_names_every_objective_that_fell(as_attacker, looted_round):
+    answer = as_attacker.post(url(looted_round, "loot/"), {"value": [{"username": "admin", "hash": TRUTH["admin"]}]},
+                              format="json")
+
+    assert [one["key"] for one in answer.json()["objectives"]] == ["board-auth-user-admin", "board-auth-user-partial"]
+
+
 def test_wrong_loot_loses_nothing(as_attacker, looted_round):
     answer = as_attacker.post(url(looted_round, "loot/"), {"value": [{"username": "admin", "hash": "nope"}]},
                               format="json")
