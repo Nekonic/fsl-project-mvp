@@ -1,6 +1,7 @@
 import io
 import subprocess
 import json
+import os
 import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -865,3 +866,61 @@ def test_a_defence_run_ends_when_the_step_s_turns_are_spent_across_feeds():
 
     assert seen.closed == 1 and transcript.finish(0, False)["exit"] == "error_max_turns"
     assert transcript.finish(0, False)["turns"] == 200
+
+
+def defence_player(platform):
+    return calls.Player(base_url=platform.url, token=TOKEN, round_id=ROUND, side="defence")
+
+
+WAF_FILES = {"files": {"/etc/nginx/http.conf": "deny 198.51.100.10;\n"}}
+
+
+def test_a_started_waf_test_answers_at_once_with_its_job_and_refuses_a_second_while_it_runs(platform, tmp_path):
+    spawned = []
+    env = {**environment(platform), cli.TESTS_DIR_VARIABLE: str(tmp_path)}
+
+    first = cli.started_test(defence_player(platform), "defence_waf_test", WAF_FILES, env,
+                             spawn=lambda path: spawned.append(path) or os.getpid())
+    second = cli.started_test(defence_player(platform), "defence_waf_test", WAF_FILES, env,
+                              spawn=lambda path: spawned.append(path) or os.getpid())
+
+    assert first == {"operation": "defence_waf_test", "ok": True, "status": None, "running": True, "job": 1,
+                     "poll": "python -m bots.cli defence_waf_test_result --job 1"}
+    assert second["errors"][0]["code"] == "test_running" and second["errors"][0]["params"] == {"job": 1}
+    assert len(spawned) == 1 and platform.seen == []
+    held = json.loads(spawned[0].read_text())
+    assert held["arguments"] == WAF_FILES and held["pid"] == os.getpid() and TOKEN not in spawned[0].read_text()
+
+
+def test_a_test_job_is_polled_until_the_worker_stores_the_platform_s_answer(platform, tmp_path, monkeypatch):
+    monkeypatch.setattr(cli, "spawned_worker", lambda path: None)
+    env = {**environment(platform), cli.TESTS_DIR_VARIABLE: str(tmp_path)}
+    answer = {"test": 41, "ok": True, "passed": True, "failed_benign": [], "untested_benign": [], "errors": [],
+              "cases": [], "totals": {}, "untested": [], "against_applied": []}
+    platform.on("POST", f"/api/rounds/{ROUND}/defence/waf/test/", body=answer)
+
+    code, started = run_cli(["defence_waf_test", "--json", json.dumps(WAF_FILES)], env=env)
+    _, waiting = run_cli(["defence_waf_test_result", "--job", "1"], env=env)
+    job_file = next(tmp_path.glob(f"round-{ROUND}/defence_waf_test-1.json"))
+    assert cli.main([cli.FINISH_TEST, str(job_file)], environment=env) == 0
+    _, finished = run_cli(["defence_waf_test_result", "--job", "1"], env=env)
+    _, unknown = run_cli(["defence_waf_test_result", "--job", "9"], env=env)
+
+    assert code == 0 and json.loads(started)["job"] == 1
+    assert json.loads(waiting)["running"] is True and json.loads(waiting)["job"] == 1
+    assert json.loads(finished) == {"operation": "defence_waf_test", "ok": True, "status": 200, "body": answer}
+    assert platform.seen[0]["body"] == WAF_FILES and len(platform.seen) == 1
+    assert json.loads(unknown)["errors"][0]["code"] == "unknown_job"
+
+
+def test_a_failed_watch_read_is_logged_as_one_masked_line(platform, capsys):
+    settings = launcher.Settings(platform_url=platform.url, launcher_key="launcher-key-placeholder",
+                                 credential="credential-placeholder", runs_max=1, poll_s=5, run_seconds=60,
+                                 users=(None,))
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/state/", status=502, body={"detail": f"bad {TOKEN}\nupstream"})
+    read = launcher.player_reader(settings, claimed_run("defence"))
+
+    assert read("defence_state", {}) == {}
+    logged = [line for line in capsys.readouterr().err.splitlines() if "watch read" in line]
+    assert len(logged) == 1 and "run 4: watch read defence_state failed: answered 502" in logged[0]
+    assert TOKEN not in logged[0] and launcher.HIDDEN in logged[0]

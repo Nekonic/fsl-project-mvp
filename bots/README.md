@@ -49,6 +49,23 @@ python -m bots.cli run --side defence --provider mypackage.mymodule:make_provide
 the exit code is 0; a refusal made before anything was sent (`"local": true`: unknown tool, an argument the
 spec does not take, a value of the wrong type or outside its enum) exits 2, an unreachable platform exits 3.
 
+A rule test takes minutes (a WAF test 3 to 6.5 minutes in rounds 277 and 278), past Claude Code's 120 s
+command limit, and the platform answers `defence_waf_test` and `defence_ids_test` only when the test ends. So
+`call` and the one-line form do not wait for it: they write a job file with the arguments (never the token)
+under `~/.cache/cr-bots/tests/round-<n>/` (`CR_BOT_TESTS_DIR`), start a detached
+`python -m bots.cli finish-test <job file>` that makes the call and stores its answer there, and print
+`{running: true, job, poll}` at once. The poll command reads the job:
+
+```
+python -m bots.cli defence_waf_test --json-file call.json
+python -m bots.cli defence_waf_test_result --job 1
+```
+
+It prints `{running: true, running_s}` until the answer is stored, then the test's own answer; its `body.test`
+is the test id for `defence_waf_apply`'s `tested` and for `defence_waf_test_result` by id. A second test of the
+same engine while one runs is refused locally with `test_running`, before the relay counts it. `run` keeps the
+blocking call.
+
 ## The shell
 
 Each side has a `shell` tool beside its API tools, offered only while the schema has that side's terminal
@@ -129,7 +146,8 @@ run stays open until the round ends: every `watch_s` seconds of its step (75, 30
 the model is between turns, the launcher reads `defence_state`, `defence_alerts` and `defence_traffic` with the
 player token and its own cursors and, when there is a new alert, a refusal, a source address not fed before or a
 change of phase, sends one more user message listing them (at most 20 alerts and 20 addresses, with how many
-more). A turn's end does not end the run. When the phase is `ended` it sends a last message saying to read
+more). A read that fails writes one line to the launcher log (`run <n>: watch read <operation> failed: <why>`,
+secrets masked) and that tick sends nothing. A turn's end does not end the run. When the phase is `ended` it sends a last message saying to read
 `round_score` and closes stdin. The run also ends when the step's turns (counted across messages) or budget are
 spent (`error_max_turns`, `error_max_budget_usd`).
 

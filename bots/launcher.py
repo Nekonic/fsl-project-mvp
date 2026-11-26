@@ -266,14 +266,25 @@ def state_of(settings: Settings, claimed: Mapping):
 
 def player_reader(settings: Settings, claimed: Mapping):
     session = signin.playing(settings.platform_url, claimed["token"], 60.0)
+    hidden = (claimed["token"], settings.launcher_key, settings.credential)
+
+    def failed(operation: str, why: str) -> Mapping:
+        line = f"run {claimed['run']}: watch read {operation} failed: {why}"
+        log(" ".join(masked(line, hidden).split())[:NOTE_TEXT_MAX])
+        return {}
 
     def read(operation: str, params: dict) -> Mapping:
         try:
             answer = rest.request(session, operation, round_id=claimed["round"], **params)
-            found = answer.json() if answer.status_code == 200 else {}
-        except (requests.RequestException, ValueError):
-            return {}
-        return found if isinstance(found, dict) else {}
+        except requests.RequestException as unreachable:
+            return failed(operation, f"{type(unreachable).__name__}: {unreachable}")
+        if answer.status_code != 200:
+            return failed(operation, f"answered {answer.status_code}: {answer.text[:200]}")
+        try:
+            found = answer.json()
+        except ValueError:
+            return failed(operation, f"answered 200 with no JSON: {answer.text[:200]}")
+        return found if isinstance(found, dict) else failed(operation, "answered 200 with no JSON object")
 
     return read
 

@@ -561,7 +561,10 @@ sequenceDiagram
 엽니다(`403 bot_rounds_closed`). `{name}` 자리(토큰을 한 번 돌려주는 외부 드라이버)는 스태프만 만듭니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
 도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
 SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
-`defence_ids_terminal`로 센서 호스트(`analyst`)에서 실행하는 `ids_shell`도 있고, IDS 룰은 이것으로만 바꿉니다. 자세한 규칙은
+`defence_ids_terminal`로 센서 호스트(`analyst`)에서 실행하는 `ids_shell`도 있고, IDS 룰은 이것으로만 바꿉니다. 룰 테스트는
+몇 분 걸려 Claude Code의 명령 제한(120초)을 넘기므로, CLI의 `defence_waf_test`와 `defence_ids_test`는 테스트를 분리된
+프로세스(`bots.cli finish-test`)에 맡기고 곧바로 작업 번호를 돌려줍니다. 봇은 `defence_waf_test_result --job <번호>`를
+`sleep`을 두고 되풀이해 결과를 받습니다. 자세한 규칙은
 [bots/README.md](../bots/README.md)에 있습니다.
 
 ## 훈련 환경

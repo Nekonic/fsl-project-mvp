@@ -11425,3 +11425,33 @@ The reviews of the two branches found four defects; all four are fixed on `integ
 - Only the defence side is fed. The attack bot gets the same stream-json session with its one opening
   message and stdin closed after it, which ends the run as before when its turn ends.
 
+
+## 2026-11-26 — The bot CLI runs a rule test on its own and the bot polls it; a failed watch read is logged
+
+- Measured in rounds 277 and 278 (board, attack by the round driver, defence bot at steps 2 and 1): the
+  bot wrote a `deny` for the attack origin 42 s after the first alert in 277, but `defence_waf_test` is one
+  blocking request and the WAF rule test took 6 min 36 s (277) and about 3 min (278), past Claude Code's
+  120 s Bash limit. Claude Code moved the command to the background, the bot's `cat` of that output was
+  denied, every `defence_waf_apply` answered `409 not_tested`, no WAF version went live and no origin was
+  spent: response X on all three objectives in both rounds. In 278 the step-1 bot ran two tests at once and
+  drew `pace_limited` seven times.
+- The platform side stays as it is: `POST .../waf/test/` (and the IDS one) answers only when the test ends,
+  the console waits on it, and the test id exists for a client only in that answer. So the change is in
+  `bots/cli.py` alone: `defence_waf_test` and `defence_ids_test` write a job file (the arguments, never the
+  token) under `~/.cache/cr-bots/tests/round-<n>/` (`CR_BOT_TESTS_DIR`), start a detached
+  `python -m bots.cli finish-test <job file>` that makes the same blocking call through the relay and stores
+  its answer in the job file, and answer at once `{running: true, job, poll}`.
+  `python -m bots.cli defence_waf_test_result --job <n>` (or `defence_ids_test_result`) answers
+  `{running: true, running_s}` until the answer is stored, then that answer, whose `body.test` is the id
+  `defence_waf_apply` takes as `tested`. A second test of the same engine while one runs is refused locally
+  (`test_running`), before the relay counts it against the pace. The provider loop (`run`) keeps the
+  blocking call, since nothing times it out.
+- The prompts say it: `defender.md` to start one test, wait for its answer and start no second;
+  `claude_code.md` the job, the poll command and `sleep 30` between polls.
+- Rejected: raising Claude Code's Bash timeout for the child (`BASH_DEFAULT_TIMEOUT_MS`). The test can take
+  longer than any limit we would pick, and a bot that waits in one command cannot read the feeds or act
+  while the test runs.
+- Round 278 also had no feed for 5 min 35 s while alerts came in. The watch reads with the player token and
+  a read that fails returns nothing, so a tick passed silently. A failed read now writes one line to the
+  launcher log (`run <n>: watch read <operation> failed: <why>`, the exception or the status and the first
+  200 characters of the answer, secrets masked) and the tick passes as before. The cause is not measured.

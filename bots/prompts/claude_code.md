@@ -15,6 +15,11 @@ Commands:
   `headers` carries `X-Origin` and `X-Origins-Left` on attack answers. The `shell` tool is on both sides, so name
   the side: `python -m bots.cli shell --side defence --json '{"command": "sudo nginx -t"}'` prints
   `{operation, ok, exit_code, stdout, stderr}`.
+- `defence_waf_test` and `defence_ids_test` answer at once with `{running: true, job, poll}` and run the test on
+  their own; the test takes minutes, past the command's time limit. Then repeat the `poll` command,
+  `python -m bots.cli defence_waf_test_result --job <job>` (or `defence_ids_test_result`), with `sleep 30` between:
+  it answers `{running: true, running_s}` until the test ends, then the test's own answer, whose `body.test` is the
+  test id `defence_waf_apply` takes as `tested`. A second test while one runs is refused with `test_running`.
 - `sleep <seconds>` waits.
 
 Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.

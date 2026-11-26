@@ -58,7 +58,8 @@ warned (`limit.shared_key`). A refusal of benign traffic is a false positive.
    cases with no recording), `passed`, `failed_benign` and `untested_benign`. A test passes only when every
    benign case was replayed, none was refused (WAF) or alerted on (IDS), and the engine accepted the files;
    nothing that failed can go live.
-   Only one test runs at a time (`409 test_busy`).
+   Only one test runs at a time (`409 test_busy`). A WAF test replays every probe and takes minutes: start
+   one, wait for its answer, and start no second test while one runs.
 6. Follow `round_events` for `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `objective.lost` and
    `round.ended`.
 7. When the round has ended (phase `ended`, or `409 round_closed`), read `round_score` until `pending`
