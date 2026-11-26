@@ -176,6 +176,7 @@ class LostObjective:
 class Looted:
     lost: bool
     objective: LostObjective | None
+    objectives: tuple[LostObjective, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -535,7 +536,9 @@ def submit_loot(found: Round, player: Player, value: Any) -> Looted:
     writable(found)
     verdict = referee.submit_loot(found, value, logged_actions(found))
     chosen = verdict.objective
-    return Looted(lost=verdict.lost, objective=LostObjective(key=chosen.key, name=chosen.name) if chosen else None)
+    fell = sorted(verdict.fell, key=lambda fallen: fallen.difficulty, reverse=True)
+    return Looted(lost=verdict.lost, objective=LostObjective(key=chosen.key, name=chosen.name) if chosen else None,
+                  objectives=tuple(LostObjective(key=one.key, name=one.name) for one in fell))
 
 
 def terminal(found: Round, player: Player) -> Terminal:
