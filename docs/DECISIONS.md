@@ -11455,3 +11455,21 @@ The reviews of the two branches found four defects; all four are fixed on `integ
   a read that fails returns nothing, so a tick passed silently. A failed read now writes one line to the
   launcher log (`run <n>: watch read <operation> failed: <why>`, the exception or the status and the first
   200 characters of the answer, secrets masked) and the tick passes as before. The cause is not measured.
+
+## 2026-11-26 — The WAF rule test replays every request in one curl over one SSH call
+
+- Measured: round 306's test (step 2) ran 3 to 6.5 min and the objectives fell first. The test replays the
+  attacker origin's own requests (`origin_lines`), and that origin sent about 2,200 unmarked requests with
+  2,208 distinct request lines (sqlmap). Each request was its own gateway call: SSH (shared master),
+  `sudo`, a new `curl` process, about 0.1 to 0.16 s on cr-waf (1 vCPU). The fixed part (two layouts of the
+  scratch tree, `nginx -t` twice, the stub start, the audit read) is about 4 s (test 62: 13 requests, 4.2 s).
+- Now `crs.scratch_test` writes one script to the scratch prefix: each body to `bodies/<n>`, one curl
+  `--config` with a `next` between requests, and `curl -s --config` runs them in order, each with its own
+  `write-out` carrying its place. The requests are the same bytes as before (same headers, `--path-as-is`,
+  `--max-time 15`, the body from a file instead of stdin); what is checked does not change. The start call
+  now waits until the stub answers on its port (up to 5 s) instead of relying on SSH latency.
+- Expected: the per-request cost falls from about 0.13 s to the WAF's own processing time (2,200 requests
+  to the stub from one curl took 2.8 s locally without ModSecurity), so round 306's test should take tens
+  of seconds. Not yet measured on the range.
+- Kept serial: cr-waf has one vCPU, so parallel transfers would change the request rate a `limit_req` in
+  the candidate sees and gain little.

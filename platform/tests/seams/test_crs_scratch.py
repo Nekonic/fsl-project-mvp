@@ -1,10 +1,11 @@
+import base64
 import json
 
 import pytest
 
 from cr.config import WafConfig
 from sandbox import crs
-from testing.fakes import FakeRunner
+from testing.fakes import LAID_CONFIG, FakeRunner, replayed_requests
 
 WAF = WafConfig(reload="nginx -t 2>&1 && nginx -s reload 2>&1", pid="/run/nginx.pid")
 EXCLUSIONS = "/etc/nginx/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf"
@@ -26,6 +27,10 @@ AUDIT = "\n".join(json.dumps(record) for record in [
 ]) + "\nnot json\n"
 
 
+def configs(script: str) -> list[str]:
+    return base64.b64decode(LAID_CONFIG.search(script)[1]).decode().split("\nnext\n")
+
+
 LIVE_FILES = 'base64 -w0 "$f" 2>/dev/null'
 EMPTY_LIVE = "\n" * len(WAF.files)
 
@@ -34,8 +39,7 @@ def gateway():
     return (FakeRunner()
             .answer(LIVE_FILES, EMPTY_LIVE)
             .answer("nginx -t -p", "nginx: configuration file test is successful")
-            .answer("board-sqli-union", "403")
-            .answer("board-normal-comment", "200")
+            .answer("replay.sh", "cr.probe 1 200\ncr.probe 0 403\n")
             .answer("audit.log", AUDIT))
 
 
@@ -119,11 +123,14 @@ def test_the_scratch_test_replays_each_probe_to_loopback_and_reads_its_own_audit
             {"rule": "949110", "signature": "Inbound Anomaly Score Exceeded"}]},
         "board-normal-comment": {"status": 200, "alerts": []},
     }
-    curls = [one for one in waf.sent if one.argv[0] == "curl"]
-    assert [one.argv[-1] for one in curls] == ["http://127.0.0.1:18007/search/?q=1%27+UNION+SELECT",
-                                               "http://127.0.0.1:18007/posts/1/comment/"]
-    assert "X-Request-ID: board-sqli-union" in curls[0].argv and "Host: board.com" in curls[0].argv
-    assert "Host: evil" not in curls[1].argv and curls[1].stdin == "body=hi"
+    [replay] = waf.matching("replay.sh")
+    assert replayed_requests(replay.stdin) == [
+        ("board-sqli-union", "http://127.0.0.1:18007/search/?q=1%27+UNION+SELECT"),
+        ("board-normal-comment", "http://127.0.0.1:18007/posts/1/comment/")]
+    assert 'header = "Host: board.com"' in configs(replay.stdin)[0]
+    assert 'header = "Host: evil"' not in configs(replay.stdin)[1]
+    assert "printf %s Ym9keT1oaQ== | base64 -d > /var/lib/cr-crstest/test-7/bodies/1" in replay.stdin
+    assert not any(one.argv[0] == "curl" for one in waf.sent)
     started = next(one for one in waf.sent if "probe-upstream.py" in one.text)
     assert "--port 19007" in started.text and json.loads(started.stdin) == PROBES
     assert "nginx -p /var/lib/cr-crstest/test-7 -c /var/lib/cr-crstest/test-7/nginx.conf" in started.text
@@ -140,5 +147,33 @@ def test_a_scratch_config_nginx_refuses_is_a_refusal_with_field_errors_and_still
 
     assert [error.shown() for error in refused.value.errors] == [
         {"path": "/x.conf", "code": "crs_refused", "line": 4, "params": {"message": "bad"}}]
-    assert not any(one.argv[0] == "curl" for one in waf.sent)
+    assert not waf.matching("replay.sh")
     assert "rm -rf /var/lib/cr-crstest/test-7" in waf.sent[-1].text
+
+
+def test_every_probe_is_replayed_in_one_call_and_a_probe_with_no_answer_reads_status_0():
+    waf = FakeRunner().answer(LIVE_FILES, EMPTY_LIVE).answer("replay.sh", "cr.probe 1 403\ncurl: (28) timeout\n")
+
+    found = crs.scratch_test(FILES, waf, WAF, 7, PROBES)
+
+    assert {marker: answer["status"] for marker, answer in found.items()} == {
+        "board-sqli-union": 0, "board-normal-comment": 403}
+    assert len(waf.matching("replay.sh")) == 1
+    assert waf.matching("replay.sh")[0].timeout >= crs.PROBE_TIMEOUT * len(PROBES)
+
+
+def test_the_replay_waits_until_the_stub_upstream_answers():
+    waf = gateway()
+
+    crs.scratch_test(FILES, waf, WAF, 7, PROBES)
+
+    started = next(one for one in waf.sent if "probe-upstream.py" in one.text).text
+    assert started.index("nginx -p") < started.index("until curl -s -o /dev/null http://127.0.0.1:19007/")
+    assert started.index("probe-upstream.py") < started.index("until curl")
+
+
+def test_no_probes_send_no_replay():
+    waf = gateway()
+
+    assert crs.scratch_test(FILES, waf, WAF, 7, []) == {}
+    assert not waf.matching("replay.sh")

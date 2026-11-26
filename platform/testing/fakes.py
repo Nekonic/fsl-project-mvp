@@ -216,6 +216,23 @@ class SensorNode(Recorded):
         return OK
 
 
+LAID_CONFIG = re.compile(r"^printf %s (\S*) \| base64 -d > \S+/probes\.curl$", re.M)
+CONFIG_LINE = re.compile(r'^(header|url) = "(.*)"$', re.M)
+
+
+def replayed_requests(script: str) -> list[tuple[str, str]]:
+    found = LAID_CONFIG.search(script)
+    config = base64.b64decode(found[1]).decode() if found else ""
+    made = []
+    for segment in filter(None, config.split("\nnext\n")):
+        lines = [(name, value.replace('\\"', '"').replace("\\\\", "\\"))
+                 for name, value in CONFIG_LINE.findall(segment)]
+        marker = next(value.split(": ", 1)[1] for name, value in lines
+                      if name == "header" and value.startswith("X-Request-ID: "))
+        made.append((marker, next(value for name, value in lines if name == "url")))
+    return made
+
+
 @dataclass
 class Gateway(Recorded):
     files: dict[str, str] = field(default_factory=lambda: {path: "" for path in WAF_FILES})
@@ -235,13 +252,15 @@ class Gateway(Recorded):
             self.snapshot = dict(self.files)
             self.snapshot_at += 1
 
+    def answered(self, marker: str, url: str) -> int:
+        return 403 if marker in self.blocks or any(path in url for path in self.refused_paths) else 200
+
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
         text = one.text
-        if argv[0] == "curl":
-            marker = next(part.split(": ", 1)[1] for part in argv if part.startswith("X-Request-ID: "))
-            refused = marker in self.blocks or any(path in argv[-1] for path in self.refused_paths)
-            return Ran(0, "403" if refused else "200")
+        if "replay.sh" in text:
+            return Ran(0, "".join(f"{crs.REPLAYED_TAG} {at} {self.answered(marker, url)}\n"
+                                  for at, (marker, url) in enumerate(replayed_requests(stdin or ""))))
         if argv[:3] == ["sh", "-c", READ_FILES]:
             return Ran(0, "".join(base64.b64encode(self.files.get(path, "").encode()).decode() + "\n"
                                   for path in argv[4:]))

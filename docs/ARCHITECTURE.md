@@ -414,7 +414,8 @@ sequenceDiagram
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
     밖의 임시 `eve.json`을 읽습니다.
   - WAF: cr-waf에 따로 띄운 nginx 마스터(자기 prefix, `127.0.0.1`의 임시 포트, 자기 audit log)가 loopback의
-    `probe-upstream.py`를 upstream으로 씁니다. 녹화된 요청을 `curl`로 보내고 임시 audit log를 읽은 뒤 내립니다.
+    `probe-upstream.py`를 upstream으로 씁니다. stub이 응답할 때까지 기다린 뒤, 녹화된 요청 전부를 순서대로
+    `curl` 하나(`--config`, 요청마다 `next`)로 SSH 한 번에 보내고 임시 audit log를 읽은 뒤 내립니다.
   - WAF에서 도구 케이스는 `untested: tool_case`, 녹화가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
   - 판정은 `domain.verdicts`가 마커로 알림을 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
     `against_applied`는 적용된 버전의 테스트 결과와 비교합니다.
