@@ -259,7 +259,7 @@ stand". Still not run on a range:
 3. **External learners** (the user, 2026-11-25: the last task of the Player
    vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
    console, and `CR_VPN_HOST`.
-4. **One `pvp` round, and a loss with response O**.
+4. **One `pvp` round**.
 5. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
 6. **Gate 2**: present what changed with the evidence; on approval, move the
