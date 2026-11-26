@@ -4,6 +4,7 @@ import { clock } from "../format";
 import { setHash } from "../router";
 import { t } from "../strings";
 import { AsideCard, Badge, Button, Card, ErrorNotice, Form, FormActions, ListRow, Pane, PaneSection, Text, TextArea, PaneColumn } from "../ui";
+import { objectivesChanged } from "./Objectives";
 import { attackWritesOpen, useAttackState } from "./Origins";
 import type { PaneProps } from "./types";
 
@@ -62,7 +63,10 @@ function LootForm({ round }: { round: number }) {
     const said = await loot.run({ params: { round_id: round }, body: { value: asLoot(text) } });
     if (!said) return;
     remember(round, { at: new Date().toISOString(), lost: said.lost, objective: said.objective?.name ?? null });
-    if (said.lost) state.reload();
+    if (said.lost) {
+      state.reload();
+      objectivesChanged(round);
+    }
   };
 
   return (

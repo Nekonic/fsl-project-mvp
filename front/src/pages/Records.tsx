@@ -1,4 +1,3 @@
-import { useMemo } from "preact/hooks";
 import type { Schemas } from "../api/client";
 import { useResource } from "../api/hooks";
 import { clock, day } from "../format";
@@ -19,12 +18,8 @@ export function standingText(standing: Standing | null | undefined): string {
   return standing ? t("result.standing", { n: standing.n, top: Math.round(standing.top_percent) }) : "";
 }
 
-function useProblemTitles() {
-  const problems = useResource("/api/problems/", {});
-  return useMemo(() => {
-    const byId = new Map((problems.data ?? []).map((one) => [one.id, one.title]));
-    return (problem: number | null) => (problem === null ? "—" : byId.get(problem) ?? t("home.problem_no", { problem }));
-  }, [problems.data]);
+function problemTitle(line: { problem_title: string | null }): string {
+  return line.problem_title ?? "—";
 }
 
 function endedAt(line: RecordLine): string {
@@ -33,10 +28,9 @@ function endedAt(line: RecordLine): string {
 
 export function Records(_props: PageProps) {
   const records = useResource("/api/records/", {});
-  const titleOf = useProblemTitles();
   const columns: Column<RecordLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round_number }) },
-    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: (line) => titleOf(line.problem) },
+    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: problemTitle },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     { key: "steps", label: t("records.col.steps"), kind: "nowrap", cell: (line) => stepsLine(line.steps) || "—" },
     { key: "ended", label: t("records.col.ended"), kind: "mono", cell: endedAt },
@@ -69,12 +63,11 @@ function debriefOf(value: unknown): DebriefShown | null {
 export function RecordPage({ params }: PageProps) {
   const id = Number(params.record);
   const shown = useResource("/api/records/{record_id}/", { params: { record_id: id } });
-  const titleOf = useProblemTitles();
   const record = shown.data;
   const debrief = debriefOf(record?.debrief);
   const title = record ? t("round.name", { round: record.round_number }) : t("page.record");
   const lead = record
-    ? [[titleOf(record.problem), tFor("matchup", record.matchup), stepsLine(record.steps), endedAt(record)].filter(Boolean).join(" · ")]
+    ? [[problemTitle(record), tFor("matchup", record.matchup), stepsLine(record.steps), endedAt(record)].filter(Boolean).join(" · ")]
     : [];
   const standing = standingText(record?.standing);
   return (

@@ -19,16 +19,13 @@ type Side = Schemas["PlayerSideEnum"];
 const sideLabel = (side: string) => tFor("side", side);
 
 interface Catalogue {
-  titleOf: (problem: number) => string;
   wargames: Array<{ wargame: string; rounds: Problem[] }>;
 }
 
 function catalogueOf(problems: Problem[] | undefined): Catalogue {
-  const byId = new Map((problems ?? []).map((problem) => [problem.id, problem]));
   const order: string[] = [];
   for (const problem of problems ?? []) if (!order.includes(problem.wargame)) order.push(problem.wargame);
   return {
-    titleOf: (problem) => byId.get(problem)?.title ?? t("home.problem_no", { problem }),
     wargames: order.map((wargame) => {
       return { wargame, rounds: (problems ?? []).filter((problem) => problem.wargame === wargame) };
     }),
@@ -43,7 +40,7 @@ function openSides(line: RoundLine): Side[] {
   return line.players.filter((player) => player.client === "human" && player.username === null).map((player) => player.side);
 }
 
-function MyPlayers({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Catalogue }) {
+function MyPlayers({ rounds }: { rounds: RoundLine[] }) {
   if (!rounds.length) return <Card pad="md"><Text tone="muted">{t("home.my_players_none")}</Text></Card>;
   return (
     <Card list>
@@ -52,7 +49,7 @@ function MyPlayers({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Cata
         const first = sides[0] ?? "defence";
         return (
           <ListRow key={`r${line.round}`} id={t("round.name", { round: line.round })} href={to.player(line.round, first)}
-            main={<><Text tone="heading">{catalogue.titleOf(line.problem)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
+            main={<><Text tone="heading">{line.problem_title}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={<>
               <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge>
               {sides.map((side) => (
@@ -65,7 +62,7 @@ function MyPlayers({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Cata
   );
 }
 
-function Joinable({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Catalogue }) {
+function Joinable({ rounds }: { rounds: RoundLine[] }) {
   const join = useAction("post", "/api/rounds/{round_id}/players/{side}/join/");
   const take = async (round: number, side: Side) => {
     const joined = await join.run({ params: { round_id: String(round), side } });
@@ -77,7 +74,7 @@ function Joinable({ rounds, catalogue }: { rounds: RoundLine[]; catalogue: Catal
       <Card list>
         {rounds.map((line) => (
           <ListRow key={line.round} id={t("round.name", { round: line.round })}
-            main={<><Text tone="heading">{catalogue.titleOf(line.problem)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
+            main={<><Text tone="heading">{line.problem_title}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={openSides(line).map((side) => (
               <Badges key={side}>
                 <Badge tone="warn">{t("home.player_open", { side: sideLabel(side) })}</Badge>
@@ -135,14 +132,14 @@ function ProblemTiles({ catalogue }: { catalogue: Catalogue }) {
 interface PastLine {
   key: string;
   name: string;
-  problem: number;
+  problem: string;
   href: string;
 }
 
-function Past({ lines, catalogue }: { lines: PastLine[]; catalogue: Catalogue }) {
+function Past({ lines }: { lines: PastLine[] }) {
   const columns: Column<PastLine>[] = [
     { key: "name", label: t("col.round"), kind: "strong", cell: (line) => line.name },
-    { key: "problem", label: t("col.problem"), kind: "wrap", cell: (line) => catalogue.titleOf(line.problem) },
+    { key: "problem", label: t("col.problem"), kind: "wrap", cell: (line) => line.problem },
     {
       key: "result", label: t("col.result"), kind: "end",
       cell: (line) => <Button tone="link" small href={line.href}>{t("round.see_result")}</Button>,
@@ -166,7 +163,7 @@ export function Home(_props: PageProps) {
   const mineIds = new Set(roundsMine.map((line) => line.round));
   const joinableShown = (joinable.data ?? []).filter((line) => !mineIds.has(line.round) && openSides(line).length > 0);
   const past: PastLine[] = roundsMine.filter((line) => line.phase === "ended").map((line) => ({
-    key: `r${line.round}`, name: t("round.name", { round: line.round }), problem: line.problem, href: to.result(line.round),
+    key: `r${line.round}`, name: t("round.name", { round: line.round }), problem: line.problem_title, href: to.result(line.round),
   }));
 
   const all = problems.data ?? [];
@@ -183,11 +180,11 @@ export function Home(_props: PageProps) {
           <Section title={t("home.my_players")}>
             {mineRounds.loading
               ? <Loading>{t("common.loading")}</Loading>
-              : <MyPlayers rounds={roundsOpen} catalogue={catalogue} />}
+              : <MyPlayers rounds={roundsOpen} />}
           </Section>
           {joinableShown.length > 0 && (
             <Section title={t("home.joinable")}>
-              <Joinable rounds={joinableShown} catalogue={catalogue} />
+              <Joinable rounds={joinableShown} />
             </Section>
           )}
           <Section title={t("home.problems")} large>
@@ -197,7 +194,7 @@ export function Home(_props: PageProps) {
             <ProblemTiles catalogue={catalogue} />
           </Section>
           <Section title={t("home.past")}>
-            <Past lines={past} catalogue={catalogue} />
+            <Past lines={past} />
           </Section>
         </Stack>
       </PageBody>

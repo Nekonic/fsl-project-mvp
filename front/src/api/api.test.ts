@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, call, waitUntil } from "./client";
-import { follow, holdAllocation, HEARTBEAT_EVERY_MS } from "./follow";
+import { follow, FOLLOW_EVERY_MS, holdAllocation, HEARTBEAT_EVERY_MS } from "./follow";
 
 interface Answered {
   url: string;
@@ -50,6 +50,22 @@ describe("follow", () => {
     const stop = follow(901, (events) => batches.push(events.length));
     await vi.waitFor(() => expect(batches).toEqual([450]));
     expect(asked.filter((one) => one.url.includes("/events/")).length).toBe(4);
+    stop();
+  });
+
+  it("marks the events already there when it starts as backlog and later ones as fresh", async () => {
+    let upTo = 3;
+    answering((url) => {
+      const after = Number(new URL(url, "http://localhost").searchParams.get("after") ?? 0);
+      return json(200, eventsAfter(after, upTo, 200));
+    });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const told: Array<[number, boolean]> = [];
+    const stop = follow(902, (events, backlog) => told.push([events.length, backlog]));
+    await vi.advanceTimersByTimeAsync(0);
+    upTo = 5;
+    await vi.advanceTimersByTimeAsync(FOLLOW_EVERY_MS);
+    expect(told).toEqual([[3, true], [2, false]]);
     stop();
   });
 });

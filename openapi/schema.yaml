@@ -4304,6 +4304,9 @@ components:
         problem:
           type: integer
           nullable: true
+        problem_title:
+          type: string
+          nullable: true
         matchup:
           type: string
         steps:
@@ -4337,6 +4340,7 @@ components:
       - incomplete
       - matchup
       - problem
+      - problem_title
       - record
       - round_number
       - standing
@@ -4351,6 +4355,9 @@ components:
           type: integer
         problem:
           type: integer
+          nullable: true
+        problem_title:
+          type: string
           nullable: true
         matchup:
           type: string
@@ -4394,6 +4401,7 @@ components:
       - incomplete
       - matchup
       - problem
+      - problem_title
       - record
       - round_number
       - score
@@ -4455,6 +4463,8 @@ components:
           type: integer
         problem:
           type: integer
+        problem_title:
+          type: string
         kind:
           type: string
         matchup:
@@ -4471,6 +4481,7 @@ components:
       - phase
       - players
       - problem
+      - problem_title
       - round
     RoundPhaseEnum:
       enum:

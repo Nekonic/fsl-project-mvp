@@ -9,12 +9,12 @@ const human = (side: "attack" | "defence", username: string | null) => ({ side, 
 const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name, step: "", bot_run: null });
 
 const mine = [
-  { round: 41, problem: 7, kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
-  { round: 40, problem: 7, kind: "round", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
+  { round: 41, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
+  { round: 40, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
 ];
 
 const joinable = [
-  { round: 42, problem: 7, kind: "round", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
+  { round: 42, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
 ];
 
 export const fixtures = [

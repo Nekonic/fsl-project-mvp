@@ -31,6 +31,7 @@ class PlayerLine(serializers.Serializer):
 class RoundLine(serializers.Serializer):
     round = serializers.IntegerField(source="pk")
     problem = serializers.IntegerField(source="problem_id")
+    problem_title = serializers.CharField(source="problem.title")
     kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
@@ -402,6 +403,7 @@ class RecordLine(serializers.Serializer):
     record = serializers.IntegerField(source="pk")
     round_number = serializers.IntegerField()
     problem = serializers.IntegerField(source="problem_id", allow_null=True)
+    problem_title = serializers.CharField(source="problem.title", allow_null=True)
     matchup = serializers.CharField()
     steps = serializers.DictField(child=serializers.CharField())
     started = serializers.DateTimeField(allow_null=True)

@@ -14,12 +14,21 @@ const FORFEIT_PATH = {
 } as const;
 
 const ROUND_EVENTS = ["round.started", "round.ended", "player.joined"];
+const BOT_RUN_UNSETTLED = new Set(["queued", "running"]);
+export const BOT_RUN_READ_EVERY_MS = 15_000;
 
 export function useRound(round: number) {
   const shown = useResource("/api/rounds/{round_id}/", { params: { round_id: round } }, { refreshOn: { round, kinds: ROUND_EVENTS } });
   const problemId = shown.data?.problem;
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
   useEffect(() => holdAllocation(round, shown.data?.allocation), [round, shown.data?.allocation]);
+  const botUnsettled = Boolean(shown.data?.players.some((player) => player.bot_run !== null && BOT_RUN_UNSETTLED.has(player.bot_run)));
+  const reloadRound = shown.reload;
+  useEffect(() => {
+    if (!botUnsettled) return undefined;
+    const timer = setInterval(reloadRound, BOT_RUN_READ_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [botUnsettled, reloadRound]);
   return { round: shown.data, problem: problem.data, error: shown.error, reload: shown.reload };
 }
 
@@ -28,11 +37,14 @@ type PlayerLine = Schemas["PlayerLine"];
 const SIDE_ORDER: Side[] = ["attack", "defence"];
 
 function playerWho(player: PlayerLine): string {
-  if (player.client === "bot") return t("round.player_bot", { name: player.step ? tFor("bot_step", player.step) : player.bot_name });
+  if (player.client === "bot") {
+    const who = t("round.player_bot", { name: player.step ? tFor("bot_step", player.step) : player.bot_name });
+    return player.bot_run ? `${who} · ${tFor("bot_run", player.bot_run)}` : who;
+  }
   return player.username ?? t("round.player_open");
 }
 
-function playerFacts(players: PlayerLine[]) {
+export function playerFacts(players: PlayerLine[]) {
   return SIDE_ORDER.flatMap((side) => players.filter((player) => player.side === side))
     .map((player) => ({ label: t(`side.${player.side}`), value: playerWho(player), mono: player.client !== "bot" && player.username !== null }));
 }

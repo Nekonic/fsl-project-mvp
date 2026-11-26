@@ -1,7 +1,7 @@
 import { api, ApiError, type Schemas } from "./client";
 
 export type RoundEvent = Schemas["Event"];
-export type EventListener = (events: RoundEvent[]) => void;
+export type EventListener = (events: RoundEvent[], backlog: boolean) => void;
 
 export const FOLLOW_EVERY_MS = 3_000;
 export const FOLLOW_BACKOFF_LIMIT_MS = 30_000;
@@ -15,6 +15,7 @@ class Follower {
   private cursor: number | undefined;
   private listeners = new Set<EventListener>();
   private seen: RoundEvent[] = [];
+  private caughtUp = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
   private ended = false;
@@ -26,7 +27,7 @@ class Follower {
 
   subscribe(listener: EventListener, replay: boolean): () => void {
     this.listeners.add(listener);
-    if (replay && this.seen.length) listener(this.seen);
+    if (replay && this.seen.length) listener(this.seen, true);
     this.start();
     return () => {
       this.listeners.delete(listener);
@@ -52,7 +53,7 @@ class Follower {
     this.pollTimer = setTimeout(() => void this.poll(), delay);
   }
 
-  private async readBacklog(): Promise<RoundEvent[]> {
+  private async readBacklog(): Promise<{ fresh: RoundEvent[]; drained: boolean }> {
     const fresh: RoundEvent[] = [];
     for (let page = 0; page < FOLLOW_PAGES_PER_READ && this.running; page += 1) {
       const said = await api.get("/api/rounds/{round_id}/events/", {
@@ -60,20 +61,22 @@ class Follower {
         query: this.cursor === undefined ? {} : { after: this.cursor },
       });
       this.cursor = said.next;
-      if (!said.events.length) break;
+      if (!said.events.length) return { fresh, drained: true };
       fresh.push(...said.events);
     }
-    return fresh;
+    return { fresh, drained: false };
   }
 
   private async poll(): Promise<void> {
     try {
-      const fresh = await this.readBacklog();
+      const { fresh, drained } = await this.readBacklog();
       this.failures = 0;
+      const backlog = !this.caughtUp;
+      if (drained) this.caughtUp = true;
       if (fresh.length && this.running) {
         this.seen = [...this.seen, ...fresh];
         if (fresh.some((event) => event.kind === "round.ended")) this.ended = true;
-        this.listeners.forEach((listener) => listener(fresh));
+        this.listeners.forEach((listener) => listener(fresh, backlog));
       }
       this.next(FOLLOW_EVERY_MS);
     } catch (error) {

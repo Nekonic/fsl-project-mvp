@@ -5,8 +5,8 @@ const bot = (side: "attack" | "defence", name: string, step = "") => ({
   side, client: "bot", username: null, bot_name: name, step, bot_run: step ? ("queued" as const) : null,
 });
 
-const waiting = { round: 43, problem: 7, kind: "round", matchup: "def_vs_bot", phase: "created" as const, players: [bot("attack", "bot_step.2", "2"), human("defence", "learner-one")] };
-const finished = { round: 40, problem: 7, kind: "round", matchup: "pvp", phase: "ended" as const, players: [human("attack", "learner-two"), human("defence", null)] };
+const waiting = { round: 43, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "def_vs_bot", phase: "created" as const, players: [bot("attack", "bot_step.2", "2"), human("defence", "learner-one")] };
+const finished = { round: 40, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "ended" as const, players: [human("attack", "learner-two"), human("defence", null)] };
 
 interface AllocationShape {
   ready?: boolean;

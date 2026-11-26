@@ -5,7 +5,7 @@ import { clock } from "../format";
 import { t, tFor } from "../strings";
 import { Badge, Button, Code, ErrorNotice, Loading, Notice, Pane, PaneSection, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchOutcome, RuleTestSection, useRuleBench } from "./RuleTestTable";
+import { BenchOutcome, RuleTestSection, rememberTest, useLatestTest, useRuleBench } from "./RuleTestTable";
 import type { PaneProps } from "./types";
 
 const RULE_EVENTS = ["rule.applied", "rule.refused", "round.ended"];
@@ -27,8 +27,15 @@ export function IdsRules({ round }: PaneProps) {
   const [opened, setOpened] = useState<number | null>(null);
   const live = rules.data?.text ?? "";
   const bench = useRuleBench(live);
+  useLatestTest({ round, engine: "ids", content: rules.data ? live : null, body: live, liveBody: live, head: versions.head, recorded: rules.data?.recorded, bench });
 
-  const test = () => bench.test({ test: () => api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live } }) });
+  const test = () => bench.test({
+    test: async () => {
+      const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live } });
+      if (said.ok) rememberTest(round, "ids", live, said.test);
+      return said;
+    },
+  });
 
   const versionColumns: Column<AppliedVersion>[] = [
     { key: "version", label: t("versions.col.version"), kind: "num", cell: (row) => row.version },

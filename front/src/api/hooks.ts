@@ -30,16 +30,16 @@ function asApiError(error: unknown): ApiError | undefined {
   return new ApiError(0, [{ path: "", code: "network" }]);
 }
 
-export function useEvents(round: number | null | undefined, kinds: string[] | null, onEvents: (events: RoundEvent[]) => void, replay = false): void {
+export function useEvents(round: number | null | undefined, kinds: string[] | null, onEvents: (events: RoundEvent[], backlog: boolean) => void, replay = false): void {
   const handler = useRef(onEvents);
   handler.current = onEvents;
   const wanted = kinds ? kinds.join(",") : "";
   useEffect(() => {
     if (!round) return undefined;
     const only = wanted ? new Set(wanted.split(",")) : null;
-    return follow(round, (events) => {
+    return follow(round, (events, backlog) => {
       const matching = only ? events.filter((event) => only.has(event.kind)) : events;
-      if (matching.length) handler.current(matching);
+      if (matching.length) handler.current(matching, backlog);
     }, replay);
   }, [round, wanted, replay]);
 }
