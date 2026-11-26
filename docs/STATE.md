@@ -18,9 +18,19 @@ then restructured on the branch `restructure` (ruling 2026-11-21,
 `pg-store`, the PostgreSQL store, and `access-address`, the access page's
 target address) with CRS 920350 removed at the WAF and the attack bot's
 prompt rewritten as an engagement brief) with the defence bot kept in the
-round and fed by the launcher until it ends;
-`main` holds the old product until gate 2. The cloud runs
-`defence-watch` since the night of 2026-11-25 to 2026-11-26; on 2026-11-23 the first range of `restructure`
+round and fed by the launcher until it ends, and `bundle-1126` on top
+(the bot polls the rule test as a detached job, the rule test replays in
+one curl over one SSH call, the attack prompt names the round's attack
+profile for the debrief, the watch check is timed from the last start and
+capped); `main` holds the old product until gate 2. The cloud runs
+`bundle-1126` since 2026-11-26: one replace; rounds 309 (`atk_vs_bot`,
+step 2: all three objectives lost, detection O and response O, the bot's
+WAF version live 118 s after the first alert), 310 (`def_vs_bot`, step 2,
+Sonnet 5.5: 118 turns, 2 refusals, the bot went on, no objective lost) and
+311 (`def_vs_bot`, step 3, Opus 5.5: 79 turns, 2 refusals, no objective
+lost, TP/FP/FN/TN 7/0/0/42) at once; watch checks every 30 s, each 0.3 to
+5 s, a read that timed out at 5 s skipped to the next check; the full
+acceptance from the platform VM 101 of 101; on 2026-11-23 the first range of `restructure`
 was built and checked (`docs/DECISIONS.md`, "The first cloud check of
 `restructure`").
 
@@ -216,8 +226,7 @@ a live range and passed.
 What ran on the range on 2026-11-23 and 2026-11-24 is under "Where things
 stand". Still not run on a range:
 
-- one `pvp` round, and a loss with response O (objectives were lost live
-  with response X in rounds 175, 179 and 216);
+- one `pvp` round (a loss with response O ran on 2026-11-26, round 309);
 - a captured walk of every page as a learner, against the live platform;
 - a live review round with zero countable findings, and a docs review;
 - the edge's `pool` and `spent` sets after a reboot of the infra
@@ -228,10 +237,10 @@ stand". Still not run on a range:
 - `bin/cloud up --replace` under the stack name `cr-platform` (it ran as
   `cr-platform2`; under `cr-platform` it stops before deleting anything,
   §5.3); `bin/cloud down`;
-- of the Player vs AI build: a `def_vs_bot` round the attack bot plays to
-  the end, the learner's UDP reach, and three rounds at once on the
-  PostgreSQL store (it runs on the range since 2026-11-25; the rounds and
-  the acceptance run there did not put three bot rounds on it at once);
+- of the Player vs AI build: the learner's UDP reach from outside the
+  range (three bot rounds at once on the PostgreSQL store and `def_vs_bot`
+  rounds the attack bot played to the end ran on 2026-11-26, rounds 309 to
+  311);
 - the rulings of 2026-11-22 and 2026-11-23 not built yet (five attack
   origins, more benign kinds, Internet scanners, the board's attack paths,
   the response replay of the attack's own logged requests).

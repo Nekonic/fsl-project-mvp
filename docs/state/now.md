@@ -9,7 +9,17 @@ Updated: 2026-11-26.
 
 ## Where things stand
 
-- The tree is `defence-watch`: `waf5` with the defence bot kept in the
+- The tree is `bundle-1126` (2026-11-26): `defence-watch` with the bot
+  polling the rule test as a detached job, the rule test replayed in one
+  curl over one SSH call, the attack prompt rewritten to name the round's
+  attack profile for the debrief, and the watch check timed from the last
+  start and capped. On the cloud: one replace; rounds 309 (`atk_vs_bot`
+  step 2, all three lost, detection O, response O, the bot's WAF version
+  live 118 s after the first alert), 310 (`def_vs_bot` step 2 Sonnet 5.5,
+  2 refusals, the bot went on, no objective lost) and 311 (step 3 Opus 5.5,
+  2 refusals, no objective lost, 7/0/0/42) at once; the full acceptance
+  from the platform VM 101 of 101.
+- Before that the tree was `defence-watch`: `waf5` with the defence bot kept in the
   round until it ends, fed by the launcher every `watch_s` of its step
   (`docs/DECISIONS.md` 2026-11-25). It runs on the cloud since the early
   morning of 2026-11-26 (`docs/STATE.md` "Where things stand"): one
@@ -91,8 +101,7 @@ Updated: 2026-11-26.
 ## Not live-verified
 
 A `pvp` round, a captured learner walk, a live review round, a docs
-review, the edge sets after an infra reboot, a loss with response O, and
-three bot rounds at once on the PostgreSQL store. The list is in
+review, the edge sets after an infra reboot. The list is in
 `docs/STATE.md` "Not live-verified".
 
 ## Blockers for the user
@@ -108,20 +117,11 @@ three bot rounds at once on the PostgreSQL store. The list is in
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. The platform under several rounds: the PostgreSQL store, rule applies
-   outside a transaction and the one-query alert join run on the range;
-   measure three bot rounds at once on them. Free actions read from
-   Elasticsearch stay (`docs/STATE.md` "Open points").
-3. The attack bot on Sonnet and Opus 5.5: with the engagement brief every
-   run of 2026-11-25 evening was stopped by the model's safeguards (4 of 4,
-   `docs/STATE.md` "Open points"); a fall back to Opus 4.8 at step 3 still
-   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot now
-   stays until the round ends (rounds 277, 278), but cannot get a WAF
-   change live. `bot-test-wait` (2026-11-26) runs the rule test as a
-   detached job the bot polls: in round 306 (step 2) the bot polled it, but
-   the test (3 to 6.5 min) ran past the fall of all three objectives, so
-   response stayed X; acceptance `test_bot_rounds` 3 of 3 from the platform
-   VM. Next: a faster rule test, then a loss with response O from the bot.
+2. The attack bot still meets 2 refusals a run on Sonnet and Opus 5.5
+   and goes on; it took no objective in rounds 310 and 311.
+3. A platform read now and then takes over 5 s with three rounds at once
+   (the watch skips that check); the ingest inside each read is the
+   suspect (`docs/STATE.md` "Open points").
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
