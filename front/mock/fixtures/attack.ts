@@ -41,8 +41,16 @@ export const fixtures = [
   reply("post", "/api/rounds/{round_id}/attack/loot/", (asked) => {
     const text = JSON.stringify(asked.body?.value ?? "");
     return text.includes("pbkdf2")
-      ? { lost: true, objective: { key: "board-auth-user-partial", name: "Board accounts, partial" }, remaining }
-      : { lost: false, objective: null, remaining };
+      ? {
+        lost: true,
+        objective: { key: "board-auth-user-admin", name: "Board admin account" },
+        objectives: [
+          { key: "board-auth-user-admin", name: "Board admin account" },
+          { key: "board-auth-user-partial", name: "Board accounts, partial" },
+        ],
+        remaining,
+      }
+      : { lost: false, objective: null, objectives: [], remaining };
   }),
   reply("post", "/api/rounds/{round_id}/attack/origins/next/", { origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, remaining: { ...remaining, origin: { id: "br-1", label: "BR", ip: "177.8.0.10" }, left: 28 } }),
   refuse("post", "/api/rounds/{round_id}/attack/origins/next/", 409, [{ path: "", code: "origins_spent" }], { variant: "spent" }),

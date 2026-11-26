@@ -452,7 +452,8 @@ sequenceDiagram
 `scoring/`에는 view가 없고, 점수 API는 `training/round/views.py`에 있습니다.
 
 ```
-{objectives:{lost:[{key, name, detected, responded, response_seconds, attributed_marker}], kept:[...], weighted},
+{objectives:{lost:[{key, name, difficulty, detected, responded, response_seconds, attributed_marker}],
+             kept:[{key, name, difficulty}], weighted},
  outcomes:{per_case:[{case, verdict, alerts, corroborated}], totals, note:"one_case_one_decision"},
  free_actions:{by_origin:[{ip, actions, alerts, refused}]}}
 ```
@@ -466,8 +467,8 @@ sequenceDiagram
   (`domain.scoring.objectives.refused_the_attack`, `ResponseRecord.replayed`·`refused`). 공격 요청은 다시 보낸 행동
   가운데 알림을 받은 것 전부이고, 알림을 받은 것이 없으면 케이스로 쏜 공격 전부입니다. 둘 다 없으면(자유 요청만
   있으면) 하나라도 막으면 됩니다. 알림 없는 평범한 요청이 통과했다고 대응이 사라지지 않습니다. IDS 버전은 알리기만 하므로
-  대응이 아닙니다. `lifecycle.responses`가 이 둘을 `ResponseRecord`로 모읍니다. `weighted`는 대응한 목표를 난이도의
-  절반, 대응하지 못한 목표를 난이도 그대로 셉니다. `response_seconds`는 첫 알림부터 첫 대응까지 초이고, 둘 중 하나라도
+  대응이 아닙니다. `lifecycle.responses`가 이 둘을 `ResponseRecord`로 모읍니다. `weighted`는 대응한 목표를 난이도(`difficulty`)의
+  절반, 대응하지 못한 목표를 난이도 그대로 셉니다. 점수 화면은 목표마다 난이도와 더해진 점수를 보여 줘서 학습자가 합을 맞춰 볼 수 있습니다. `response_seconds`는 첫 알림부터 첫 대응까지 초이고, 둘 중 하나라도
   없으면 비어 있습니다. `Objective.seen`과 방어 상태의 `seen`은 `detected`를 그대로 담습니다.
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.

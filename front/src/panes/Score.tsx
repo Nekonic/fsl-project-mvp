@@ -17,6 +17,7 @@ type OriginActivity = Schemas["OriginActivity"];
 interface ObjectiveLine {
   key: string;
   name: string;
+  difficulty: number;
   lost: boolean;
   detected: boolean;
   responded: boolean;
@@ -31,6 +32,8 @@ const VERDICT_ORDER: Verdict[] = ["tp", "fn", "fp", "tn"];
 
 const ATTACK_VERDICTS: Verdict[] = ["tp", "fn"];
 
+const RESPONDED_SHARE = 0.5;
+
 function isAttackCase(line: CaseLine): boolean {
   return ATTACK_VERDICTS.includes(line.verdict);
 }
@@ -38,11 +41,11 @@ function isAttackCase(line: CaseLine): boolean {
 function objectiveLines(score: ScoreShown): ObjectiveLine[] {
   return [
     ...score.objectives.lost.map((objective) => ({
-      key: objective.key, name: objective.name, lost: true, detected: objective.detected, responded: objective.responded,
+      key: objective.key, name: objective.name, difficulty: objective.difficulty, lost: true, detected: objective.detected, responded: objective.responded,
       responseSeconds: objective.response_seconds,
     })),
     ...score.objectives.kept.map((objective) => ({
-      key: objective.key, name: objective.name, lost: false, detected: false, responded: false, responseSeconds: null,
+      key: objective.key, name: objective.name, difficulty: objective.difficulty, lost: false, detected: false, responded: false, responseSeconds: null,
     })),
   ];
 }
@@ -64,7 +67,9 @@ function Taken({ lost }: { lost: boolean }) {
 }
 
 function Weight({ line }: { line: ObjectiveLine }) {
-  return line.responded ? <Text tone="ok">{t("result.weight_half")}</Text> : <Text tone="danger">{t("result.weight_full")}</Text>;
+  return line.responded
+    ? <Text tone="ok">{t("result.weight_half", { points: count(line.difficulty * RESPONDED_SHARE) })}</Text>
+    : <Text tone="danger">{t("result.weight_full", { points: count(line.difficulty) })}</Text>;
 }
 
 function Objectives({ score }: { score: ScoreShown }) {
@@ -75,6 +80,7 @@ function Objectives({ score }: { score: ScoreShown }) {
   };
   const columns: Column<ObjectiveLine>[] = [
     { key: "name", label: t("result.objective"), kind: "strong", cell: (line) => line.name, title: (line) => line.key },
+    { key: "difficulty", label: t("result.difficulty"), kind: "num", cell: (line) => count(line.difficulty) },
     { key: "lost", label: t("result.achieved"), kind: "nowrap", cell: (line) => <Taken lost={line.lost} /> },
     { key: "detected", label: t("result.detected"), kind: "nowrap", cell: (line) => judged(line, () => <Mark on={line.detected} tone="ok" />) },
     { key: "responded", label: t("result.responded"), kind: "nowrap", cell: (line) => judged(line, () => <Mark on={line.responded} tone="ok" />) },

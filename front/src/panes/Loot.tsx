@@ -11,7 +11,7 @@ import type { PaneProps } from "./types";
 export interface LootSubmission {
   at: string;
   lost: boolean;
-  objective: string | null;
+  objectives: string[];
 }
 
 const submitted = new Map<number, LootSubmission[]>();
@@ -42,11 +42,16 @@ function asLoot(text: string): unknown {
   }
 }
 
+export function fallenNames(said: { objective: { name: string } | null; objectives?: Array<{ name: string }> }): string[] {
+  if (said.objectives?.length) return said.objectives.map((objective) => objective.name);
+  return said.objective ? [said.objective.name] : [];
+}
+
 function SubmissionRow({ submission }: { submission: LootSubmission }) {
   return (
     <ListRow
       id={<Text mono tone="muted">{clock(submission.at)}</Text>}
-      main={<Text strong>{submission.objective ?? t("loot.no_match")}</Text>}
+      main={<Text strong>{submission.objectives.length ? submission.objectives.join(", ") : t("loot.no_match")}</Text>}
       side={submission.lost ? <Badge tone="danger">{t("objective.lost")}</Badge> : <Badge tone="muted">{t("loot.not_taken")}</Badge>}
     />
   );
@@ -62,7 +67,7 @@ function LootForm({ round }: { round: number }) {
     if (!text.trim()) return;
     const said = await loot.run({ params: { round_id: round }, body: { value: asLoot(text) } });
     if (!said) return;
-    remember(round, { at: new Date().toISOString(), lost: said.lost, objective: said.objective?.name ?? null });
+    remember(round, { at: new Date().toISOString(), lost: said.lost, objectives: fallenNames(said) });
     if (said.lost) {
       state.reload();
       objectivesChanged(round);

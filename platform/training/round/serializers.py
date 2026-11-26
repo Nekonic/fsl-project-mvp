@@ -143,6 +143,7 @@ class ScoreQuery(serializers.Serializer):
 class LostObjective(serializers.Serializer):
     key = serializers.CharField()
     name = serializers.CharField()
+    difficulty = serializers.IntegerField()
     detected = serializers.BooleanField()
     responded = serializers.BooleanField()
     response_seconds = serializers.FloatField(allow_null=True)
@@ -152,6 +153,7 @@ class LostObjective(serializers.Serializer):
 class KeptObjective(serializers.Serializer):
     key = serializers.CharField()
     name = serializers.CharField()
+    difficulty = serializers.IntegerField()
 
 
 class Objectives(serializers.Serializer):

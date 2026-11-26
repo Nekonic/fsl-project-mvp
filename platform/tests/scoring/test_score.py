@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from domain.scoring.objectives import RESPONDED_WEIGHT
 from domain.types import RESPONSE_VERSION, ResponseRecord
 from scoring import baseline as baselines
 from scoring import losses
@@ -39,9 +40,9 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
     scored = service.score(found, actions, alerts, responses=reloaded).shown()
 
     assert scored["objectives"] == {
-        "lost": [{"key": "board-auth-user-admin", "name": "게시판 관리자 계정 탈취", "detected": True,
+        "lost": [{"key": "board-auth-user-admin", "name": "게시판 관리자 계정 탈취", "difficulty": 4, "detected": True,
                   "responded": True, "response_seconds": 9.0, "attributed_marker": SQLI}],
-        "kept": [{"key": "board-auth-user-full", "name": "게시판 전체 계정 탈취"}],
+        "kept": [{"key": "board-auth-user-full", "name": "게시판 전체 계정 탈취", "difficulty": 5}],
         "weighted": 2.0,
     }
     assert scored["outcomes"] == {
@@ -74,6 +75,19 @@ def test_an_objective_lost_unseen_and_unanswered_counts_double(board_target):
     assert (unseen.lost[0].detected, unseen.lost[0].responded) == (False, False)
     assert unseen.weighted == 4.0
     assert (unseen.totals.tp, unseen.totals.fn) == (0, 1)
+
+
+def test_each_lost_objective_carries_its_difficulty_so_the_weighted_score_adds_up_from_it(board_target):
+    actions = attack_and_customer()
+    found = lost_admin(board_target, actions)
+    reloaded = [ResponseRecord(at=AT - timedelta(seconds=10), kind=RESPONSE_VERSION, replayed=frozenset({SQLI}),
+                               refused=frozenset({SQLI}))]
+
+    for responses, responded in (((), False), (reloaded, True)):
+        scored = service.score(found, actions, [], responses=responses)
+        assert [(one.difficulty, one.responded) for one in scored.lost] == [(4, responded)]
+        assert scored.weighted == sum(one.difficulty * (RESPONDED_WEIGHT if one.responded else 1.0)
+                                      for one in scored.lost)
 
 
 def test_one_declared_case_is_one_decision_however_many_alerts_it_drew(board_target):

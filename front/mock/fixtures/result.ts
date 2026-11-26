@@ -3,10 +3,10 @@ import { refuse, reply } from "../fixture";
 export const score = {
   pending: false,
   objectives: {
-    lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", detected: true, responded: true, response_seconds: 42.4, attributed_marker: "m-7f3a" }],
+    lost: [{ key: "board-auth-user-partial", name: "Board accounts, partial", difficulty: 2, detected: true, responded: true, response_seconds: 42.4, attributed_marker: "m-7f3a" }],
     kept: [
-      { key: "board-auth-user-admin", name: "Board admin account" },
-      { key: "board-auth-user-full", name: "Board accounts, all" },
+      { key: "board-auth-user-admin", name: "Board admin account", difficulty: 4 },
+      { key: "board-auth-user-full", name: "Board accounts, all", difficulty: 5 },
     ],
     weighted: 1,
   },
@@ -35,7 +35,7 @@ export const score = {
 
 export const blockingScore = {
   ...score,
-  objectives: { lost: [], kept: [...score.objectives.kept, { key: "board-auth-user-partial", name: "Board accounts, partial" }], weighted: 0 },
+  objectives: { lost: [], kept: [...score.objectives.kept, { key: "board-auth-user-partial", name: "Board accounts, partial", difficulty: 2 }], weighted: 0 },
   outcomes: {
     ...score.outcomes,
     per_case: score.outcomes.per_case.map((line) => (line.verdict === "tn" ? { ...line, verdict: "fp" as const, alerts: 4 } : line)),

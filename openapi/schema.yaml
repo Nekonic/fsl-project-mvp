@@ -3642,7 +3642,10 @@ components:
           type: string
         name:
           type: string
+        difficulty:
+          type: integer
       required:
+      - difficulty
       - key
       - name
     KibanaSpace:
@@ -3765,6 +3768,8 @@ components:
           type: string
         name:
           type: string
+        difficulty:
+          type: integer
         detected:
           type: boolean
         responded:
@@ -3779,6 +3784,7 @@ components:
       required:
       - attributed_marker
       - detected
+      - difficulty
       - key
       - name
       - responded

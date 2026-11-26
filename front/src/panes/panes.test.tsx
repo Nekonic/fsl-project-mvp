@@ -4,6 +4,7 @@ import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
 import { playerFacts } from "../console/RoundHeader";
 import { IdsRules } from "./IdsRules";
+import { fallenNames } from "./Loot";
 import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
@@ -65,8 +66,8 @@ function cellsOf(text: string): string[] {
 describe("ScoreReport", () => {
   it("marks each lost objective detected and responded with the response time, heads them with the objective score and counts the four verdicts", () => {
     render(<ScoreReport score={score} />);
-    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", t("objective.lost"), t("mark.yes"), t("mark.yes"), t("result.weight_half"), t("result.seconds", { seconds: "42" })]);
-    expect(cellsOf("Board admin account")).toEqual(["Board admin account", t("objective.kept"), "—", "—", "—", "—"]);
+    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", "2", t("objective.lost"), t("mark.yes"), t("mark.yes"), t("result.weight_half", { points: "1" }), t("result.seconds", { seconds: "42" })]);
+    expect(cellsOf("Board admin account")).toEqual(["Board admin account", "4", t("objective.kept"), "—", "—", "—", "—"]);
     expect(screen.getByText(t("result.objective_points", { points: "1" }))).toBeTruthy();
     expect(screen.getByText(t("result.objective_points_rule"))).toBeTruthy();
     const verdicts = ["tp", "fn", "fp", "tn"].map((verdict, index) => `${tFor("verdict", verdict)} ${[2, 1, 0, 6][index]}`);
@@ -76,8 +77,20 @@ describe("ScoreReport", () => {
   it("shows a pending mark instead of detection, response and weight until the judge", () => {
     render(<ScoreReport score={{ ...score, pending: true }} />);
     const pending = t("mark.pending");
-    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", t("objective.lost"), pending, pending, pending, "—"]);
+    expect(cellsOf("Board accounts, partial")).toEqual(["Board accounts, partial", "2", t("objective.lost"), pending, pending, pending, "—"]);
     expect(screen.getByText(t("result.objective_points_pending", { points: "1" }))).toBeTruthy();
+  });
+
+  it("shows each objective's difficulty and the points it adds, full when unanswered and half when answered, summing to the objective score", () => {
+    const lost = [
+      { key: "board-auth-user-partial", name: "Board accounts, partial", difficulty: 2, detected: true, responded: true, response_seconds: 42.4, attributed_marker: "m-7f3a" },
+      { key: "board-auth-user-admin", name: "Board admin account", difficulty: 4, detected: true, responded: false, response_seconds: null, attributed_marker: null },
+    ];
+    render(<ScoreReport score={{ ...score, objectives: { lost, kept: [], weighted: 5 } }} />);
+    expect(cellsOf("Board accounts, partial").slice(0, 2)).toEqual(["Board accounts, partial", "2"]);
+    expect(cellsOf("Board accounts, partial")[5]).toBe(t("result.weight_half", { points: "1" }));
+    expect(cellsOf("Board admin account")[5]).toBe(t("result.weight_full", { points: "4" }));
+    expect(screen.getByText(t("result.objective_points", { points: "5" }))).toBeTruthy();
   });
 
   it("folds every firing of a case into one row with its count and keeps the API's totals", () => {
@@ -98,6 +111,16 @@ describe("ScoreReport", () => {
     expect(cellsOf("5.188.10.10")[1]).toBe("998");
     expect(cellsOf("181.8.0.10")[1]).toBe("12");
     expect(document.body.textContent).not.toContain("one_case_one_decision");
+  });
+});
+
+describe("Loot results", () => {
+  it("names every objective that fell, and the one objective when the answer predates the list", () => {
+    const admin = { key: "board-auth-user-admin", name: "Board admin account" };
+    const partial = { key: "board-auth-user-partial", name: "Board accounts, partial" };
+    expect(fallenNames({ objective: admin, objectives: [admin, partial] })).toEqual(["Board admin account", "Board accounts, partial"]);
+    expect(fallenNames({ objective: admin })).toEqual(["Board admin account"]);
+    expect(fallenNames({ objective: null, objectives: [] })).toEqual([]);
   });
 });
 

@@ -20,6 +20,7 @@ from training.models import Round
 class LostObjective:
     key: str
     name: str
+    difficulty: int
     detected: bool
     responded: bool
     response_seconds: float | None
@@ -30,6 +31,7 @@ class LostObjective:
 class KeptObjective:
     key: str
     name: str
+    difficulty: int
 
 
 @dataclass(frozen=True)
@@ -103,10 +105,12 @@ def score(found: Round, actions: Sequence[ActionRecord], detections: Sequence[De
     lost = breaches(records, attempts(cases, result, detections), responses)
     fallen = {breach.key for breach in lost}
     return RoundScore(
-        lost=tuple(LostObjective(key=breach.key, name=breach.name, detected=breach.detected,
+        lost=tuple(LostObjective(key=breach.key, name=breach.name, difficulty=breach.difficulty,
+                                 detected=breach.detected,
                                  responded=breach.responded, response_seconds=breach.response_seconds,
                                  attributed_marker=breach.attributed_marker) for breach in lost),
-        kept=tuple(KeptObjective(key=record.key, name=record.name) for record in records if record.key not in fallen),
+        kept=tuple(KeptObjective(key=record.key, name=record.name, difficulty=record.difficulty)
+                   for record in records if record.key not in fallen),
         weighted=tally(lost, totals.fp).damage,
         per_case=tuple(CaseLine(case=outcome.case_id, verdict=outcome.verdict, alerts=outcome.alerts,
                                 corroborated=outcome.corroborated)
