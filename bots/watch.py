@@ -138,11 +138,11 @@ class Watch:
                     new_addresses=frozenset(seen.origins) - seen.addresses)
 
     def sent(self, feed: Feed) -> None:
+        with self.lock:
+            self.idle = False
         self.say(feed_text(feed, self.seen))
         self.seen.addresses |= set(self.seen.origins)
         self.seen.origins = {}
-        with self.lock:
-            self.idle = False
 
     def tick(self) -> None:
         if self.closed:

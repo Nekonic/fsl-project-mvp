@@ -792,6 +792,20 @@ def test_a_defence_feed_goes_out_only_when_an_alert_a_refusal_or_a_new_address_i
     assert seen.said[1].count("942100") == watch.LINES_MAX and seen.closed == 0
 
 
+def test_a_result_that_lands_while_a_feed_is_written_leaves_the_watch_ready_for_the_next_feed():
+    seen = RoundSeen()
+    seen.origins = [{"ip": "203.0.113.5", "requests": 4, "refused": 0, "last_at": None}]
+    watching = watch.Watch(seen.read, lambda text: (seen.said.append(text), watching.turn_ended()), seen.close,
+                           "running")
+
+    watching.turn_ended()
+    watching.tick()
+    seen.alerts = [alert(1)]
+    watching.tick()
+
+    assert len(seen.said) == 2 and "1 new alerts" in seen.said[1]
+
+
 class Typed:
     def __init__(self):
         self.lines = []
