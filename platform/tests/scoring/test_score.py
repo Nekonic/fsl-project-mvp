@@ -39,9 +39,9 @@ def test_the_score_keeps_what_was_taken_apart_from_what_the_defence_got_right(bo
     scored = service.score(found, actions, alerts, responses=reloaded).shown()
 
     assert scored["objectives"] == {
-        "lost": [{"key": "board-auth-user-admin", "name": "Board admin account", "detected": True,
+        "lost": [{"key": "board-auth-user-admin", "name": "게시판 관리자 계정 탈취", "detected": True,
                   "responded": True, "response_seconds": 9.0, "attributed_marker": SQLI}],
-        "kept": [{"key": "board-auth-user-full", "name": "Board accounts (full)"}],
+        "kept": [{"key": "board-auth-user-full", "name": "게시판 전체 계정 탈취"}],
         "weighted": 2.0,
     }
     assert scored["outcomes"] == {
@@ -142,7 +142,7 @@ def test_settling_stores_whether_the_defence_saw_each_loss(board_target):
     assert before["board-auth-user-admin"].seen is False
     assert changed == 1
     assert after["board-auth-user-admin"] == losses.ObjectiveState(key="board-auth-user-admin",
-                                                                   name="Board admin account", state="lost",
+                                                                   name="게시판 관리자 계정 탈취", state="lost",
                                                                    seen=True)
     assert after["board-auth-user-full"].state == "kept"
     assert service.settle(found, actions, alerts) == 0
