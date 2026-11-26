@@ -319,7 +319,7 @@ def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, allocatio
 
     [listed] = joinable
     players = {one["side"]: one for one in listed["players"]}
-    assert listed["round"] == made.pk
+    assert listed["round"] == made.pk and listed["problem_title"] == problem.title
     assert players["attack"]["username"] is None and players["attack"]["bot_name"] == ""
     assert players["defence"]["username"] == learner.username
     assert mine == []

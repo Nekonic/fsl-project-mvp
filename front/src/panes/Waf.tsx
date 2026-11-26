@@ -5,13 +5,17 @@ import { clock } from "../format";
 import { t, tFor } from "../strings";
 import { Badge, Button, Code, CodeEditor, ErrorNotice, Loading, Notice, Pane, PaneSection, Select, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchButtons, BenchOutcome, RuleTestSection, fileName, useRuleBench, type BenchCalls } from "./RuleTestTable";
+import { BenchButtons, BenchOutcome, RuleTestSection, fileName, rememberTest, useLatestTest, useRuleBench, type BenchCalls } from "./RuleTestTable";
 import type { PaneProps } from "./types";
 
 type WafFile = Schemas["WafFile"];
 
 function asMap(files: WafFile[]): Record<string, string> {
   return Object.fromEntries(files.map((one) => [one.path, one.text]));
+}
+
+function contentOf(files: Record<string, string>): string {
+  return JSON.stringify(Object.entries(files).sort(([one], [other]) => one.localeCompare(other)));
 }
 
 function changedOf(draft: Record<string, string>, live: Record<string, string>): Record<string, string> {
@@ -53,17 +57,16 @@ export function Waf({ round }: PaneProps) {
     setPath((was) => was || read.data?.files[0]?.path || "");
   }, [read.data]);
 
-  const headTest = versions.head?.tested ?? null;
-  useEffect(() => {
-    if (headTest === null || draft === null) return;
-    void api.get("/api/rounds/{round_id}/defence/waf/tests/{test_id}/", { params: { round_id: round, test_id: headTest } })
-      .then((said) => bench.seed(said, versions.head?.same_as_tested && read.data?.recorded ? JSON.stringify({}) : null))
-      .catch(() => undefined);
-  }, [headTest, draft === null]);
+  const content = draft === null ? null : contentOf(draft);
+  useLatestTest({ round, engine: "waf", content, body, liveBody: JSON.stringify({}), head: versions.head, recorded: read.data?.recorded, bench });
 
   const calls: BenchCalls = {
     check: () => api.post("/api/rounds/{round_id}/defence/waf/check/", { params: { round_id: round }, body: { files: changed } }),
-    test: () => api.post("/api/rounds/{round_id}/defence/waf/test/", { params: { round_id: round }, body: { files: changed } }),
+    test: async () => {
+      const said = await api.post("/api/rounds/{round_id}/defence/waf/test/", { params: { round_id: round }, body: { files: changed } });
+      if (said.ok && content !== null) rememberTest(round, "waf", content, said.test);
+      return said;
+    },
     apply: async (tested) => {
       const said = await api.post("/api/rounds/{round_id}/defence/waf/apply/", { params: { round_id: round }, body: { files: changed, base_version: base, tested } });
       setBase(said.version);

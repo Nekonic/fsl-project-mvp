@@ -1,3 +1,4 @@
+import { useEffect } from "preact/hooks";
 import { useResource } from "../api/hooks";
 import { errorText, t } from "../strings";
 import { AsideCard, AsideHead, Badge, Badges, ErrorNotice, Loading, Pane, RowLine, Stack, Text } from "../ui";
@@ -17,8 +18,24 @@ const STATE_PATH = {
 
 const CHANGING_EVENTS = ["objective.lost", "round.started", "round.ended"];
 
+const objectiveReaders = new Set<(round: number) => void>();
+
+export function objectivesChanged(round: number): void {
+  objectiveReaders.forEach((reader) => reader(round));
+}
+
 export function useObjectives(round: number, side: Side) {
   const state = useResource(STATE_PATH[side], { params: { round_id: round } }, { refreshOn: { round, kinds: CHANGING_EVENTS } });
+  const { reload } = state;
+  useEffect(() => {
+    const reader = (changed: number) => {
+      if (changed === round) reload();
+    };
+    objectiveReaders.add(reader);
+    return () => {
+      objectiveReaders.delete(reader);
+    };
+  }, [round, reload]);
   const objectives: ObjectiveShown[] = state.data?.objectives ?? [];
   return { objectives, error: state.error, loading: state.loading && !state.data };
 }

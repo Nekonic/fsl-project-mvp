@@ -1,3 +1,4 @@
+import type { ComponentChild } from "preact";
 import { useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
 import { count } from "../format";
@@ -50,17 +51,45 @@ function Mark({ on, tone }: { on: boolean; tone: TextTone }) {
   return <Text tone={on ? tone : "muted"} strong>{t(on ? "mark.yes" : "mark.no")}</Text>;
 }
 
+function Undecided() {
+  return <Text tone="warn">{t("mark.pending")}</Text>;
+}
+
+function Faint() {
+  return <Text tone="faint">—</Text>;
+}
+
+function Taken({ lost }: { lost: boolean }) {
+  return lost ? <Text tone="danger" strong>{t("objective.lost")}</Text> : <Text tone="muted">{t("objective.kept")}</Text>;
+}
+
+function Weight({ line }: { line: ObjectiveLine }) {
+  return line.responded ? <Text tone="ok">{t("result.weight_half")}</Text> : <Text tone="danger">{t("result.weight_full")}</Text>;
+}
+
 function Objectives({ score }: { score: ScoreShown }) {
+  const { pending } = score;
+  const judged = (line: ObjectiveLine, shown: () => ComponentChild) => {
+    if (!line.lost) return <Faint />;
+    return pending ? <Undecided /> : shown();
+  };
   const columns: Column<ObjectiveLine>[] = [
     { key: "name", label: t("result.objective"), kind: "strong", cell: (line) => line.name, title: (line) => line.key },
-    { key: "lost", label: t("result.achieved"), kind: "nowrap", cell: (line) => <Mark on={line.lost} tone="danger" /> },
-    { key: "detected", label: t("result.detected"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.detected} tone="ok" /> : <Text tone="faint">—</Text>) },
-    { key: "responded", label: t("result.responded"), kind: "nowrap", cell: (line) => (line.lost ? <Mark on={line.responded} tone="ok" /> : <Text tone="faint">—</Text>) },
-    { key: "response", label: t("result.response_time"), kind: "num", cell: (line) => (line.responseSeconds === null ? <Text tone="faint">—</Text> : t("result.seconds", { seconds: count(Math.round(line.responseSeconds)) })) },
+    { key: "lost", label: t("result.achieved"), kind: "nowrap", cell: (line) => <Taken lost={line.lost} /> },
+    { key: "detected", label: t("result.detected"), kind: "nowrap", cell: (line) => judged(line, () => <Mark on={line.detected} tone="ok" />) },
+    { key: "responded", label: t("result.responded"), kind: "nowrap", cell: (line) => judged(line, () => <Mark on={line.responded} tone="ok" />) },
+    { key: "weight", label: t("result.weight"), kind: "nowrap", cell: (line) => judged(line, () => <Weight line={line} />) },
+    {
+      key: "response", label: t("result.response_time"), kind: "num",
+      cell: (line) => (pending || line.responseSeconds === null ? <Faint /> : t("result.seconds", { seconds: count(Math.round(line.responseSeconds)) })),
+    },
   ];
   return (
-    <Task title={t("result.objectives_title")} side={<Text strong>{t("result.objective_points", { points: count(score.objectives.weighted) })}</Text>}>
-      <Table columns={columns} rows={objectiveLines(score)} rowKey={(line) => line.key} empty={t("result.no_objectives")} />
+    <Task title={t("result.objectives_title")} side={<Text strong>{t(pending ? "result.objective_points_pending" : "result.objective_points", { points: count(score.objectives.weighted) })}</Text>}>
+      <Stack gap="sm">
+        <Table columns={columns} rows={objectiveLines(score)} rowKey={(line) => line.key} empty={t("result.no_objectives")} />
+        <Text tone="muted" small>{t("result.objective_points_rule")}</Text>
+      </Stack>
     </Task>
   );
 }
@@ -74,31 +103,62 @@ function DetectionTotals({ score }: { score: ScoreShown }) {
   );
 }
 
-function VerdictCell({ line }: { line: CaseLine }) {
+export interface CaseGroup {
+  case: string;
+  attack: boolean;
+  firings: number;
+  verdicts: Array<{ verdict: Verdict; firings: number }>;
+  alerts: number;
+  corroborated: boolean | null;
+}
+
+export function caseGroups(lines: CaseLine[]): CaseGroup[] {
+  const byCase = new Map<string, CaseLine[]>();
+  for (const line of lines) byCase.set(line.case, [...(byCase.get(line.case) ?? []), line]);
+  const groups = [...byCase.entries()].map(([name, held]): CaseGroup => {
+    const detected = held.filter((line) => line.verdict === "tp" && line.corroborated !== null);
+    return {
+      case: name,
+      attack: held.some(isAttackCase),
+      firings: held.length,
+      verdicts: VERDICT_ORDER.map((verdict) => ({ verdict, firings: held.filter((line) => line.verdict === verdict).length }))
+        .filter((one) => one.firings > 0),
+      alerts: held.reduce((sum, line) => sum + line.alerts, 0),
+      corroborated: detected.length ? detected.every((line) => line.corroborated) : null,
+    };
+  });
+  return groups.sort((one, other) => Number(other.attack) - Number(one.attack));
+}
+
+function VerdictCell({ group }: { group: CaseGroup }) {
   return (
     <Stack gap="sm">
-      <Text tone={VERDICT_TONE[line.verdict]}>{tFor("verdict", line.verdict)}</Text>
-      {line.alerts > 0 && <Text tone="muted" small>{t("result.alerts", { count: count(line.alerts) })}</Text>}
+      {group.verdicts.map((one) => (
+        <Text key={one.verdict} tone={VERDICT_TONE[one.verdict]}>
+          {group.firings > 1 ? t("result.verdict_times", { verdict: tFor("verdict", one.verdict), count: count(one.firings) }) : tFor("verdict", one.verdict)}
+        </Text>
+      ))}
+      {group.alerts > 0 && <Text tone="muted" small>{t("result.alerts", { count: count(group.alerts) })}</Text>}
     </Stack>
   );
 }
 
-function CorroboratedCell({ line }: { line: CaseLine }) {
-  if (line.corroborated === null || line.verdict !== "tp") return <Text tone="faint">—</Text>;
-  return line.corroborated ? <>{t("corroborated.yes")}</> : <Text tone="warn">{t("corroborated.no")}</Text>;
+function CorroboratedCell({ group }: { group: CaseGroup }) {
+  if (group.corroborated === null) return <Faint />;
+  return group.corroborated ? <>{t("corroborated.yes")}</> : <Text tone="warn">{t("corroborated.no")}</Text>;
 }
 
 function CaseOutcomes({ score }: { score: ScoreShown }) {
-  const columns: Column<CaseLine>[] = [
-    { key: "case", label: t("col.case"), kind: "key", cell: (line) => line.case },
-    { key: "kind", label: t("col.case_kind"), kind: "nowrap", cell: (line) => t(isAttackCase(line) ? "case_kind.attack" : "case_kind.benign") },
-    { key: "verdict", label: t("col.verdict"), kind: "nowrap", cell: (line) => <VerdictCell line={line} /> },
-    { key: "corroborated", label: t("col.corroborated"), kind: "nowrap", cell: (line) => <CorroboratedCell line={line} /> },
+  const columns: Column<CaseGroup>[] = [
+    { key: "case", label: t("col.case"), kind: "key", cell: (group) => group.case },
+    { key: "kind", label: t("col.case_kind"), kind: "nowrap", cell: (group) => t(group.attack ? "case_kind.attack" : "case_kind.benign") },
+    { key: "firings", label: t("result.firings"), kind: "num", cell: (group) => count(group.firings) },
+    { key: "verdict", label: t("col.verdict"), kind: "nowrap", cell: (group) => <VerdictCell group={group} /> },
+    { key: "corroborated", label: t("col.corroborated"), kind: "nowrap", cell: (group) => <CorroboratedCell group={group} /> },
   ];
-  const ordered = [...score.outcomes.per_case].sort((one, other) => Number(isAttackCase(other)) - Number(isAttackCase(one)));
   return (
     <Task title={t("result.cases_title")}>
-      <Table columns={columns} rows={ordered} rowKey={(line) => line.case} empty={t("result.no_cases")} />
+      <Table columns={columns} rows={caseGroups(score.outcomes.per_case)} rowKey={(group) => group.case} empty={t("result.no_cases")} />
     </Task>
   );
 }

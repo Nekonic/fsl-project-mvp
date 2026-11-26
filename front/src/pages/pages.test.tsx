@@ -1,6 +1,8 @@
-import { cleanup, render } from "@testing-library/preact";
+import { cleanup, render, screen } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HEARTBEAT_EVERY_MS } from "../api/follow";
+import { SessionContext } from "../api/hooks";
+import { t } from "../strings";
 import { safeNext } from "./Login";
 import { RoundLobby } from "./RoundLobby";
 
@@ -57,6 +59,42 @@ describe("RoundLobby", () => {
     vi.advanceTimersByTime(HEARTBEAT_EVERY_MS * 3);
     await settle();
     expect(beats).toEqual([]);
+  });
+});
+
+describe("RoundLobby rounds", () => {
+  const learner = { user: "learner-one", approved: true, is_staff: false, site_origin: "" };
+
+  function human(side: string, username: string | null) {
+    return { side, client: "human", username, bot_name: "", step: "", bot_run: null };
+  }
+
+  function lobbyWith(rounds: unknown[]) {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/events/")) return json({ events: [], next: 0 });
+      if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
+      if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return json([]);
+      return json({ allocation: 63, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds });
+    }));
+    return render(
+      <SessionContext.Provider value={{ me: learner, loading: false, reload: () => undefined }}>
+        <RoundLobby params={{ allocation: "63" }} />
+      </SessionContext.Provider>,
+    );
+  }
+
+  it("names an unpublished problem by the title on the round line and offers no second seat to a seated player", async () => {
+    lobbyWith([{ round: 70, problem: 9, problem_title: "Draft problem", kind: "round", matchup: "pvp", phase: "created", players: [human("attack", null), human("defence", "learner-one")] }]);
+    expect(await screen.findByText("Draft problem")).toBeTruthy();
+    expect(screen.queryByText(t("player.join"))).toBeNull();
+  });
+
+  it("links a running round to the console of the player's own seat", async () => {
+    lobbyWith([{ round: 71, problem: 9, problem_title: "Draft problem", kind: "round", matchup: "pvp", phase: "running", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
+    const link = (await screen.findByText(t("page.defence"))).closest("a");
+    expect(link?.getAttribute("href")).toBe("/rounds/71/defence");
+    expect(screen.queryByText(t("page.attack"))).toBeNull();
   });
 });
 

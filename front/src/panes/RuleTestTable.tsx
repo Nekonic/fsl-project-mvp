@@ -1,5 +1,5 @@
-import { useCallback, useState } from "preact/hooks";
-import { ApiError, type Schemas } from "../api/client";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
+import { api, ApiError, type Schemas } from "../api/client";
 import { t, tFor, type StringKey } from "../strings";
 import { Badge, Badges, Button, ErrorNotice, Notice, PaneSection, Stack, Stat, Stats, Table, Text, type BadgeTone, type Column } from "../ui";
 
@@ -46,12 +46,32 @@ function Corroboration({ row }: { row: CaseVerdict }) {
     : <Text tone="warn">{t("corroborated.no")}</Text>;
 }
 
+export interface AlertGroup {
+  rule: string;
+  signature: string;
+  count: number;
+}
+
+export function alertGroups(alerts: CaseVerdict["alerts"]): AlertGroup[] {
+  const byRule = new Map<string, AlertGroup>();
+  for (const alert of alerts) {
+    const key = JSON.stringify([alert.rule, alert.signature]);
+    const held = byRule.get(key);
+    if (held) held.count += 1;
+    else byRule.set(key, { rule: String(alert.rule), signature: alert.signature, count: 1 });
+  }
+  return [...byRule.values()].sort((one, other) => other.count - one.count);
+}
+
 function CaseAlerts({ row }: { row: CaseVerdict }) {
   if (!row.alerts.length) return <Text tone="faint">—</Text>;
   return (
     <Stack gap="sm">
-      {row.alerts.map((alert, index) => (
-        <span key={index}><Text mono>{alert.rule}</Text> <Text tone="muted">{alert.signature}</Text></span>
+      {alertGroups(row.alerts).map((group) => (
+        <span key={`${group.rule}-${group.signature}`}>
+          <Text mono>{group.rule}</Text> <Text tone="muted">{group.signature}</Text>
+          {group.count > 1 && <> <Text strong>{t("rule_test.alert_times", { count: group.count })}</Text></>}
+        </span>
       ))}
     </Stack>
   );
@@ -183,6 +203,7 @@ export function useRuleBench(body: string) {
   const [applied, setApplied] = useState<AppliedNow | undefined>(undefined);
   const [appliedWithTest, setAppliedWithTest] = useState(false);
   const [busy, setBusy] = useState<BenchStep | null>(null);
+  const testedHere = useRef(false);
 
   const showProblems = (found: RuleProblem[]) => {
     setProblems(found);
@@ -217,6 +238,7 @@ export function useRuleBench(body: string) {
     const said = await calls.test();
     showProblems(asProblems(said.errors));
     if (said.ok) {
+      testedHere.current = true;
       setResult(said);
       setTestedBody(body);
       setPassedFor(body);
@@ -232,7 +254,12 @@ export function useRuleBench(body: string) {
     return said;
   });
 
-  const seed = useCallback((seeded: RuleTestResult, forBody: string | null) => {
+  const seed = useCallback((seeded: RuleTestResult, forBody: string | null, preferred = false) => {
+    if (preferred && !testedHere.current) {
+      setResult(seeded);
+      setTestedBody(forBody);
+      return;
+    }
     setResult((was) => was ?? seeded);
     setTestedBody((was) => was ?? forBody);
   }, []);
@@ -256,6 +283,57 @@ export function useRuleBench(body: string) {
 }
 
 export type RuleBench = ReturnType<typeof useRuleBench>;
+
+export type RuleEngine = "waf" | "ids";
+
+function rememberedKey(round: number, engine: RuleEngine): string {
+  return `cr.rule_test.${round}.${engine}`;
+}
+
+export function rememberTest(round: number, engine: RuleEngine, content: string, test: number): void {
+  try {
+    localStorage.setItem(rememberedKey(round, engine), JSON.stringify({ content, test }));
+  } catch {
+    return;
+  }
+}
+
+export function rememberedTest(round: number, engine: RuleEngine, content: string): number | null {
+  try {
+    const held = JSON.parse(localStorage.getItem(rememberedKey(round, engine)) ?? "null") as { content?: unknown; test?: unknown } | null;
+    return held && held.content === content && typeof held.test === "number" ? held.test : null;
+  } catch {
+    return null;
+  }
+}
+
+function readTest(round: number, engine: RuleEngine, test: number): Promise<RuleTestResult> {
+  if (engine === "waf") return api.get("/api/rounds/{round_id}/defence/waf/tests/{test_id}/", { params: { round_id: round, test_id: test } });
+  return api.get("/api/rounds/{round_id}/defence/ids/rules/tests/{test_id}/", { params: { round_id: round, test_id: test } });
+}
+
+export interface LatestTestProps {
+  round: number;
+  engine: RuleEngine;
+  content: string | null;
+  body: string;
+  liveBody: string;
+  head: { tested: number | null; same_as_tested: boolean } | undefined;
+  recorded: boolean | undefined;
+  bench: RuleBench;
+}
+
+export function useLatestTest({ round, engine, content, body, liveBody, head, recorded, bench }: LatestTestProps): void {
+  const remembered = content === null ? null : rememberedTest(round, engine, content);
+  const headTest = head?.tested ?? null;
+  const wanted = remembered ?? headTest;
+  const { seed } = bench;
+  useEffect(() => {
+    if (content === null || wanted === null) return;
+    const forBody = remembered !== null ? body : (head?.same_as_tested && recorded ? liveBody : null);
+    void readTest(round, engine, wanted).then((said) => seed(said, forBody, remembered !== null)).catch(() => undefined);
+  }, [round, engine, wanted, remembered !== null, content === null]);
+}
 
 export function appliedNote(applied: { same_as_tested: boolean }, withTest: boolean): StringKey {
   if (applied.same_as_tested) return "versions.same_as_tested";

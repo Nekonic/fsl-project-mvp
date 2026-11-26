@@ -4,6 +4,7 @@ import { useResource, useRowAction } from "../../api/hooks";
 import { count } from "../../format";
 import type { PageProps } from "../../routes";
 import { AppPage } from "../../shell/AppPage";
+import { wargameName } from "../wargameText";
 import { errorLine, errorText, t, tFor } from "../../strings";
 import { Badge, Button, Card, CardHead, ErrorNotice, Loading, PageBody, Progress, Row, Section, Stack, Table, Text, type BadgeTone, type Column, type DotTone, ServerDots, OpRow, RowActions } from "../../ui";
 
@@ -33,7 +34,7 @@ function WargameName({ id, wargames }: { id: string; wargames: Map<string, Warga
   const found = wargames.get(id);
   return (
     <Row>
-      {found && <Text strong tone="heading">{found.title}</Text>}
+      {found && <Text strong tone="heading">{wargameName(found.id)}</Text>}
       <Text mono small tone="muted">{id}</Text>
     </Row>
   );

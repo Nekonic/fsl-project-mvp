@@ -1,5 +1,6 @@
 import { useResource } from "../../api/hooks";
 import type { Schemas } from "../../api/client";
+import { wargameName } from "../../pages/wargameText";
 
 export type Wargame = Schemas["Wargame"];
 
@@ -18,7 +19,7 @@ export function useStaffProblems() {
 
 export function wargameLabel(wargames: Wargame[], id: string): string {
   const found = wargames.find((wargame) => wargame.id === id);
-  return found ? `${found.title} · ${found.id}` : id;
+  return found ? `${wargameName(found.id)} · ${found.id}` : id;
 }
 
 export function grouped<Item>(items: Item[], wargameOf: (item: Item) => string, wargames: Wargame[]): Array<{ wargame: string; items: Item[] }> {

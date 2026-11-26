@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useEffect, useState } from "preact/hooks";
 import { waitForAllocation, type Schemas } from "../api/client";
 import { holdAllocation } from "../api/follow";
 import { useAction, useResource, useSession } from "../api/hooks";
@@ -39,14 +39,20 @@ function playerOf(line: RoundLine, side: Side): PlayerLine | undefined {
   return line.players.find((player) => player.side === side);
 }
 
+export function seatOfUser(line: RoundLine, username: string | undefined): Side | undefined {
+  if (!username) return undefined;
+  return line.players.find((player) => player.client !== "bot" && player.username === username)?.side;
+}
+
 interface PlayerCellProps {
   line: RoundLine;
   side: Side;
+  seated: boolean;
   joining: boolean;
   onJoin: (round: number, side: Side) => void;
 }
 
-function PlayerCell({ line, side, joining, onJoin }: PlayerCellProps) {
+function PlayerCell({ line, side, seated, joining, onJoin }: PlayerCellProps) {
   const player = playerOf(line, side);
   if (!player) return <Text tone="faint">{t("lobby.player.none")}</Text>;
   if (player.client === "bot") {
@@ -69,18 +75,18 @@ function PlayerCell({ line, side, joining, onJoin }: PlayerCellProps) {
   return (
     <Stack gap="sm">
       <Text small tone="muted"><Dot tone="warn" /> {t("lobby.player.open")}</Text>
-      {line.phase === "created" && <Button tone="ghost" small busy={joining} onClick={() => onJoin(line.round, side)}>{t("player.join")}</Button>}
+      {line.phase === "created" && !seated && <Button tone="ghost" small busy={joining} onClick={() => onJoin(line.round, side)}>{t("player.join")}</Button>}
     </Stack>
   );
 }
 
 interface RoundsProps {
   allocation: Allocation;
-  titleOf: (problem: number) => string;
   onChanged: () => void;
 }
 
-function Rounds({ allocation, titleOf, onChanged }: RoundsProps) {
+function Rounds({ allocation, onChanged }: RoundsProps) {
+  const username = useSession().me?.user;
   const join = useAction("post", "/api/rounds/{round_id}/players/{side}/join/");
   const start = useAction("post", "/api/rounds/{round_id}/start/");
   const end = useAction("post", "/api/rounds/{round_id}/end/");
@@ -97,11 +103,11 @@ function Rounds({ allocation, titleOf, onChanged }: RoundsProps) {
 
   const columns: Column<RoundLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round }) },
-    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: (line) => titleOf(line.problem) },
+    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: (line) => line.problem_title },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     ...SIDES.map((side): Column<RoundLine> => ({
       key: side, label: t(`col.${side}_player`),
-      cell: (line) => <PlayerCell line={line} side={side} joining={join.busy} onJoin={(round, chosen) => void joinPlayer(round, chosen)} />,
+      cell: (line) => <PlayerCell line={line} side={side} seated={seatOfUser(line, username) !== undefined} joining={join.busy} onJoin={(round, chosen) => void joinPlayer(round, chosen)} />,
     })),
     { key: "phase", label: t("col.state"), cell: (line) => <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge> },
     {
@@ -111,7 +117,13 @@ function Rounds({ allocation, titleOf, onChanged }: RoundsProps) {
           return <Button tone="primary" small busy={start.busy} disabled={closed || !allocation.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>;
         }
         if (line.phase === "running" || line.phase === "starting") {
-          return <Button tone="ghost" small busy={end.busy} disabled={line.phase === "starting"} onClick={() => void endRound(line.round)}>{t("lobby.end")}</Button>;
+          const mine = seatOfUser(line, username);
+          return (
+            <Row>
+              {mine && <Button tone="primary" small href={to.player(line.round, mine)}>{t(mine === "attack" ? "page.attack" : "page.defence")}</Button>}
+              <Button tone="ghost" small busy={end.busy} disabled={line.phase === "starting"} onClick={() => void endRound(line.round)}>{t("lobby.end")}</Button>
+            </Row>
+          );
         }
         return <Button tone="link" small href={to.result(line.round)}>{t("round.see_result")}</Button>;
       },
@@ -338,11 +350,6 @@ export function RoundLobby({ params }: PageProps) {
     return () => abort.abort();
   }, [allocationId, shown?.ready, shown?.closed]);
 
-  const titleOf = useMemo(() => {
-    const byId = new Map((problems.data ?? []).map((one) => [one.id, one.title]));
-    return (problem: number) => byId.get(problem) ?? t("home.problem_no", { problem });
-  }, [problems.data]);
-
   const giveBack = async () => {
     if (await close.run({ params: { allocation_id: allocationId } })) navigate(to.home());
   };
@@ -373,7 +380,7 @@ export function RoundLobby({ params }: PageProps) {
           {!shown && allocation.loading && <Loading>{t("common.loading")}</Loading>}
           {shown && (
             <>
-              <Rounds allocation={shown} titleOf={titleOf} onChanged={allocation.reload} />
+              <Rounds allocation={shown} onChanged={allocation.reload} />
               <CreateRound allocation={shown} problems={problems.data ?? []} steps={steps.data ?? []} onCreated={allocation.reload} />
             </>
           )}
