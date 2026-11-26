@@ -5,17 +5,29 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-25.
+Updated: 2026-11-26.
 
 ## Where things stand
 
-- The tree is `waf5`: `integrate` (`bot-rounds`, the Player vs AI rounds
+- The tree is `defence-watch`: `waf5` with the defence bot kept in the
+  round until it ends, fed by the launcher every `watch_s` of its step
+  (`docs/DECISIONS.md` 2026-11-25). It runs on the cloud since the early
+  morning of 2026-11-26 (`docs/STATE.md` "Where things stand"): one
+  replace (exit 0); two WireGuard `atk_vs_bot` rounds by the bare address
+  with the attack held 200 s after the start (rounds 277 at step 2, 278 at
+  step 1): both defence runs lasted the round, the feeds came 31 s and 75 s
+  apart, both bots wrote a `deny` of the attack's origin, and in both the
+  WAF rule test (6 min 36 s and about 3 min) went past Claude Code's 120 s
+  Bash timeout into the background, so nothing was applied and all three
+  objectives were lost, detection O, response X; `bin/verify --changed --live` from the platform VM: acceptance
+  101 of 101, the unit and API suites green.
+- Before that the tree was `waf5`: `integrate` (`bot-rounds`, the Player vs AI rounds
   cut from `restructure`, with `pg-store`, the PostgreSQL store, and
   `access-address`, the access page's target address, and the fixes of
   their reviews) with CRS 920350 removed at the WAF (`cr-waf-bake5`)
   and the attack bot's prompt rewritten as an engagement brief. `main`
-  still holds the old product. `waf5` runs on
-  the cloud since the evening of 2026-11-25 (`docs/STATE.md` "Where things
+  still holds the old product. `waf5` ran on
+  the cloud from the evening of 2026-11-25 (`docs/STATE.md` "Where things
   stand"): one `bin/cloud up --replace` (exit 0, every slot on
   `cr-waf-bake5`); a WireGuard `atk_vs_bot` round by the bare address with
   no 920350 alert and no origin spent before the attack (round 245, all
@@ -103,10 +115,12 @@ three bot rounds at once on the PostgreSQL store. The list is in
 3. The attack bot on Sonnet and Opus 5.5: with the engagement brief every
    run of 2026-11-25 evening was stopped by the model's safeguards (4 of 4,
    `docs/STATE.md` "Open points"); a fall back to Opus 4.8 at step 3 still
-   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot that
-   quit when nothing alerted (round 245) now stays until the round ends,
-   fed by the launcher (`defence-watch`, `docs/DECISIONS.md` 2026-11-25);
-   run it on the range.
+   counts as step 3 (`docs/DECISIONS.md` 2026-11-25). The defence bot now
+   stays until the round ends (rounds 277, 278), but cannot get a WAF
+   change live: the rule test outlasts Claude Code's 120 s Bash timeout
+   and the bot cannot read the background result (`docs/STATE.md` "Open
+   points"); decide how the bot waits on the test, then a loss with
+   response O from the bot.
 4. One `pvp` round, and a loss with response O.
 5. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.

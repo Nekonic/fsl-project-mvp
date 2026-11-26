@@ -14,12 +14,13 @@ The product was rebuilt as a side split on `side-split` (user ruling
 2026-11-19: no code is kept or migrated; the old code is reference only), and
 then restructured on the branch `restructure` (ruling 2026-11-21,
 "The platform is restructured into five units, KYPO-style"). The tree is
-`waf5`: `integrate` (`bot-rounds`, the Player vs AI rounds, with
+`defence-watch`: `waf5` (`integrate` (`bot-rounds`, the Player vs AI rounds, with
 `pg-store`, the PostgreSQL store, and `access-address`, the access page's
 target address) with CRS 920350 removed at the WAF and the attack bot's
-prompt rewritten as an engagement brief;
+prompt rewritten as an engagement brief) with the defence bot kept in the
+round and fed by the launcher until it ends;
 `main` holds the old product until gate 2. The cloud runs
-`waf5` since the evening of 2026-11-25; on 2026-11-23 the first range of `restructure`
+`defence-watch` since the night of 2026-11-25 to 2026-11-26; on 2026-11-23 the first range of `restructure`
 was built and checked (`docs/DECISIONS.md`, "The first cloud check of
 `restructure`").
 
@@ -156,6 +157,33 @@ was built and checked (`docs/DECISIONS.md`, "The first cloud check of
     the first declared SQLi case, the second when it turned to the card's
     password guessing); no run fell back to Opus 4.8, and no objective was
     taken.
+- **`defence-watch` live**, 2026-11-26 early morning (UTC), on `cr-platform2`:
+  - `bin/cloud up --replace` from `defence-watch` (exit 0, 14 min; the slot
+    stacks stood through, every slot on the same images).
+  - `atk_vs_bot` on board from cr-dev through the WireGuard profile by the
+    bare address, no range request until 200 s after the round started, then
+    sqlmap, against the step-2 defence bot (Sonnet 5.5, `watch_s` 30), round
+    277: the bot's run lasted the round (9 feeds, 00:41:40 to 00:52:41, exit
+    success, 27 turns, USD 0.55, no refusal); the first feed with alerts came
+    34 s after the first alert; it wrote a `deny` of the attack's origin and
+    ran the WAF rule test, which took 6 min 36 s, ran past Claude Code's
+    120 s Bash timeout into the background, where the bot could not read
+    it, so every apply was refused `409 not_tested` and nothing went live
+    before the loss (2 min 39 s after the first alert). All three objectives
+    lost, detection O, response X, weighted 11.0; TP/FP/FN/TN 0/0/0/36,
+    benign only; no CRS 920350 alert.
+  - The same at step 1 (Haiku 5.5, `watch_s` 75), round 278: run lasted the
+    round (exit success, 42 turns, USD 0.16); feeds 75 s apart where the
+    bot was idle, against 31 s at step 2, so the interval follows the step.
+    No feed came between 00:58:13 and 01:03:48 while alerts flowed from
+    00:59:17 (not measured why); its `deny` came after the loss, the rule
+    test again went to the background (about 3 min), nothing applied. All
+    three lost, detection O, response X; TP/FP/FN/TN 0/0/0/42.
+  - `bin/verify --changed origin/dev --live` from the platform VM: it
+    selected every acceptance module; acceptance 101 passed, 0 failed, 0
+    errors in 5,798 s across 15 processes (`test_bot_rounds` 3 of 3); unit
+    and API 1,560, 759 and 3 (domain) passed. No module errored on the
+    room wait. No node on the VM, so `front/` was not built there.
 
 ## What exists on restructure
 
@@ -248,7 +276,19 @@ stand". Still not run on a range:
   (`docs/DECISIONS.md` 2026-11-25): the launcher keeps the defence bot's
   Claude Code session open until the round ends and feeds it new alerts,
   refusals, new addresses and phase changes every `watch_s` of its step.
-  Not yet run on the range.
+  On the range (rounds 277, 278) both runs lasted the round.
+- **The defence bot cannot finish a WAF change in time.** In rounds 277
+  and 278 the rule test took 6 min 36 s and about 3 min: it replays every
+  benign case of the round and the attack's own requests. Claude Code
+  moves a Bash call past 120 s into the background, and the bot cannot read
+  that output (its `cat` is denied), so it kept calling apply and got
+  `409 not_tested` until the round ended. Not changed: how long the test
+  may take, and whether the bot's Bash timeout or the CLI should wait on
+  the test, are open.
+- **A watch tick can pass silently.** In round 278 no feed came for 5 min
+  35 s while alerts flowed; a tick whose reads fail sends nothing and says
+  nothing. Not measured; the reads under sqlmap's load are a guess, not
+  shown.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it
