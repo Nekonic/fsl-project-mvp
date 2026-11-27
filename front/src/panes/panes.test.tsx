@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/pr
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
-import { KeptPane } from "../ui";
+import { CONFIRM_ARMED_MS, ConfirmButton, KeptPane } from "../ui";
 import { playerFacts } from "../console/RoundHeader";
 import { FiredBadge } from "./AttackCases";
 import { Brief } from "./Brief";
@@ -101,6 +101,22 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("ConfirmButton", () => {
+  it("acts only on a second press within a few seconds, and disarms itself", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const done = vi.fn();
+    render(<ConfirmButton confirm="확인" onConfirm={done}>반납</ConfirmButton>);
+    fireEvent.click(screen.getByRole("button", { name: "반납" }));
+    expect(done).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(CONFIRM_ARMED_MS + 10);
+    fireEvent.click(screen.getByRole("button", { name: "반납" }));
+    fireEvent.click(screen.getByRole("button", { name: "확인" }));
+    expect(done).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "반납" })).toBeTruthy();
+    vi.useRealTimers();
+  });
+});
 
 describe("KeptPane", () => {
   it("keeps a hidden pane laid out at full size so a frame in it is not torn down", () => {

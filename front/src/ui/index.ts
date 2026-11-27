@@ -1,5 +1,6 @@
 export { Icon, HeroArt, type IconName } from "./Icon";
 export { Button, Link, type ButtonTone } from "./Button";
+export { ConfirmButton, CONFIRM_ARMED_MS } from "./ConfirmButton";
 export { Badge, Badges, Dot, type BadgeTone, type DotTone } from "./Badge";
 export { Card, CardHead, CardFoot, CardTitle, Section, Group, GroupHead, Stack, Row, Push, Columns } from "./Card";
 export { Hero, Tabs, type HeroStat, type HeroFact, type TabItem } from "./Hero";

@@ -10,7 +10,7 @@ import { botRunText } from "../botRun";
 import { clock } from "../format";
 import { fieldErrors, t, tFor } from "../strings";
 import {
-  Badge, Button, Card, Choices, Code, Columns, Dot, ErrorNotice, Field, Form, FormActions, Hero, Input, Label, Loading, Notice, PageBody,
+  Badge, Button, Card, Choices, ConfirmButton, Code, Columns, Dot, ErrorNotice, Field, Form, FormActions, Hero, Input, Label, Loading, Notice, PageBody,
   Row, Select, Stack, Table, Task, Text, phaseTone, type Column,
 } from "../ui";
 import { ProblemText } from "../panes/Brief";
@@ -124,7 +124,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
           return (
             <Row>
               {mine && <Button tone="primary" small href={to.player(line.round, mine)}>{t(mine === "attack" ? "page.attack" : "page.defence")}</Button>}
-              <Button tone="ghost" small busy={end.busy} disabled={line.phase === "starting"} onClick={() => void endRound(line.round)}>{t("lobby.end")}</Button>
+              <ConfirmButton small busy={end.busy} disabled={line.phase === "starting"} confirm={t("lobby.end_confirm")} onConfirm={() => void endRound(line.round)}>{t("lobby.end")}</ConfirmButton>
             </Row>
           );
         }
@@ -397,7 +397,7 @@ export function RoundLobby({ params }: PageProps) {
         lead={shown ? [[wargameName(shown.wargame), host].filter(Boolean).join(" · ")] : []}
         facts={facts}
         actions={shown && shown.closed === null
-          ? <Button tone="ghost" busy={close.busy} onClick={() => void giveBack()}>{t("lobby.close")}</Button>
+          ? <ConfirmButton busy={close.busy} confirm={t("lobby.close_confirm")} onConfirm={() => void giveBack()}>{t("lobby.close")}</ConfirmButton>
           : undefined} />
       <PageBody>
         <Stack>

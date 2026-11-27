@@ -3,7 +3,7 @@ import { useAction, useEvents, useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
 import { clock, count } from "../format";
 import { t, tFor } from "../strings";
-import { AsideCard, AsideHead, Banner, Button, ErrorNotice, KeyValue, Loading, Pane, Stack, Text } from "../ui";
+import { AsideCard, AsideHead, Banner, ConfirmButton, ErrorNotice, KeyValue, Loading, Pane, Stack, Text } from "../ui";
 import type { PaneProps } from "./types";
 
 export const ORIGIN_EVENTS = ["origin.spent", "origin.switched", "origins.spent", "action.sent", "round.started", "round.ended"];
@@ -63,7 +63,7 @@ function OriginsCard({ state, round, onChanged }: { state: AttackState; round: n
       <Text small tone="muted">{t("origins.rule")}</Text>
       {attackWritesOpen(state) && (
         <span>
-          <Button small busy={next.busy} onClick={() => void giveUpOrigin()}>{t("origins.next")}</Button>
+          <ConfirmButton small busy={next.busy} confirm={t("origins.next_confirm")} onConfirm={() => void giveUpOrigin()}>{t("origins.next")}</ConfirmButton>
         </span>
       )}
       {next.error && <ErrorNotice error={next.error} />}

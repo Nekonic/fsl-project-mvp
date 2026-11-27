@@ -1,11 +1,11 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect } from "preact/hooks";
 import { holdAllocation } from "../api/follow";
 import { useAction, useResource } from "../api/hooks";
 import { to } from "../links";
 import type { Side } from "../panes/types";
 import type { Schemas } from "../api/client";
 import { t, tFor } from "../strings";
-import { Badge, Banner, Button, ErrorNotice, RoundBar } from "../ui";
+import { Badge, Banner, Button, ConfirmButton, ErrorNotice, RoundBar } from "../ui";
 import { botRunText } from "../botRun";
 import { clock } from "../format";
 import { wargameName } from "../pages/wargameText";
@@ -59,17 +59,11 @@ export interface RoundHeaderProps {
 export function RoundHeader({ round, side }: RoundHeaderProps) {
   const { round: shown, problem, error, reload } = useRound(round);
   const forfeit = useAction("post", FORFEIT_PATH[side]);
-  const [asking, setAsking] = useState(false);
   const ended = shown?.phase === "ended";
   const title = problem?.title ?? (shown && shown.problem === null ? wargameName(shown.wargame) : undefined);
   const what = [t("round.name", { round }), title, shown ? tFor("matchup", shown.matchup) : undefined].filter(Boolean).join(" · ");
 
   const giveUp = async () => {
-    if (!asking) {
-      setAsking(true);
-      return;
-    }
-    setAsking(false);
     if (await forfeit.run({ params: { round_id: round } })) reload();
   };
 
@@ -85,9 +79,9 @@ export function RoundHeader({ round, side }: RoundHeaderProps) {
           ...(shown?.ends_at && !ended ? [{ label: t("round.ends_at"), value: clock(shown.ends_at), mono: true }] : []),
         ]}
         actions={!ended && shown?.phase === "running" && (
-          <Button tone="danger" small busy={forfeit.busy} onClick={() => void giveUp()}>
-            {asking ? t("round.forfeit_confirm") : t("round.forfeit")}
-          </Button>
+          <ConfirmButton tone="danger" small busy={forfeit.busy} confirm={t("round.forfeit_confirm")} onConfirm={() => void giveUp()}>
+            {t("round.forfeit")}
+          </ConfirmButton>
         )}
       />
       {forfeit.error && <ErrorNotice error={forfeit.error} />}
