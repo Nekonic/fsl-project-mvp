@@ -152,7 +152,7 @@ export function Alerts({ round }: PaneProps) {
             <Input mono value={draft.rule} placeholder="9000001" onValue={(value) => setDraft({ ...draft, rule: value })} />
           </Field>
           <Field label={t("col.origin_ip")}>
-            <Input mono value={draft.src} placeholder="5.188.10.10" onValue={(value) => setDraft({ ...draft, src: value })} />
+            <Input mono value={draft.src} placeholder="203.0.113.7" onValue={(value) => setDraft({ ...draft, src: value })} />
           </Field>
           <Button type="submit">{t("alerts.search")}</Button>
         </Filters>

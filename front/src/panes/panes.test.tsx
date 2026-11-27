@@ -615,11 +615,20 @@ describe("Alerts", () => {
     expect(asked.filter((url) => url.pathname.endsWith("/defence/alerts/")).map((url) => url.searchParams.get("before"))).toEqual(["0", "8"]);
   });
 
+  it("gives a documentation address as the source filter's example, never an attacker origin", async () => {
+    serving({ "0": { alerts: [], next: 0, more: false, total: 0 } });
+    render(<Alerts round={63} side="defence" placement="main" />);
+    await waitFor(() => expect(document.querySelectorAll("input").length).toBeGreaterThan(0));
+    const examples = [...document.querySelectorAll("input")].map((input) => input.getAttribute("placeholder") ?? "");
+    expect(examples).toContain("203.0.113.7");
+    expect(examples).not.toContain("5.188.10.10");
+  });
+
   it("names the total as the filter's when a filter is on", async () => {
     serving({ "0": { alerts: [alert(5)], next: 5, more: false, total: 1 } });
     render(<Alerts round={62} side="defence" placement="main" />);
     await waitFor(() => expect(document.body.textContent).toContain(t("alerts.total")));
-    fireEvent.input(screen.getByPlaceholderText("5.188.10.10"), { target: { value: "5.188.10.10" } });
+    fireEvent.input(screen.getByPlaceholderText("203.0.113.7"), { target: { value: "5.188.10.10" } });
     fireEvent.click(screen.getByText(t("alerts.search")));
     await waitFor(() => expect(document.body.textContent).toContain(t("alerts.total_filtered")));
   });
