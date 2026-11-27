@@ -397,7 +397,7 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 .list-group + .pick-row, .pick-row:first-child { border-top: 0; }
 .pick-row:hover { background: var(--border-subdued); }
 .pick-row[aria-current="true"], .pick-row[aria-current="page"] { background: var(--raised); border-left-color: var(--lime); }
-.pick-no { width: 18px; flex-shrink: 0; font-weight: 700; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pick-no { min-width: 3ch; white-space: nowrap; flex-shrink: 0; font-weight: 700; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .pick-title { color: var(--heading); font-weight: 600; font-size: var(--text-md); line-height: 1.45; }
 .case-line { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); font-family: var(--font-mono); font-size: var(--text-code); color: var(--heading); min-width: 0; }
 .case-line + .case-line { margin-top: 6px; }
