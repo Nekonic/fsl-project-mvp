@@ -75,8 +75,21 @@ function paramsOf(row: TimelineRow, marks: ObjectiveMark[]): StringParams {
   return params;
 }
 
+const HTTP_STATUS = /^\d{3}$/;
+
+export function accessRefusal(row: TimelineRow): boolean {
+  const rule = typeof row.rule === "string" ? row.rule : "";
+  return row.kind === "alerts" && row.engine === "waf" && HTTP_STATUS.test(rule)
+    && typeof row.signature === "string" && row.signature.startsWith(`${rule} `);
+}
+
 export function rowText(row: TimelineRow, marks: ObjectiveMark[] = []): string {
-  return tFor("debrief.row", row.kind, paramsOf(row, marks));
+  const params = paramsOf(row, marks);
+  if (accessRefusal(row)) return t("debrief.row.access_refusals", { ...params, status: text(row, "rule") });
+  if (row.kind === "alerts" && typeof row.rules === "number" && row.rules > 1) {
+    return t("debrief.row.alerts_rules", { ...params, others: count(row.rules - 1) });
+  }
+  return tFor("debrief.row", row.kind, params);
 }
 
 function laneCell(row: TimelineRow, lane: string, marks: ObjectiveMark[]) {

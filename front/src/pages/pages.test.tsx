@@ -186,6 +186,19 @@ describe("debrief case title", () => {
   });
 });
 
+describe("debrief alert lines", () => {
+  it("names a WAF access refusal by its status rather than the raw request line", () => {
+    const row = { lane: "defence", kind: "alerts", at: null, engine: "waf", rule: "403", signature: "403 GET / HTTP/1.1", count: 1, rules: 1 };
+    expect(rowText(row)).toBe(`${tFor("engine", "waf")} 접근 차단 1건 · 응답 코드 403`);
+    expect(rowText(row)).not.toContain("HTTP/1.1");
+  });
+
+  it("says how many other rules a case's alert line folds in", () => {
+    const row = { lane: "defence", kind: "alerts", at: null, engine: "waf", rule: "949110", signature: "Anomaly Score", count: 1982, rules: 4 };
+    expect(rowText(row)).toBe(`${tFor("engine", "waf")} 알림 1,982건 · Anomaly Score 외 룰 3개`);
+  });
+});
+
 describe("debrief origin change", () => {
   it("picks 으로 or 로 by how the address's last digit is read", () => {
     const switched = (ip: string) => rowText({ lane: "attack", kind: "origin.switched", at: null, ip });

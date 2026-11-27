@@ -608,6 +608,8 @@
   "debrief.row.case": "케이스 {case} 실행 · 출발지 {origin} · 알림 {alerts}건",
   "debrief.row.free_actions": "케이스 없는 행동 {count}건 · 출발지 {origin} · 알림 {alerts}건",
   "debrief.row.alerts": "{engine} 알림 {count}건 · {signature}",
+  "debrief.row.alerts_rules": "{engine} 알림 {count}건 · {signature} 외 룰 {others}개",
+  "debrief.row.access_refusals": "{engine} 접근 차단 {count}건 · 응답 코드 {status}",
   "debrief.row.tool.started": "도구 실행: {tool}",
   "debrief.row.tool.ended": "도구 종료 (종료 코드 {exit_code})",
   "debrief.row.command.run": "명령 실행: {command}",

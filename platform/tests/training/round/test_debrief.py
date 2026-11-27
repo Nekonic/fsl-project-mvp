@@ -104,8 +104,24 @@ def test_alerts_group_by_rule_so_one_deny_rule_is_one_row_however_many_requests_
     rows = debrief.alert_rows(refusals)
 
     assert rows == [{"lane": "defence", "kind": "alerts", "at": AT.isoformat(), "engine": "waf", "rule": "403",
-                     "signature": "403 GET /p0 HTTP/1.1", "count": 3,
+                     "signature": "403 GET /p0 HTTP/1.1", "count": 3, "rules": 1,
                      "until": (AT + timedelta(seconds=2)).isoformat()}]
+
+
+def test_a_case_s_alerts_are_one_line_at_its_first_alert_naming_its_most_frequent_rule_and_refusals_stay_apart():
+    def alert(n: int, rule: str, signature: str, marker: str | None = "case-1") -> DetectionRecord:
+        return DetectionRecord(detection_id=f"a{n}", timestamp=AT + timedelta(seconds=n), src_ip=ORIGIN, marker=marker,
+                               engine="waf", rule=rule, signature=signature, blocked=True)
+    seen = [alert(0, "942100", "SQL Injection"), alert(1, "949110", "Anomaly Score"), alert(2, "949110", "Anomaly Score"),
+            alert(3, "403", "403 GET /posts/?sort=1 HTTP/1.1"), alert(4, "942100", "SQL Injection", marker=None),
+            alert(5, "949110", "Anomaly Score", marker="unknown")]
+
+    rows = debrief.alert_rows(seen, frozenset({"case-1"}))
+
+    assert [(row["at"], row["rule"], row["count"], row["rules"]) for row in rows] == [
+        (AT.isoformat(), "949110", 3, 2), ((AT + timedelta(seconds=3)).isoformat(), "403", 1, 1),
+        ((AT + timedelta(seconds=4)).isoformat(), "942100", 1, 1),
+        ((AT + timedelta(seconds=5)).isoformat(), "949110", 1, 1)]
 
 
 def test_judged_cases_sit_at_their_firing_time_and_repeated_benign_verdicts_are_one_row(monkeypatch):

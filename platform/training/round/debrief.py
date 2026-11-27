@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from domain.types import ACTION_ORIGIN_REQUEST, ActionRecord, DetectionRecord
+from domain.types import ACTION_ORIGIN_REQUEST, ENGINE_WAF, ActionRecord, DetectionRecord
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.content import bots as catalog
@@ -60,16 +60,31 @@ def free_alerts_of(score: dict) -> dict[str, int]:
     return {origin["ip"]: origin["alerts"] for origin in score["free_actions"]["by_origin"]}
 
 
-def alert_rows(seen: Sequence[DetectionRecord]) -> list[dict]:
-    grouped: dict[tuple[str, str], list] = defaultdict(list)
+def access_refusal(detection: DetectionRecord) -> bool:
+    return (detection.engine == ENGINE_WAF and len(detection.rule) == 3 and detection.rule.isdigit()
+            and detection.signature.startswith(f"{detection.rule} "))
+
+
+def alert_group(detection: DetectionRecord, owners: frozenset[str]) -> tuple:
+    owner = detection.marker if detection.marker in owners else None
+    if access_refusal(detection):
+        return owner, detection.engine, detection.rule
+    return owner, detection.engine, None if owner else detection.rule or detection.signature
+
+
+def alert_rows(seen: Sequence[DetectionRecord], owners: frozenset[str] = frozenset()) -> list[dict]:
+    grouped: dict[tuple, list[DetectionRecord]] = defaultdict(list)
     for detection in seen:
-        grouped[(detection.engine, detection.rule or detection.signature)].append(detection)
+        grouped[alert_group(detection, owners)].append(detection)
     rows = []
-    for (engine, _), seen in grouped.items():
-        first = min(seen, key=lambda one: one.timestamp)
+    for (_, engine, _), held in grouped.items():
+        first = min(held, key=lambda one: one.timestamp)
+        rules = Counter((one.rule, one.signature) for one in held)
+        rule, signature = max(rules, key=rules.__getitem__)
         rows.append({"lane": DEFENCE, "kind": "alerts", "at": when(first.timestamp), "engine": engine,
-                     "rule": first.rule, "signature": first.signature, "count": len(seen),
-                     "until": when(max(one.timestamp for one in seen))})
+                     "rule": rule, "signature": signature, "count": len(held),
+                     "rules": len({one.rule or one.signature for one in held}),
+                     "until": when(max(one.timestamp for one in held))})
     return rows
 
 
@@ -155,8 +170,9 @@ def compose(found: Round) -> dict[str, Any]:
     requests = [one for one in acted if one.kind == ACTION_ORIGIN_REQUEST]
     score = lifecycle.shown_score(found, lifecycle.score_over(found, acted, seen))
     titles = lifecycle.case_titles(found)
-    timeline = (action_rows(found, free_alerts_of(score), seen, requests) + alert_rows(seen) + event_rows(found)
-                + note_rows(found))
+    owners = frozenset(one.marker for one in acted if one.kind != ACTION_ORIGIN_REQUEST and one.marker)
+    timeline = (action_rows(found, free_alerts_of(score), seen, requests) + alert_rows(seen, owners)
+                + event_rows(found) + note_rows(found))
     timeline = [{**row, "title": titles.get(row["case"], row["case"])} if row.get("case") else row for row in timeline]
     timeline.sort(key=lambda row: row["at"] or "")
     return {
