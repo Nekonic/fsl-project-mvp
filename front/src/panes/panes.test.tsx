@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
 import { playerFacts } from "../console/RoundHeader";
+import { FiredBadge } from "./AttackCases";
 import { Brief } from "./Brief";
 import { IdsRules } from "./IdsRules";
 import { fallenNames } from "./Loot";
@@ -98,6 +99,18 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("FiredBadge", () => {
+  const last = { at: "2026-01-01T00:00:00Z", status: null, run: 7, running: true, exit_code: null };
+  it("shows a tool case running until its run ends, then how it ended", () => {
+    const shown = render(<FiredBadge fired={last} refused={[403]} />);
+    expect(shown.container.textContent).toBe(t("cases.tool_started"));
+    shown.rerender(<FiredBadge fired={{ ...last, running: false, exit_code: 0 }} refused={[403]} />);
+    expect(shown.container.textContent).toBe(t("cases.tool_ended"));
+    shown.rerender(<FiredBadge fired={{ ...last, run: null, running: false, status: 403 }} refused={[403]} />);
+    expect(shown.container.textContent).toBe("403");
+  });
+});
 
 describe("Score while the final judge is pending", () => {
   it("reads the score again until it is final", async () => {

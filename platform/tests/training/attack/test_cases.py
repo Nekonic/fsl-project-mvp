@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from django.utils import timezone
 
 from testing.fakerange import RU
 from tests.training.attack.conftest import codes, url
@@ -17,7 +18,8 @@ def test_the_case_list_holds_the_declared_attack_cases_only(as_attacker, attacke
     assert names["board-sqli-orderby-sqlmap"]["kind"] == "tool"
     assert all(case["malicious"] is True for case in listed)
     assert not any(name.startswith("board-normal") for name in names)
-    assert all(set(case) == {"case", "kind", "malicious", "title"} for case in listed)
+    assert all(set(case) == {"case", "kind", "malicious", "title", "last"} for case in listed)
+    assert all(case["last"] is None for case in listed)
     assert names["board-sqli-search"]["title"] == "검색창 SQL 인젝션"
     assert "expect" not in json.dumps(listed)
 
@@ -47,6 +49,19 @@ def test_a_tool_case_becomes_a_tool_run_with_the_marker_in_its_argv(as_attacker,
     assert f"--headers=X-Request-ID: {action.marker}" in run.argv
     assert body["remaining"]["left"] == 3
     assert body["marker"] == action.marker
+
+
+def test_the_case_list_keeps_each_case_s_last_outcome_and_the_tool_run_s_end(as_attacker, attacker, cloud):
+    as_attacker.post(url(attacker.round, "cases/"), {"case": "board-sqli-search"}, format="json")
+    run = as_attacker.post(url(attacker.round, "cases/"), {"case": "board-sqli-orderby-sqlmap"}, format="json").json()["run"]
+
+    running = {case["case"]: case["last"] for case in as_attacker.get(url(attacker.round, "cases/")).json()}
+    ToolRun.objects.filter(pk=run).update(ended=timezone.now(), exit_code=0)
+    ended = {case["case"]: case["last"] for case in as_attacker.get(url(attacker.round, "cases/")).json()}
+
+    assert (running["board-sqli-search"]["status"], running["board-sqli-search"]["run"]) == (200, None)
+    assert (running["board-sqli-orderby-sqlmap"]["run"], running["board-sqli-orderby-sqlmap"]["running"]) == (run, True)
+    assert (ended["board-sqli-orderby-sqlmap"]["running"], ended["board-sqli-orderby-sqlmap"]["exit_code"]) == (False, 0)
 
 
 def test_a_benign_case_is_the_platform_s_to_fire_and_unknown_to_the_attacker(as_attacker, attacker, cloud):

@@ -3003,9 +3003,14 @@ components:
           type: boolean
         title:
           type: string
+        last:
+          allOf:
+          - $ref: '#/components/schemas/LastFired'
+          nullable: true
       required:
       - case
       - kind
+      - last
       - malicious
       - title
     CaseEntryKindEnum:
@@ -3566,6 +3571,29 @@ components:
           type: string
       required:
       - space_url
+    LastFired:
+      type: object
+      properties:
+        at:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          nullable: true
+        run:
+          type: integer
+          nullable: true
+        running:
+          type: boolean
+        exit_code:
+          type: integer
+          nullable: true
+      required:
+      - at
+      - exit_code
+      - run
+      - running
+      - status
     LearnerProblem:
       type: object
       properties:

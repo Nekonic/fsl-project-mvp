@@ -27,7 +27,7 @@ const siteRequests = paths.map((path, index) => ({
 const spentAll = { ...remaining, origin: null, left: 0, spent: ["5.188.10.10", "181.8.0.10"] };
 
 export const fixtures = [
-  reply("get", "/api/rounds/{round_id}/attack/cases/", cases),
+  reply("get", "/api/rounds/{round_id}/attack/cases/", cases.map((entry) => ({ ...entry, last: null }))),
   reply("post", "/api/rounds/{round_id}/attack/cases/", (asked) => {
     const fired = cases.find((entry) => entry.case === asked.body?.case);
     return fired?.kind === "tool"

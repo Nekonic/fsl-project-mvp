@@ -58,11 +58,20 @@ class AttackState(serializers.Serializer):
     takes_loot = serializers.BooleanField()
 
 
+class LastFired(serializers.Serializer):
+    at = serializers.DateTimeField()
+    status = serializers.IntegerField(allow_null=True)
+    run = serializers.IntegerField(allow_null=True)
+    running = serializers.BooleanField()
+    exit_code = serializers.IntegerField(allow_null=True)
+
+
 class CaseEntry(serializers.Serializer):
     case = serializers.CharField()
     kind = serializers.ChoiceField(choices=["http", "tool"])
     malicious = serializers.BooleanField()
     title = serializers.CharField()
+    last = LastFired(allow_null=True)
 
 
 class SendRequest(serializers.Serializer):

@@ -91,11 +91,21 @@ class State:
 
 
 @dataclass(frozen=True)
+class LastFired:
+    at: datetime
+    status: int | None
+    run: int | None
+    running: bool
+    exit_code: int | None
+
+
+@dataclass(frozen=True)
 class CaseEntry:
     case: str
     kind: str
     malicious: bool
     title: str
+    last: LastFired | None = None
 
 
 @dataclass(frozen=True)
@@ -336,9 +346,21 @@ def declared_cases(found: Round) -> list[dict[str, Any]]:
     return firing.load_cases(case_file(found))
 
 
+def last_fired(found: Round) -> dict[str, LastFired]:
+    latest: dict[str, LastFired] = {}
+    for action in (Action.objects.filter(round=found, kind=ACTION_CASE, malicious=True).select_related("run")
+                   .order_by("id")):
+        run = getattr(action, "run", None)
+        latest[action.case_id] = LastFired(
+            at=action.started, status=(action.meta or {}).get("status"), run=run.pk if run else None,
+            running=bool(run and run.ended is None), exit_code=run.exit_code if run else None)
+    return latest
+
+
 def catalog(found: Round) -> tuple[CaseEntry, ...]:
+    fired = last_fired(found)
     return tuple(CaseEntry(case=case["name"], kind="tool" if tools.is_tool_case(case) else "http", malicious=True,
-                           title=str(case.get("title") or case["name"]))
+                           title=str(case.get("title") or case["name"]), last=fired.get(case["name"]))
                  for case in declared_cases(found) if case.get("malicious") is True)
 
 
