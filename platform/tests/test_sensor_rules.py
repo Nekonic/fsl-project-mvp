@@ -26,6 +26,12 @@ def test_no_experiment_is_left_behind_in_the_shipped_rule_set():
     )
     assert len(sids) == len(set(sids)), f"duplicate sids: {sids}"
 
+def test_the_shipped_rule_file_explains_itself_in_korean_and_disables_rules_by_commenting_them_out():
+    prose = [line for line in RULES.read_text().splitlines()
+             if line.startswith("#") and not re.match(r"#\s*(alert|drop|pass|reject)\s", line)]
+
+    assert prose and [line for line in prose if not re.search("[가-힣]", line)] == []
+
 def test_the_port_variable_names_every_port_the_waf_proxies_to():
     import yaml
 
