@@ -5,7 +5,7 @@ import { clock } from "../format";
 import { t, tFor } from "../strings";
 import { Badge, Button, Code, ErrorNotice, Loading, Notice, Pane, PaneSection, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchOutcome, RuleTestSection, rememberTest, useLatestTest, useRuleBench } from "./RuleTestTable";
+import { BenchOutcome, RuleTestSection, rememberTest, useLatestTest, usePaneShownAgain, useRuleBench } from "./RuleTestTable";
 import type { PaneProps } from "./types";
 
 const RULE_EVENTS = ["rule.applied", "rule.refused", "round.ended"];
@@ -29,13 +29,25 @@ export function IdsRules({ round }: PaneProps) {
   const bench = useRuleBench(live);
   useLatestTest({ round, engine: "ids", content: rules.data ? live : null, body: live, liveBody: live, head: versions.head, recorded: rules.data?.recorded, bench });
 
-  const test = () => bench.test({
-    test: async () => {
-      const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live }, timeoutMs: RULE_TEST_TIMEOUT_MS });
-      if (said.ok) rememberTest(round, "ids", live, said.test);
-      return said;
-    },
-  });
+  const [reread, setReread] = useState(false);
+  usePaneShownAgain("ids_rules", rules.reload);
+
+  const test = async () => {
+    setReread(false);
+    const now = await api.get("/api/rounds/{round_id}/defence/ids/rules/", { params: { round_id: round } }).catch(() => undefined);
+    if (now && now.text !== live) {
+      rules.setData(now);
+      setReread(true);
+      return;
+    }
+    await bench.test({
+      test: async () => {
+        const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live }, timeoutMs: RULE_TEST_TIMEOUT_MS });
+        if (said.ok) rememberTest(round, "ids", live, said.test);
+        return said;
+      },
+    });
+  };
 
   const versionColumns: Column<AppliedVersion>[] = [
     { key: "version", label: t("versions.col.version"), kind: "num", cell: (row) => row.version },
@@ -52,6 +64,7 @@ export function IdsRules({ round }: PaneProps) {
       {rules.error && <ErrorNotice error={rules.error} />}
       {!rules.data ? (rules.error ? null : <Loading>{t("common.loading")}</Loading>) : (
         <PaneSection>
+          {reread && <Notice tone="info">{t("ids.reread")}</Notice>}
           {!rules.data.recorded && <Notice tone="warn">{t("ids.not_running")}</Notice>}
           <Code>{live || t("waf.file.empty")}</Code>
           <Text tone="muted" small>{t("ids.terminal_note")}</Text>

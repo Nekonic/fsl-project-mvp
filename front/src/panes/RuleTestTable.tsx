@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError, type Schemas } from "../api/client";
 import { caseLabel } from "../format";
+import { usePlace } from "../router";
 import { t, tFor, type StringKey } from "../strings";
 import { Badge, Badges, Button, ErrorNotice, Notice, PaneSection, Stack, Stat, Stats, Table, Text, type BadgeTone, type Column } from "../ui";
 
@@ -351,11 +352,25 @@ export function BenchButtons({ bench, calls, disabled }: { bench: RuleBench; cal
   );
 }
 
+export function usePaneShownAgain(pane: string, onShown: () => void): void {
+  const place = usePlace();
+  const shown = place.hash === pane;
+  const was = useRef(shown);
+  const latest = useRef(onShown);
+  latest.current = onShown;
+  useEffect(() => {
+    if (shown && !was.current) latest.current();
+    was.current = shown;
+  }, [shown]);
+}
+
 export function BenchOutcome({ bench, onReload, problemsShownInline }: { bench: RuleBench; onReload: () => void; problemsShownInline?: (problem: RuleProblem) => boolean }) {
   const loose = problemsShownInline ? bench.problems.filter((problem) => !problemsShownInline(problem)) : bench.problems;
   const stale = bench.failure?.has("stale_version");
   return (
     <>
+      {bench.busy === "test" && <Notice tone="info">{t("rules.testing")}</Notice>}
+      {bench.busy === "check" && <Notice tone="info">{t("rules.checking")}</Notice>}
       <RuleProblems problems={loose} />
       {bench.failure && (
         <ErrorNotice error={bench.failure}

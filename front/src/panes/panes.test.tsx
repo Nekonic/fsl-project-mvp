@@ -465,6 +465,30 @@ describe("IdsRules", () => {
     expect(screen.getByText(t("rule_test.passed.ids"))).toBeTruthy();
     expect(screen.queryByText(t("rule_test.not_yet.ids"))).toBeNull();
   });
+
+  it("reads the sensor's rules again before a test and does not test text the terminal has changed", async () => {
+    let sensor = "alert http any any -> any any (msg:\"one\"; sid:1000001;)\n";
+    const tested: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const reply = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.includes("/events/")) return reply({ events: [], next: 0 });
+      if (url.endsWith("/versions/")) return reply([]);
+      if (url.endsWith("/rules/test/")) {
+        tested.push(JSON.parse(String(init?.body)).text);
+        return reply({ test: 3, ok: true, passed: true, failed_benign: [], untested_benign: [], errors: [], cases: [], totals: { tp: 0, fn: 0, fp: 0, tn: 6 }, untested: [], against_applied: [] });
+      }
+      return reply({ text: sensor, version: 1, recorded: true });
+    }));
+    render(<IdsRules round={52} side="defence" placement="main" />);
+    await screen.findByText(/sid:1000001/);
+    sensor = "alert http any any -> any any (msg:\"two\"; sid:9000005;)\n";
+    fireEvent.click(screen.getByRole("button", { name: t("rules.test") }));
+    expect(await screen.findByText(t("ids.reread"))).toBeTruthy();
+    expect(tested).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: t("rules.test") }));
+    await waitFor(() => expect(tested).toEqual([sensor]));
+  });
 });
 
 describe("RoundHeader players", () => {

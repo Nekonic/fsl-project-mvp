@@ -5,7 +5,7 @@ import { clock } from "../format";
 import { t, tFor } from "../strings";
 import { Badge, Button, Code, CodeEditor, ErrorNotice, Loading, Notice, Pane, PaneSection, Select, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchButtons, BenchOutcome, RuleTestSection, fileName, rememberTest, useLatestTest, useRuleBench, type BenchCalls } from "./RuleTestTable";
+import { BenchButtons, BenchOutcome, RuleTestSection, fileName, rememberTest, useLatestTest, usePaneShownAgain, useRuleBench, type BenchCalls } from "./RuleTestTable";
 import type { PaneProps } from "./types";
 
 type WafFile = Schemas["WafFile"];
@@ -82,6 +82,7 @@ export function Waf({ round }: PaneProps) {
     setPath((was) => was || read.data?.files[0]?.path || "");
   }, [read.data]);
 
+  usePaneShownAgain("waf", read.reload);
   const content = draft === null ? null : contentOf(draft);
   useLatestTest({ round, engine: "waf", content, body, liveBody: JSON.stringify({}), head: versions.head, recorded: read.data?.recorded, bench });
 
@@ -138,7 +139,7 @@ export function Waf({ round }: PaneProps) {
         </PaneSection>
       )}
       <BenchOutcome bench={bench} onReload={read.reload} />
-      <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.waf")} engine="waf" />
+      <RuleTestSection result={bench.result} stale={bench.stale && !bench.applied} untestedText={t("rule_test.not_yet.waf")} engine="waf" />
       <PaneSection title={t("waf.versions")} ruled>
         {versions.error ? <ErrorNotice error={versions.error} />
           : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}
