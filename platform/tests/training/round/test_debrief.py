@@ -8,12 +8,50 @@ from telemetry.access import OriginRequest
 from telemetry.models import Detection
 from tests import rounds
 from training.attack.actions import origin_record
+from training.models import BotNote, BotRun, Player
 from training.round import debrief
 
 pytestmark = pytest.mark.django_db
 
 AT = datetime(2026, 11, 20, 9, 0, tzinfo=timezone.utc)
 ORIGIN = "5.188.10.10"
+
+
+BOT_NOTES = (
+    ("call", "python -m bots.cli attack_send --json '{\"method\":\"GET\",\"path\":\"/\"}'"),
+    ("text", "Meanwhile, look at the target."),
+    ("refused", "model_refusal_fallback claude-opus-5-5 -> claude-opus-4-8 [cyber]: safeguards flagged this session"),
+    ("refused", "pace_limited POST /api/rounds/480/attack/requests/ {\"retry_after_s\": 0.3}"),
+    ("text", "**지금까지의 경과**\n## 다음 단계\n`sort` 파라미터를 다시 본다"),
+    ("result", "정렬 파라미터로 __계정 목록__을 확인했다"),
+)
+SHOWN_NOTES = [("text", "지금까지의 경과\n다음 단계\nsort 파라미터를 다시 본다"),
+               ("result", "정렬 파라미터로 계정 목록을 확인했다")]
+
+
+def bot_notes_of(found):
+    run = BotRun.objects.create(player=Player.objects.create(round=found, side="attack", client="bot", step="3"),
+                                model="claude-haiku-5-5")
+    BotNote.objects.bulk_create([BotNote(run=run, at=AT + timedelta(seconds=n), kind=kind, text=text)
+                                 for n, (kind, text) in enumerate(BOT_NOTES)])
+
+
+def test_the_learner_sees_only_the_bot_s_korean_notes_without_markdown_and_none_of_its_commands_or_notices():
+    found = rounds.opened(rounds.problem(), started=AT - timedelta(minutes=30), phase="ended",
+                          ended=AT + timedelta(minutes=10))
+    bot_notes_of(found)
+
+    assert [(row["note"], row["text"]) for row in debrief.note_rows(found)] == SHOWN_NOTES
+
+
+def test_a_debrief_kept_before_notes_were_filtered_is_shown_filtered():
+    kept = {"round": 1, "timeline": [{"lane": "attack", "kind": "bot_note", "at": AT.isoformat(), "note": kind,
+                                      "text": text} for kind, text in BOT_NOTES]
+                                    + [{"lane": "attack", "kind": "tool.started", "at": AT.isoformat(), "tool": "sqlmap"}]}
+
+    shown = debrief.cleaned(kept)
+
+    assert [(row.get("note"), row.get("text")) for row in shown["timeline"]] == SHOWN_NOTES + [(None, None)]
 
 
 def test_the_attack_lane_carries_tunnelled_requests_grouped_by_origin_with_the_score_s_alert_count(monkeypatch):

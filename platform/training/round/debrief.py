@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
 from collections.abc import Sequence
 from datetime import datetime
@@ -21,6 +22,10 @@ SHARED_KINDS = frozenset(name for name, kind in log.KINDS.items()
 TIMELINE_KINDS = frozenset(ATTACK_KINDS) | frozenset(DEFENCE_KINDS) | SHARED_KINDS
 BOTH_SIDES = log.Viewer(sides=log.SIDES)
 BENIGN_VERDICTS = ("tn", "fp")
+SHOWN_NOTES = frozenset({"text", "result"})
+KOREAN = re.compile("[\uac00-\ud7a3]")
+EMPHASIS = re.compile(r"\*\*|__|`")
+HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
 
 
 def when(at: datetime | None) -> str | None:
@@ -97,9 +102,30 @@ def event_rows(found: Round) -> list[dict]:
     return rows + list(benign.values())
 
 
+def plain(text: str) -> str:
+    return HEADING.sub("", EMPHASIS.sub("", text)).strip()
+
+
+def shown_note(kind: str, text: str) -> str | None:
+    if kind not in SHOWN_NOTES or not KOREAN.search(text):
+        return None
+    return plain(text) or None
+
+
 def note_rows(found: Round) -> list[dict]:
-    return [{"lane": note.run.player.side, "kind": "bot_note", "at": when(note.at), "note": note.kind,
-             "text": note.text} for note in bot_runs.notes_of(found)]
+    rows = [{"lane": note.run.player.side, "kind": "bot_note", "at": when(note.at), "note": note.kind,
+             "text": shown_note(note.kind, note.text)} for note in bot_runs.notes_of(found)]
+    return [row for row in rows if row["text"]]
+
+
+def cleaned(composed: dict[str, Any]) -> dict[str, Any]:
+    timeline = []
+    for row in composed.get("timeline") or []:
+        if row.get("kind") != "bot_note":
+            timeline.append(row)
+        elif (text := shown_note(str(row.get("note")), str(row.get("text") or ""))) is not None:
+            timeline.append({**row, "text": text})
+    return {**composed, "timeline": timeline}
 
 
 def bot_lines(found: Round) -> list[dict]:

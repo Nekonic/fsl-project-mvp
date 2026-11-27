@@ -258,7 +258,8 @@ class Debrief(MatchView):
         if found.phase != service.ENDED:
             raise errors.Conflict(code="round_running")
         kept = RoundRecord.objects.filter(round_number=found.pk).first()
-        return Response(serializers.Debrief(kept.debrief if kept and kept.debrief else debriefs.compose(found)).data)
+        return Response(serializers.Debrief(debriefs.cleaned(kept.debrief) if kept and kept.debrief
+                                            else debriefs.compose(found)).data)
 
 
 class BotSteps(MatchView):

@@ -96,6 +96,8 @@ def record(record_id: int, user) -> RoundRecord:
         raise errors.NotFound(code="unknown_record")
     if not user.is_staff and user.pk not in (found.attack_user_id, found.defence_user_id):
         raise errors.NotAPlayer()
+    if found.debrief:
+        found.debrief = debrief.cleaned(found.debrief)
     return found
 
 
