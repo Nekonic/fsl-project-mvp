@@ -18,6 +18,7 @@ QUEUED, RUNNING, FINISHED, FAILED = "queued", "running", "finished", "failed"
 OVER = (FINISHED, FAILED)
 FAILED_EXITS = frozenset({"launcher_restarted", "crashed", "error", "round_ended", "timed_out"})
 NOTE_TEXT_MAX = 2000
+EARLY_END_GRACE_S = 60
 SIDE_PROMPTS = {"attack": "attacker", "defence": "defender"}
 
 
@@ -56,6 +57,14 @@ def run_of(run_id: int) -> BotRun:
 
 def runs_of(found: Round) -> list[BotRun]:
     return list(BotRun.objects.filter(player__round=found).select_related("player").order_by("id"))
+
+
+def left_of_round(run: BotRun, found: Round) -> int | None:
+    end = found.ended or found.ends_at
+    if run.finished is None or end is None:
+        return None
+    left = (end - run.finished).total_seconds()
+    return int(left) if left > EARLY_END_GRACE_S else None
 
 
 def runs_over(found: Round) -> bool:

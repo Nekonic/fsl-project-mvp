@@ -726,6 +726,24 @@ def test_a_claude_child_that_failed_finishes_as_an_error_with_its_text_only_in_t
     assert transcript.taken() == [] and "OAuth token revoked" in capsys.readouterr().err
 
 
+def test_a_failed_run_with_no_result_text_logs_its_subtype_and_masked_errors(capsys):
+    transcript = launcher.Transcript(hidden=(TOKEN,))
+
+    transcript.take({"type": "result", "subtype": "error_during_execution", "is_error": True, "num_turns": 4,
+                     "errors": [f"API Error: 401 token {TOKEN} rejected"]})
+
+    logged = capsys.readouterr().err
+    assert "failed error_during_execution: API Error: 401 token [hidden] rejected" in logged and TOKEN not in logged
+
+
+def test_a_permission_denial_goes_to_the_launcher_log_and_not_to_the_learner_s_notes(capsys):
+    transcript = launcher.Transcript(hidden=())
+
+    transcript.take({"type": "system", "subtype": "permission_denied", "message": "Bash(sleep 60 && ls) was denied"})
+
+    assert transcript.taken() == [] and "Bash(sleep 60 && ls) was denied" in capsys.readouterr().err
+
+
 def test_a_safeguard_stop_and_a_fallback_to_another_model_are_counted_and_noted_with_both_models():
     transcript = launcher.Transcript(hidden=())
 

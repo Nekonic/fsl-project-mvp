@@ -20,7 +20,9 @@ Commands:
   `python -m bots.cli defence_waf_test_result --job <job>` (or `defence_ids_test_result`), with `sleep 30` between:
   it answers `{running: true, running_s}` until the test ends, then the test's own answer, whose `body.test` is the
   test id `defence_waf_apply` takes as `tested`. A second test while one runs is refused with `test_running`.
-- `sleep <seconds>` waits.
+- `sleep <seconds>` waits. Run it as a command on its own, `sleep 30` and nothing else on the line, for at most 60
+  seconds at a time. If a sleep is refused, wait by reading `round_events` instead: a refused wait is never a reason
+  to stop.
 
 Write each call as one command on its own line: no pipe, no `&&`, `;` or `$(...)` around it, and no other program.
 Anything else is refused before it runs. When a value holds a quote of
@@ -47,6 +49,12 @@ code `pace_limited` and `params.retry_after_s`: nothing was sent, so wait that l
 step does not give answers `403` with the code `not_at_this_step`: nothing was sent and it will not change this
 round, so do something else.
 
-Read the answer of every call before the next one. When the round has ended and you have read `round_score` until
-`pending` is false, end with your intent: what you aimed at and why, in at most ten lines, as your last message. Then
-stop.
+Read the answer of every call before the next one. Keep playing until the round ends: while its phase is `running`,
+there is always something to read, try or wait for, so do not end your run early, not when an approach failed, not
+when a command was refused and not when you think you are done. When the round has ended and you have read
+`round_score` until `pending` is false, end with your intent: what you aimed at and why, in at most ten lines, as your
+last message. Then stop.
+
+The learner reads what you write in the debrief and reads Korean: write every message you send, the intent note and
+your last message in Korean, as a Korean security practitioner would write them. Commands, tool names, codes and
+values you quote stay as they are.

@@ -110,7 +110,8 @@ def bot_lines(found: Round) -> list[dict]:
     for run in bot_runs.runs_of(found):
         lines.append({"side": run.player.side, "step": run.player.step, "model": run.model, "status": run.status,
                       "exit": run.exit, "cost_usd": run.cost_usd, "turns": run.turns, "refusals": run.refusals,
-                      "closing": run.closing})
+                      "closing": run.closing, "finished": when(run.finished),
+                      "left_of_round_s": bot_runs.left_of_round(run, found)})
     return lines
 
 

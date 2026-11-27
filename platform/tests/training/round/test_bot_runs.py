@@ -81,3 +81,14 @@ def test_a_run_that_finished_with_an_error_is_failed_in_the_debrief(started, lau
                   HTTP_AUTHORIZATION=f"Bearer {KEY}")
 
     assert [(line["status"], line["exit"]) for line in debrief.bot_lines(started)] == [("failed", "error")]
+
+
+def test_a_run_that_stopped_while_its_round_ran_on_says_how_much_of_the_round_was_left(started, launcher):
+    run = claim(launcher).json()["run"]
+
+    launcher.post(f"/api/bot-runs/{run}/finish/", {"exit": "success"}, format="json",
+                  HTTP_AUTHORIZATION=f"Bearer {KEY}")
+
+    [line] = debrief.bot_lines(started)
+    left = (started.ends_at - BotRun.objects.get(pk=run).finished).total_seconds()
+    assert line["status"] == "finished" and line["left_of_round_s"] == int(left) > 60

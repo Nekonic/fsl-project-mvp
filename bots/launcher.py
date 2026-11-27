@@ -111,6 +111,12 @@ def masked(text: str, hidden: tuple[str, ...]) -> str:
     return SECRET_SHAPE.sub(HIDDEN, text)
 
 
+def failure_cause(event: Mapping) -> str:
+    said = [str(event["result"])] if isinstance(event.get("result"), str) and event["result"].strip() else []
+    said += [str(error) for error in event.get("errors") or []]
+    return " | ".join(said) or "the result named no cause"
+
+
 def now_text() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -149,7 +155,8 @@ class Transcript:
         elif kind == "system" and subtype == "init":
             log(f"model {event.get('model')}")
         elif kind == "system" and subtype == "permission_denied":
-            self.note("denied", event.get("message") or json.dumps(event.get("tool_input") or {}))
+            denied = event.get("message") or json.dumps(event.get("tool_input") or {})
+            log(masked(f"permission denied: {denied}", self.hidden)[:NOTE_TEXT_MAX])
         elif kind == "system" and subtype in REFUSAL_SUBTYPES:
             self.refusals += 1
             self.note("refused", f"{subtype} {event.get('original_model')} -> {event.get('fallback_model')} "
@@ -162,8 +169,8 @@ class Transcript:
             self.turns += int(event.get("num_turns") or 0)
             log(masked(f"{subtype} error={bool(event.get('is_error'))} turns={event.get('num_turns')} "
                        f"cost_usd={event.get('total_cost_usd')}", self.hidden))
-            if event.get("is_error") and isinstance(event.get("result"), str):
-                log(masked(event["result"], self.hidden)[:NOTE_TEXT_MAX])
+            if event.get("is_error"):
+                log(masked(f"failed {subtype}: {failure_cause(event)}", self.hidden)[:NOTE_TEXT_MAX])
 
     def spent(self, max_turns: int, budget_usd: float) -> str | None:
         result = self.result or {}
