@@ -9,7 +9,36 @@ Updated: 2026-11-27.
 
 ## Where things stand
 
-- The tree is `demo` (2026-11-27, the evening before the pvp demo):
+- The tree is `ui-sweep` (2026-11-27, the evening before the pvp demo):
+  `demo` with the Korean wording pass and the fixes of a UI sweep
+  (`docs/DECISIONS.md` 2026-11-27 "Sign-out ends everything at once"). Sign-out
+  and any 401 clear the console's session, so the page lands on the sign-in
+  page once and every poll stops (before: 249 to 394 requests in 10 s, a
+  401/429 loop between home and sign-in). An event follower starts at the
+  newest event unless a listener replays the backlog, and asks only for the
+  kinds its listeners want (`kinds=`, `tail=` on the feed); panes that ask for
+  the same resource in one render share one read; the backlog no longer
+  triggers refreshes. Also: the loot pane is off the corp attack console
+  (`takes_loot`), each attack case keeps its last outcome and a tool case
+  shows running until its run ends, terminals show a connecting notice and
+  reload on a 5xx, the IDS pane re-reads the sensor's rules before a test,
+  a running check or test says so, a kept pane stays laid out so Kibana is
+  not rebuilt on a tab switch, 기권, 끝내기, 레인지 반납 and 다음 IP로 take a
+  second press, the score is read again while pending, a player's result
+  page no longer reads the allocation (`operated` on the round), learners
+  see only published problems' rounds and records, objectives read
+  달성 rather than 탈취, the debrief loads in about 3 s on a 57k-alert round
+  and hides the bot's shell lines and English notes, a round's end marks its
+  bot runs `round_ended`, the alert list is newest first, and the IDS/WAF
+  pane strings and the local Suricata rule notes are plainer Korean. On the
+  cloud: two replaces (both exit 0), then three Playwright sweeps of every
+  route, button and form for both seats of a board and a corp 1:1 round and
+  one Player vs AI round, 400, 351 and 328 actions pressed, the last with
+  no defect (`~/.cache/fsl-work/ui-sweep/report.md`). Problems 16, 17, 19
+  and 20 were imported again from their files and stay published. The IDS
+  and WAF reload refusals are Korean in `deploy/roles/` but the slots run
+  the baked English ones until the next infra and waf bake.
+- Before that the tree was `demo` (2026-11-27, the evening before the pvp demo):
   `slot-fix` with `ingest-fix`, `no-baseline`, `problem-body` and
   `pvp-no-problem` merged. The bot-vs-bot rounds are dropped by their own
   migration (scoring 0002, run before training 0004) because on PostgreSQL
@@ -179,6 +208,15 @@ a docs review, the edge sets after an infra reboot. The list is in
 ## Next, in order
 
 1. The blocker above, when an admin can.
+2. An infra and a waf bake to carry the Korean reload refusals; the
+   launcher should stop a bot's child process when its round ends (the
+   platform marks the run ended, the child runs to `CR_BOT_RUN_SECONDS`).
+   Left from the sweep's tester findings: the corp round starts with the
+   board's IDS rules (no corp case alerts in the IDS test), the site pane
+   is blank for about 6 s on first open, the Kali MOTD prints twice, the
+   debrief and the result page can disagree on pending for a few seconds,
+   a staff problem edit's leave warning does not cover the back button,
+   Kibana's own English UI and its refused internal calls.
 2. A kali bake for `deploy/kali/operator-log.sh`.
 3. The attack bot still meets 2 refusals a run on Sonnet and Opus 5.5
    and goes on; it took no objective in rounds 310 and 311.
