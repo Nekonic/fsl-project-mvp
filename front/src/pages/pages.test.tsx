@@ -225,7 +225,7 @@ describe("result of a round the viewer only played", () => {
           started: null, ends_at: null, ended: null, end_reason: "ended_by_operator", operated: false });
       }
       if (url.startsWith("/api/rounds/81/events/")) return json({ events: [], next: 0 });
-      return json({});
+      return new Response(JSON.stringify({ errors: [{ path: "", code: "round_running" }] }), { status: 409, headers: { "Content-Type": "application/json" } });
     }));
     render(<Result params={{ round: "81" }} />);
     for (let turn = 0; turn < 4; turn += 1) await settle();
