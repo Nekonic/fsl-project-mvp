@@ -11537,3 +11537,12 @@ The reviews of the two branches found four defects; all four are fixed on `integ
 - **`ground_truth_unavailable` on round 406 is not read yet.** The round's start on slot 1 applied both
   sensors (06:34:08, 06:34:13) and answered 503 at 06:34:32; the platform did not log why. It now logs the
   reason a round did not start, with its slot.
+
+## 2026-11-27 — A pvp round is not a problem
+
+The user: "pvp는 문제가 아니잖아 왜 문제처럼 하냐고". A `pvp` round is two people on one
+wargame; it has no authored problem, no difficulty step, no card and no baseline. It opens
+from the wargame in the lobby, and the round's content is the wargame's own objectives and
+cases. Problems stay for Player vs AI rounds, which carry the steps, cards and bot-vs-bot
+baselines. Rejected: a pvp problem per wargame (made on 2026-11-27 as problems 18 and 21 only
+because `create_round` takes a problem id for every round; removed).
