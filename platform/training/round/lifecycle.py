@@ -312,21 +312,29 @@ def end_time(found: Round) -> datetime:
 def end_round(found: Round, reason: str) -> Round:
     if reason not in round_rules.END_REASONS:
         raise ValueError(f"no end reason {reason!r}")
-    if found.phase == RUNNING:
-        final_reads(found)
-    return finish(found, reason)
+    if found.phase != RUNNING:
+        return finish(found, reason)
+    close_sides(found)
+    customers.stop(found)
+    final_reads(found)
+    return finish(found, reason, sides_closed=True)
 
 
-def finish(found: Round, reason: str) -> Round:
+def close_sides(found: Round) -> None:
+    guarded(found, "closing the attack side", attack.close)
+    guarded(found, "detaching the attacker's tunnel", detach_tunnel)
+    guarded(found, "closing the defence side", defence.close)
+
+
+def finish(found: Round, reason: str, sides_closed: bool = False) -> Round:
     was = found.phase
     if not Round.objects.filter(pk=found.pk).exclude(phase=ENDED).update(phase=ENDED, ended=end_time(found),
                                                                           end_reason=reason):
         found.refresh_from_db()
         return found
     found.refresh_from_db()
-    guarded(found, "closing the attack side", attack.close)
-    guarded(found, "detaching the attacker's tunnel", detach_tunnel)
-    guarded(found, "closing the defence side", defence.close)
+    if not sides_closed:
+        close_sides(found)
     if was == CREATED:
         Round.objects.filter(pk=found.pk).update(judged_at=timezone.now())
     else:
