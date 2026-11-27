@@ -170,6 +170,13 @@ describe("bot stopped early", () => {
   });
 });
 
+describe("debrief of a pvp round", () => {
+  it("leaves out the opponent bot section, since both players are people", () => {
+    render(<DebriefReport debrief={{ pending: false, matchup: "pvp", bots: [], card: null, timeline: [], objectives: [], score: null } as unknown as Parameters<typeof DebriefReport>[0]["debrief"]} />);
+    expect(screen.queryByText(t("debrief.bots"))).toBeNull();
+  });
+});
+
 describe("debrief case title", () => {
   it("names a judged case by its title in the timeline when the row carries one", () => {
     expect(rowText({ lane: "attack", kind: "case.judged", at: null, case: "board-sqli-search", title: "Search SQLi", verdict: "tp" }))

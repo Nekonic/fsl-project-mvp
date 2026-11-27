@@ -165,7 +165,7 @@ export function DebriefReport({ debrief }: { debrief: DebriefShown }) {
   return (
     <Stack gap="lg">
       {debrief.pending && <Notice tone="warn">{t("debrief.pending")}</Notice>}
-      <Bots bots={bots} />
+      {debrief.matchup !== "pvp" && <Bots bots={bots} />}
       {debrief.card && <AttackCard card={debrief.card} />}
       <Closing bots={bots} />
       <Timeline rows={rows} marks={marks} />
