@@ -194,3 +194,48 @@ def test_a_json_value_loses_only_real_nul_characters_and_keeps_an_escaped_backsl
 
     assert json.loads(result) == json.loads(loaded)
     assert cleaned[0] == (stored != loaded)
+
+
+BOT_VS_BOT_ROUND_BEFORE_THE_BASELINE_WENT = """
+import django
+django.setup()
+from datetime import datetime, timezone
+from django.core.management import call_command
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+
+call_command("migrate", "training", "0003_bot_rounds", verbosity=0)
+call_command("migrate", "telemetry", "0002_blocked_waf_lookups", verbosity=0)
+call_command("migrate", "scoring", "0001_initial", verbosity=0)
+apps = MigrationExecutor(connection).loader.project_state(
+    [("training", "0003_bot_rounds"), ("telemetry", "0002_blocked_waf_lookups"), ("scoring", "0001_initial")]).apps
+now = datetime.now(timezone.utc)
+wargame = apps.get_model("training", "Wargame").objects.create(
+    id="board", title="Board", image="board", public_url="http://board.com", objective_model="loot",
+    case_file="board.yaml")
+problem = apps.get_model("training", "Problem").objects.create(kind="round", wargame=wargame, side="both",
+                                                               title="Bot problem")
+allocation = apps.get_model("training", "Allocation").objects.create(wargame=wargame, purpose="round", slot=1,
+                                                                     expires_at=now)
+found = apps.get_model("training", "Round").objects.create(allocation=allocation, problem=problem, kind="round",
+                                                           matchup="bot_vs_bot", phase="running", started=now)
+apps.get_model("training", "Player").objects.create(round=found, side="attack", client="bot", bot_name="one")
+apps.get_model("telemetry", "Detection").objects.create(round=found, detection_id="d1", engine="waf", timestamp=now)
+call_command("migrate", verbosity=0)
+"""
+
+
+def test_the_migrations_drop_a_running_bot_vs_bot_round_with_its_rows_on_postgresql(store):
+    name, port = store
+    database = fresh_database(name)
+    environ = {key: value for key, value in os.environ.items() if not key.startswith("CR_DB_")}
+    pg = {**environ, "CR_DB_HOST": "127.0.0.1", "CR_DB_PORT": port, "CR_DB_NAME": database,
+          "CR_DB_PASSWORD": PASSWORD, "DJANGO_SETTINGS_MODULE": "cr.settings"}
+
+    done = subprocess.run([sys.executable, "-c", BOT_VS_BOT_ROUND_BEFORE_THE_BASELINE_WENT], cwd=PLATFORM, env=pg,
+                          capture_output=True, text=True)
+
+    assert done.returncode == 0, done.stderr[-2000:]
+    assert psql(name, "SELECT count(*) FROM training_round", database) == "0"
+    assert psql(name, "SELECT count(*) FROM telemetry_detection", database) == "0"
+    assert psql(name, "SELECT to_regclass('training_botbaseline') IS NULL", database) == "t"
