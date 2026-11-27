@@ -6,17 +6,12 @@ import { ScoreReport } from "../panes/Score";
 import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
-import { Badge, Button, ErrorNotice, Hero, Loading, PageBody, Section, Stack, Table, Text, type Column } from "../ui";
+import { Badge, Button, ErrorNotice, Hero, Loading, PageBody, Section, Stack, Table, type Column } from "../ui";
 import { DebriefReport, stepsLine } from "./Debrief";
 
 type RecordLine = Schemas["RecordLine"];
-type Standing = Schemas["Standing"];
 type DebriefShown = Schemas["Debrief"];
 type ScoreShown = Schemas["Score"];
-
-export function standingText(standing: Standing | null | undefined): string {
-  return standing ? t("result.standing", { n: standing.n, top: Math.round(standing.top_percent) }) : "";
-}
 
 function problemTitle(line: { problem_title: string | null }): string {
   return line.problem_title ?? "—";
@@ -38,7 +33,6 @@ export function Records(_props: PageProps) {
       key: "reason", label: t("col.state"), kind: "nowrap",
       cell: (line) => (line.incomplete ? <Badge tone="warn">{t("records.incomplete")}</Badge> : tFor("end_reason", line.end_reason)),
     },
-    { key: "standing", label: t("records.col.standing"), cell: (line) => standingText(line.standing) || <Text tone="faint">{t("records.standing_none")}</Text> },
     { key: "open", label: "", kind: "end", cell: (line) => <Button tone="link" small href={to.record(line.record)}>{t("records.open")}</Button> },
   ];
   return (
@@ -69,10 +63,9 @@ export function RecordPage({ params }: PageProps) {
   const lead = record
     ? [[problemTitle(record), tFor("matchup", record.matchup), stepsLine(record.steps), endedAt(record)].filter(Boolean).join(" · ")]
     : [];
-  const standing = standingText(record?.standing);
   return (
     <AppPage title={t("page.record")} crumbs={[{ label: t("page.records"), href: to.records() }, { label: title }]}>
-      <Hero icon="shield" title={title} lead={standing ? [...lead, standing] : lead}
+      <Hero icon="shield" title={title} lead={lead}
         badge={record?.incomplete ? <Badge tone="warn">{t("records.incomplete")}</Badge> : undefined} />
       <PageBody>
         {shown.error && <ErrorNotice error={shown.error} />}

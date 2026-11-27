@@ -15,7 +15,7 @@ HTTP_LAYER = 10
 COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
                 "training/content/probes.py", "training/round/bots.py", "training/round/records.py",
-                "training/round/debrief.py", "training/round/baseline.py")
+                "training/round/debrief.py")
 LAYERS = (
     (HTTP_LAYER, HTTP),
     (0, ("domain/*",)),

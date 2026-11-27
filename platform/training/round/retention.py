@@ -28,8 +28,7 @@ def closed_among(allocation_ids: Iterable[int]) -> list[int]:
 def drop(allocation_ids: Iterable[int]) -> list[int]:
     dropped = []
     for allocation_id in allocation_ids:
-        for found in Round.objects.filter(allocation_id=allocation_id).exclude(started=None).select_related(
-                "baseline_of"):
+        for found in Round.objects.filter(allocation_id=allocation_id).exclude(started=None):
             records.keep(found)
         round_ids = list(Round.objects.filter(allocation_id=allocation_id).values_list("pk", flat=True))
         with transaction.atomic():

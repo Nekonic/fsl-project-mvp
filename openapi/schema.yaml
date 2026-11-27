@@ -415,67 +415,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
-  /api/problems/{problem_id}/baselines/:
-    get:
-      operationId: baseline_read
-      parameters:
-      - in: path
-        name: problem_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - staff
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BaselineLine'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
-    post:
-      operationId: baseline_create
-      parameters:
-      - in: path
-        name: problem_id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - staff
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/BaselineAskRequest'
-        required: true
-      security:
-      - player_token: []
-      - cr_session: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/BaselineLine'
-          description: ''
-        default:
-          description: refused
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Errors'
   /api/records/:
     get:
       operationId: records_list
@@ -2915,74 +2854,6 @@ components:
       - remaining
       - ssh
       - ws_url
-    BaselineAskRequest:
-      type: object
-      properties:
-        human_side:
-          $ref: '#/components/schemas/PlayerSideEnum'
-        step:
-          type: string
-          minLength: 1
-          maxLength: 16
-        rounds:
-          type: integer
-          maximum: 100
-          minimum: 1
-          default: 20
-      required:
-      - human_side
-      - step
-    BaselineLine:
-      type: object
-      properties:
-        baseline:
-          type: integer
-        human_side:
-          $ref: '#/components/schemas/PlayerSideEnum'
-        step:
-          type: string
-        status:
-          $ref: '#/components/schemas/BaselineStatusEnum'
-        profile_key:
-          type: string
-        counted:
-          type: integer
-        wanted:
-          type: integer
-        attempted:
-          type: integer
-        attempts_max:
-          type: integer
-        exits:
-          type: object
-          additionalProperties:
-            type: integer
-        spread:
-          $ref: '#/components/schemas/SpreadLine'
-      required:
-      - attempted
-      - attempts_max
-      - baseline
-      - counted
-      - exits
-      - human_side
-      - profile_key
-      - spread
-      - status
-      - step
-      - wanted
-    BaselineStatusEnum:
-      enum:
-      - running
-      - current
-      - stale
-      - failed
-      type: string
-      description: |-
-        * `running` - running
-        * `current` - current
-        * `stale` - stale
-        * `failed` - failed
     Block:
       type: object
       properties:
@@ -3454,7 +3325,6 @@ components:
       - forfeit_attack
       - forfeit_defence
       - allocation_expired
-      - bots_exited
       type: string
       description: |-
         * `time_limit` - time_limit
@@ -3464,7 +3334,6 @@ components:
         * `forfeit_attack` - forfeit_attack
         * `forfeit_defence` - forfeit_defence
         * `allocation_expired` - allocation_expired
-        * `bots_exited` - bots_exited
     Event:
       type: object
       properties:
@@ -3796,18 +3665,6 @@ components:
       - responded
       - response_seconds
     MatchupEnum:
-      enum:
-      - pvp
-      - def_vs_bot
-      - atk_vs_bot
-      - bot_vs_bot
-      type: string
-      description: |-
-        * `pvp` - pvp
-        * `def_vs_bot` - def_vs_bot
-        * `atk_vs_bot` - atk_vs_bot
-        * `bot_vs_bot` - bot_vs_bot
-    MatchupsEnum:
       enum:
       - pvp
       - def_vs_bot
@@ -4356,16 +4213,7 @@ components:
           type: string
         incomplete:
           type: boolean
-        baseline:
-          type: integer
-          nullable: true
-        standing:
-          allOf:
-          - $ref: '#/components/schemas/Standing'
-          nullable: true
-          readOnly: true
       required:
-      - baseline
       - end_reason
       - ended
       - incomplete
@@ -4374,7 +4222,6 @@ components:
       - problem_title
       - record
       - round_number
-      - standing
       - started
       - steps
     RecordShown:
@@ -4408,14 +4255,6 @@ components:
           type: string
         incomplete:
           type: boolean
-        baseline:
-          type: integer
-          nullable: true
-        standing:
-          allOf:
-          - $ref: '#/components/schemas/Standing'
-          nullable: true
-          readOnly: true
         card:
           type: string
         score:
@@ -4423,7 +4262,6 @@ components:
         debrief: {}
         bot: {}
       required:
-      - baseline
       - bot
       - card
       - debrief
@@ -4436,7 +4274,6 @@ components:
       - record
       - round_number
       - score
-      - standing
       - started
       - steps
     Refill:
@@ -4532,7 +4369,7 @@ components:
         matchups:
           type: array
           items:
-            $ref: '#/components/schemas/MatchupsEnum'
+            $ref: '#/components/schemas/MatchupEnum'
         posture:
           type: string
           nullable: true
@@ -4568,7 +4405,7 @@ components:
         matchups:
           type: array
           items:
-            $ref: '#/components/schemas/MatchupsEnum'
+            $ref: '#/components/schemas/MatchupEnum'
         posture:
           type: string
           nullable: true
@@ -4982,28 +4819,6 @@ components:
         * `setup` - setup
         * `console` - console
         * `terminal` - terminal
-    SpreadLine:
-      type: object
-      properties:
-        n:
-          type: integer
-        low:
-          type: number
-          format: double
-          nullable: true
-        median:
-          type: number
-          format: double
-          nullable: true
-        high:
-          type: number
-          format: double
-          nullable: true
-      required:
-      - high
-      - low
-      - median
-      - n
     Ssh:
       type: object
       properties:
@@ -5091,23 +4906,6 @@ components:
       - stance
       - technique
       - url
-    Standing:
-      type: object
-      properties:
-        baseline:
-          type: integer
-        step:
-          type: string
-        n:
-          type: integer
-        top_percent:
-          type: number
-          format: double
-      required:
-      - baseline
-      - n
-      - step
-      - top_percent
     StartToolRequest:
       type: object
       properties:
@@ -5687,8 +5485,6 @@ components:
       - already_playing
       - apply_refused
       - attacker_unavailable
-      - baseline_missing
-      - baseline_running
       - blank
       - bot_rounds_closed
       - cards_missing

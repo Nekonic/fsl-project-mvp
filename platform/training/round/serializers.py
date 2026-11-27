@@ -1,9 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from training.models import BASELINE_STATES, MATCHUPS, NOTE_KINDS, PHASES, PLAYER_SIDES, REASONS, RUN_STATES
+from training.models import MATCHUPS, NOTE_KINDS, PHASES, PLAYER_SIDES, REASONS, RUN_STATES
 from training.round import bots as bot_runs
-from training.round import records
 
 STATES = [("", ""), ("open", "open"), ("joinable", "joinable")]
 CORRELATIONS = [("marker", "marker"), ("window", "window")]
@@ -401,13 +400,6 @@ class RecordsQuery(serializers.Serializer):
     problem = serializers.IntegerField(required=False)
 
 
-class Standing(serializers.Serializer):
-    baseline = serializers.IntegerField()
-    step = serializers.CharField()
-    n = serializers.IntegerField()
-    top_percent = serializers.FloatField()
-
-
 class RecordLine(serializers.Serializer):
     record = serializers.IntegerField(source="pk")
     round_number = serializers.IntegerField()
@@ -419,12 +411,6 @@ class RecordLine(serializers.Serializer):
     ended = serializers.DateTimeField(allow_null=True)
     end_reason = serializers.CharField()
     incomplete = serializers.BooleanField()
-    baseline = serializers.IntegerField(source="baseline_id", allow_null=True)
-    standing = serializers.SerializerMethodField()
-
-    @extend_schema_field(Standing(allow_null=True))
-    def get_standing(self, made):
-        return records.standing_of(made)
 
 
 class RecordShown(RecordLine):
@@ -432,30 +418,3 @@ class RecordShown(RecordLine):
     score = serializers.JSONField(allow_null=True)
     debrief = serializers.JSONField()
     bot = serializers.JSONField()
-
-
-class BaselineAsk(serializers.Serializer):
-    human_side = serializers.ChoiceField(choices=PLAYER_SIDES)
-    step = serializers.CharField(max_length=16)
-    rounds = serializers.IntegerField(required=False, default=20, min_value=1, max_value=100)
-
-
-class SpreadLine(serializers.Serializer):
-    n = serializers.IntegerField()
-    low = serializers.FloatField(allow_null=True)
-    median = serializers.FloatField(allow_null=True)
-    high = serializers.FloatField(allow_null=True)
-
-
-class BaselineLine(serializers.Serializer):
-    baseline = serializers.IntegerField()
-    human_side = serializers.ChoiceField(choices=PLAYER_SIDES)
-    step = serializers.CharField()
-    status = serializers.ChoiceField(choices=BASELINE_STATES)
-    profile_key = serializers.CharField()
-    counted = serializers.IntegerField()
-    wanted = serializers.IntegerField()
-    attempted = serializers.IntegerField()
-    attempts_max = serializers.IntegerField()
-    exits = serializers.DictField(child=serializers.IntegerField())
-    spread = SpreadLine()

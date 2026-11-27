@@ -36,7 +36,7 @@ from training.content import problems as content
 from training.defence import kibana_gate
 from training.defence import rules as defence
 from training.defence import terminal as defence_terminal
-from training.models import Allocation, BotBaseline, Round, Player
+from training.models import Allocation, Round, Player
 from training.round import access as auth
 from training.round import bots as bot_runs
 from training.round import site
@@ -116,20 +116,16 @@ def refuse_closed_bot_rounds(players: dict[str, dict], by) -> None:
         raise errors.NotAPlayer(code="bot_rounds_closed", path=f"players.{launched[0]}.bot")
 
 
-def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[str, dict], by=None,
-                 baseline: BotBaseline | None = None) -> Created:
+def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[str, dict], by=None) -> Created:
     if held.closed is not None:
         raise errors.Conflict(code="allocation_closed")
     problem = content.problem(problem_id)
     if problem.wargame_id != held.wargame_id or problem.kind != ROUND:
         raise errors.Invalid(code="invalid_choice", path="problem")
     setup = content.snapshot(problem).get("round") or {}
-    if baseline is None and matchup not in (setup.get("matchups") or []):
+    if matchup not in (setup.get("matchups") or []):
         raise errors.Invalid(code="matchup_not_allowed", path="matchup")
-    if baseline is None:
-        refuse_closed_bot_rounds(players, by)
-    else:
-        setup = {**setup, "bot_steps": sorted(bot_catalog.step_ids())}
+    refuse_closed_bot_rounds(players, by)
     if Round.objects.filter(allocation=held).exclude(phase=ENDED).exists():
         raise errors.Conflict(code="round_open")
     refuse_fallen(held)
@@ -138,8 +134,7 @@ def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[
         raise errors.Conflict(code="already_playing")
     tokens: dict[str, str] = {}
     with transaction.atomic():
-        found = Round.objects.create(allocation=held, problem=problem, kind=ROUND, matchup=matchup,
-                                     baseline_of=baseline)
+        found = Round.objects.create(allocation=held, problem=problem, kind=ROUND, matchup=matchup)
         made = [player_of(found, side.value, client, dict(players.get(side.value) or {}), setup, by)
                 for side, client in round_rules.PLAYERS[Matchup(matchup)].items()]
         for player in made:

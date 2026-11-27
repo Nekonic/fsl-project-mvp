@@ -121,14 +121,6 @@ def steps_from(doc: Mapping) -> tuple[Step, ...]:
     return steps
 
 
-def stand_ins_from(doc: Mapping, steps: Sequence[Step]) -> dict[str, str]:
-    named = {side: str(doc["stand_in"][side]) for side in SIDES}
-    known = {step.id for step in steps}
-    if not set(named.values()) <= known:
-        raise ValueError(f"stand-in steps {named} are not all steps")
-    return named
-
-
 def cards_from(doc: Mapping) -> tuple[Card, ...]:
     cards = tuple(Card(id=str(one["id"]), technique=str(one["technique"]), name=str(one["name"]),
                        quote=str(one["quote"]).strip(), url=str(one["url"]), object_version=str(one["object_version"]),
