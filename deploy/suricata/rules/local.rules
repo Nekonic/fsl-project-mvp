@@ -1,7 +1,7 @@
-# 이 네트워크의 Suricata 룰. sid 대역은 9000000-9999999.
+# 이 레인지의 Suricata 룰. sid 대역 9000000-9999999.
 
-# 쿼리 문자열이나 폼 본문의 공백은 \s 대신 [\s+] 로 잡는다. + 로 보낸
-# 공백은 애플리케이션에는 공백이지만 \s 에는 걸리지 않는다.
+# 쿼리 문자열과 폼 본문의 공백은 \s 대신 [\s+] 로 잡는다.
+# + 로 인코딩한 공백은 앱에는 공백이지만 \s 에 안 걸린다.
 
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"SQLi attempt - URI"; flow:established,to_server; http.uri; pcre:"/(\x27[\s+]*(or|and)[\s+]*[\x27\d]|union[\s+]+select|--[\s+]|\x27[\s+]*--|\x27[\s+]*\x29)/i"; classtype:web-application-attack; sid:9000001; rev:2;)
 
@@ -9,6 +9,6 @@ alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"SQLi attempt - request body"
 
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"XSS attempt - script tag or event handler"; flow:established,to_server; http.uri; pcre:"/(<script|%3cscript|javascript:|onerror[\s+]*%?3?d?[\s+]*=)/i"; classtype:web-application-attack; sid:9000003; rev:2;)
 
-# http.uri 는 정규화된 버퍼라 %2F 가 디코딩되고 ../ 같은 dot segment 가
-# 지워진다. 그래서 경로 트래버설은 정규화 전 버퍼(http.uri.raw)에서 잡는다.
+# http.uri 는 정규화 버퍼라 %2F 가 풀리고 ../ 가 지워진다.
+# 경로 트래버설은 정규화 전 버퍼 http.uri.raw 에서 잡는다.
 alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"path traversal attempt"; flow:established,to_server; http.uri.raw; pcre:"/(\.\.(%2f|%5c|[\/\\])|%2e%2e)/i"; classtype:web-application-attack; sid:9000004; rev:3;)
