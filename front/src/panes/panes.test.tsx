@@ -167,6 +167,16 @@ describe("ScoreReport", () => {
   });
 });
 
+describe("free actions labels", () => {
+  it("counts actions, not requests, and names the blocked column as alerts, since one tool run draws thousands", () => {
+    render(<ScoreReport score={score} />);
+    expect(t("result.actions")).toBe("행동");
+    expect(screen.getByRole("columnheader", { name: t("result.refused_alerts") })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: t("col.blocked") })).toBeNull();
+    expect(t("result.free_lead")).toContain("도구 실행");
+  });
+});
+
 describe("Loot results", () => {
   it("names every objective that fell, and the one objective when the answer predates the list", () => {
     const admin = { key: "board-auth-user-admin", name: "Board admin account" };

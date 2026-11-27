@@ -176,7 +176,7 @@ function FreeActions({ score }: { score: ScoreShown }) {
     { key: "ip", label: t("col.origin_ip"), kind: "mono", cell: (origin) => <Text tone="heading" mono>{origin.ip}</Text> },
     { key: "actions", label: t("result.actions"), kind: "num", cell: (origin) => count(origin.actions) },
     { key: "alerts", label: t("col.alerts"), kind: "num", cell: (origin) => count(origin.alerts) },
-    { key: "refused", label: t("col.blocked"), kind: "num", cell: (origin) => count(origin.refused) },
+    { key: "refused", label: t("result.refused_alerts"), kind: "num", cell: (origin) => count(origin.refused) },
   ];
   return (
     <Task title={t("result.free_title")}>
