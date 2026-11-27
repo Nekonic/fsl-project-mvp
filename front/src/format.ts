@@ -27,3 +27,18 @@ export interface TitledCase {
 export function caseLabel(line: TitledCase): string {
   return line.title || line.case;
 }
+
+const HANGUL_FIRST = 0xac00;
+const HANGUL_LAST = 0xd7a3;
+const RIEUL_FINAL = 8;
+const DIGITS_TAKING_EURO = new Set(["0", "3", "6"]);
+
+export function ro(word: string): string {
+  const last = word.trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (code >= HANGUL_FIRST && code <= HANGUL_LAST) {
+    const final = (code - HANGUL_FIRST) % 28;
+    return final === 0 || final === RIEUL_FINAL ? "로" : "으로";
+  }
+  return DIGITS_TAKING_EURO.has(last) ? "으로" : "로";
+}

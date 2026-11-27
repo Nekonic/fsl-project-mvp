@@ -610,7 +610,7 @@
   "debrief.row.tool.ended": "도구 종료 (종료 코드 {exit_code})",
   "debrief.row.command.run": "명령 실행: {command}",
   "debrief.row.origin.spent": "출발지 {ip} 소진",
-  "debrief.row.origin.switched": "출발지를 {ip}로 변경",
+  "debrief.row.origin.switched": "출발지를 {ip}{ro} 변경",
   "debrief.row.origins.spent": "출발지 모두 소진",
   "debrief.row.rule.tested": "{engine} 룰 테스트 {result}",
   "debrief.row.rule.applied": "{engine} 버전 {version} 반영",

@@ -186,6 +186,16 @@ describe("debrief case title", () => {
   });
 });
 
+describe("debrief origin change", () => {
+  it("picks 으로 or 로 by how the address's last digit is read", () => {
+    const switched = (ip: string) => rowText({ lane: "attack", kind: "origin.switched", at: null, ip });
+    expect(switched("181.8.0.10")).toBe("출발지를 181.8.0.10으로 변경");
+    expect(switched("5.188.10.13")).toBe("출발지를 5.188.10.13으로 변경");
+    expect(switched("5.188.10.12")).toBe("출발지를 5.188.10.12로 변경");
+    expect(switched("5.188.10.11")).toBe("출발지를 5.188.10.11로 변경");
+  });
+});
+
 describe("safeNext", () => {
   const site = "http://range.example:8002";
 

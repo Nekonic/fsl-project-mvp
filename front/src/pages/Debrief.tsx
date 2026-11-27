@@ -1,7 +1,7 @@
 import type { Schemas } from "../api/client";
 import { useResource } from "../api/hooks";
 import { withStoppedEarly } from "../botRun";
-import { clockSeconds, count } from "../format";
+import { clockSeconds, count, ro } from "../format";
 import { to } from "../links";
 import { ScoreReport } from "../panes/Score";
 import type { PageProps } from "../routes";
@@ -65,6 +65,7 @@ function paramsOf(row: TimelineRow, marks: ObjectiveMark[]): StringParams {
   if (typeof row.case === "string" && typeof row.title === "string" && row.title) params.case = row.title;
   if ("engine" in row) params.engine = engineOf(row);
   if (row.kind === "rule.tested") params.result = t(row.passed ? "debrief.test.passed" : "debrief.test.failed");
+  if (row.kind === "origin.switched") params.ro = ro(text(row, "ip"));
   if (row.kind === "case.judged") params.verdict = tFor("verdict", text(row, "verdict"));
   if (row.kind === "bot_note") params.note = tFor("debrief.note", text(row, "note"));
   if (typeof row.count === "number") params.count = count(row.count);
