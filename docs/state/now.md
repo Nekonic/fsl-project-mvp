@@ -5,11 +5,25 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-26.
+Updated: 2026-11-27.
 
 ## Where things stand
 
-- The tree is `review-fix` (2026-11-26): `bundle-1126` with the fixes of
+- The tree is `review2` (2026-11-27): `review-fix` with the fixes of the
+  second live review round (`docs/STATE.md` "Where things stand"): one
+  ModSecurity alert per refused request, the debrief grouped by rule and by
+  benign case, Korean case titles on every case line, Korean origin
+  countries, objective names in the staff round editor, `left_of_round_s`
+  on the player line and the debrief bot line, rule test calls that wait
+  five minutes, the IDS rule test 56 s to 12.5 s locally. On the cloud: one
+  replace (exit 0, 12 min 45 s), a new bot token, the full acceptance from
+  the platform VM 87 passed, 3 failed, 11 errors, all on board slots
+  (`ground_truth_unavailable`, `range_unavailable`) and one IDS apply check;
+  those six modules alone 20 of 20. The IDS rule test on the range took
+  7.9 to 35.8 s under the acceptance load.
+- The first `pvp` round: round 372 (2026-11-27, board), `admin` against the
+  new player account `pvp-defender`, no objective lost, TP/FP/FN/TN 4/0/0/72.
+- Before that the tree was `review-fix` (2026-11-26): `bundle-1126` with the fixes of
   a live review round. The score pane shows each objective's difficulty and
   the points each lost one adds; the loot pane names every objective that
   fell; board and corp objective names are Korean; the VPN profile lists
@@ -20,8 +34,6 @@ Updated: 2026-11-26.
   acceptance from the platform VM 101 of 101 in 1 h 36 min. Not on the
   range yet: the kali change (`deploy/kali/operator-log.sh`) needs a kali
   bake, deferred, so the slots still run `cr-kali-bake4`'s command log.
-  The bot OAuth token on the VM is revoked; bot runs fail until the user
-  gives a new one.
 - Before that the tree was `bundle-1126` (2026-11-26): `defence-watch` with the bot
   polling the rule test as a detached job, the rule test replayed in one
   curl over one SSH call, the attack prompt rewritten to name the round's
@@ -113,8 +125,8 @@ Updated: 2026-11-26.
 
 ## Not live-verified
 
-A `pvp` round, a captured learner walk, a live review round, a docs
-review, the edge sets after an infra reboot. The list is in
+A captured learner walk, a live review round with zero countable findings,
+a docs review, the edge sets after an infra reboot. The list is in
 `docs/STATE.md` "Not live-verified".
 
 ## Blockers for the user
@@ -130,20 +142,26 @@ review, the edge sets after an infra reboot. The list is in
 ## Next, in order
 
 1. The blocker above, when an admin can.
-2. A new bot OAuth token from the user, then a kali bake for
-   `deploy/kali/operator-log.sh`.
+2. A kali bake for `deploy/kali/operator-log.sh`.
 3. The attack bot still meets 2 refusals a run on Sonnet and Opus 5.5
    and goes on; it took no objective in rounds 310 and 311.
 4. A platform read now and then takes over 5 s with three rounds at once
    (the watch skips that check); the ingest inside each read is the
    suspect (`docs/STATE.md` "Open points").
-5. One `pvp` round.
-6. A captured walk as a learner, a live review round with zero countable
+5. Board slots under the full acceptance: `round_start` answered
+   `ground_truth_unavailable` and allocations `range_unavailable` in the
+   2026-11-27 run, and passed alone; the cause is not read yet.
+6. The defence bot's watch: the traffic cursor (`defence_traffic`'s
+   `next`) grew past the 4096 characters its `after` accepts in round 381,
+   so every later read answered 400; and the step-1 defence run kept
+   watching after its round ended (401s) until it was given up as
+   `timed_out`, so baseline 2 counted no round.
+7. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
-7. External learners, the last task of the Player vs AI work: the
+8. External learners, the last task of the Player vs AI work: the
    public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
    `CR_VPN_HOST`.
-8. Gate 2.
+9. Gate 2.
 
 ## Open points
 

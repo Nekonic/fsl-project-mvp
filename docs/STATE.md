@@ -27,13 +27,43 @@ objective's difficulty and points in the score pane, every fallen objective
 in the loot pane, Korean objective names, the VPN profile listing only its
 round's target, the runner keeping a command's bytes as sent, a failed
 Claude child finishing as error, the kali command log stamping a command
-when it starts); `main` holds the old product until gate 2. The cloud runs
-`review-fix` since the evening of 2026-11-26: one replace (exit 0,
-13 min 43 s), the full acceptance from the platform VM 101 of 101 in
-1 h 36 min. The kali bake for `deploy/kali/operator-log.sh` is deferred,
-so the slots run `cr-kali-bake4`'s command log; the bot OAuth token on the
-VM is revoked, and bot runs fail until the user gives a new one. Before
-that it ran `bundle-1126`: one replace; rounds 309 (`atk_vs_bot`,
+when it starts), and `review2` on top (the fixes of a second live review
+round, below); `main` holds the old product until gate 2. The cloud runs
+`review2` since the morning of 2026-11-27: one replace (exit 0,
+12 min 45 s), a new bot OAuth token on the VM, then the full acceptance
+from the platform VM: 87 passed, 3 failed and 11 errors in 1 h 44 min, all
+14 on board slots (`round_start` answered `ground_truth_unavailable`,
+`allocations` answered `range_unavailable`) and one IDS apply check; the
+six modules they sit in run again alone, 20 of 20. On the range the IDS rule
+test took 7.9 to 35.8 s (5 tests, from the store's test and `rule.tested`
+times, with up to 15 acceptance processes at once); locally it went from
+56 s to 12.5 s. The kali bake for `deploy/kali/operator-log.sh` is still
+deferred, so the slots run `cr-kali-bake4`'s command log.
+
+The second live review round (2026-11-27) found, and `review2` fixes: a
+ModSecurity refusal counted twice (as the blocked alert and as its access-log
+403); the debrief listing every alert and every benign verdict as its own row
+(now grouped by rule, and one row per benign case with a count, at the case's
+firing time); the prefetch GET of a case counted as a free action;
+corroboration with no alert shown as false (now unknown); English case names
+(every case has a Korean title, shown in the case list, score lines, rule test
+rows, verdicts and the debrief); English origin countries in the attack
+console and on the map (now Korean in the declaration); the staff round editor
+naming objectives by key (the staff wargame list now sends key and name); a
+bot run that stopped before its round not said (the player line and the
+debrief bot line carry `left_of_round_s`, set when a run ended over 60 s
+before its round, and the console says the bot stopped); rule test calls cut
+at the 90 s request timeout (now five minutes); unapplied WAF edits lost on
+reload (now kept per round in the browser); the shipped IDS rule file and the
+bot's notes in English.
+
+The first `pvp` round ran on 2026-11-27: round 372, board, `admin` attacking
+and the new player account `pvp-defender` defending, 20 min 41 s, ended by
+the operator; no objective lost, TP/FP/FN/TN 4/0/0/72.
+
+Before `review2` the cloud ran `review-fix` from the evening of 2026-11-26:
+one replace (exit 0, 13 min 43 s), the full acceptance from the platform VM
+101 of 101 in 1 h 36 min. Before that it ran `bundle-1126`: one replace; rounds 309 (`atk_vs_bot`,
 step 2: all three objectives lost, detection O and response O, the bot's
 WAF version live 118 s after the first alert), 310 (`def_vs_bot`, step 2,
 Sonnet 5.5: 118 turns, 2 refusals, the bot went on, no objective lost) and
@@ -236,7 +266,6 @@ a live range and passed.
 What ran on the range on 2026-11-23 and 2026-11-24 is under "Where things
 stand". Still not run on a range:
 
-- one `pvp` round (a loss with response O ran on 2026-11-26, round 309);
 - a captured walk of every page as a learner, against the live platform;
 - a live review round with zero countable findings, and a docs review;
 - the edge's `pool` and `spent` sets after a reboot of the infra
@@ -269,10 +298,9 @@ stand". Still not run on a range:
 3. **External learners** (the user, 2026-11-25: the last task of the Player
    vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
    console, and `CR_VPN_HOST`.
-4. **One `pvp` round**.
-5. **A captured walk of every page as a learner**, then a live review round
+4. **A captured walk of every page as a learner**, then a live review round
    with zero countable findings and a docs review.
-6. **Gate 2**: present what changed with the evidence; on approval, move the
+5. **Gate 2**: present what changed with the evidence; on approval, move the
    verified, tagged state onto `dev` and then `main`.
 
 ## Open points
