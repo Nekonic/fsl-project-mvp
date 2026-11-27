@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from tests.training.round.conftest import bot_round, pvp
 from telemetry.models import Detection
-from training.models import Round, RoundRecord
+from training.models import BotRun, Round, RoundRecord
 from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import records, retention
@@ -27,13 +27,14 @@ def test_a_record_is_written_once_judged_and_the_runs_finished_and_survives_prun
     found = service.start_round(Round.objects.get(pk=bot_round(as_learner, allocation, bot_problem, opens_bot_rounds,
                                                                {"step": "1"}).json()["round"]))
     run = launcher.post("/api/bot-runs/claim/", {}, format="json").json()["run"]
+    launcher.post(f"/api/bot-runs/{run}/finish/", {"exit": "success", "cost_usd": 0.4, "turns": 12,
+                                                   "closing": "aimed at the account dump"}, format="json")
+
+    assert records.keep_when_due(Round.objects.get(pk=found.pk)) is None
     service.end_round(found, "ended_by_operator")
     found.refresh_from_db()
     service.judge_late(found)
-
-    assert records.keep_when_due(Round.objects.get(pk=found.pk)) is None
-    launcher.post(f"/api/bot-runs/{run}/finish/", {"exit": "success", "cost_usd": 0.4, "turns": 12,
-                                                   "closing": "aimed at the account dump"}, format="json")
+    records.keep_when_due(Round.objects.get(pk=found.pk))
     kept = RoundRecord.objects.get(round_number=found.pk)
     assert not kept.incomplete and kept.bot["attack"]["exit"] == "success" and kept.defence_user == opens_bot_rounds
     assert kept.debrief["bots"][0]["closing"] == "aimed at the account dump"
@@ -46,6 +47,30 @@ def test_a_record_is_written_once_judged_and_the_runs_finished_and_survives_prun
     assert as_learner.get(f"/api/records/{kept.pk}/").status_code == 200
     as_learner.force_authenticate(make_user("stranger"))
     assert as_learner.get(f"/api/records/{kept.pk}/").status_code == 403
+
+
+def test_ending_the_round_ends_its_running_bot_and_the_bot_s_late_report_still_fills_in_its_cost(
+        as_learner, allocation, bot_problem, opens_bot_rounds, launcher, settings):
+    settings.JUDGE_AFTER_SECONDS = 0
+    found = service.start_round(Round.objects.get(pk=bot_round(as_learner, allocation, bot_problem, opens_bot_rounds,
+                                                               {"step": "1"}).json()["round"]))
+    run = launcher.post("/api/bot-runs/claim/", {}, format="json").json()["run"]
+
+    service.end_round(found, "ended_by_operator")
+    found.refresh_from_db()
+    ended = BotRun.objects.get(pk=run)
+    assert (ended.status, ended.exit, ended.finished) == ("failed", "round_ended", found.ended)
+    service.judge_late(found)
+    assert records.keep_when_due(Round.objects.get(pk=found.pk)) is not None
+
+    launcher.post(f"/api/bot-runs/{run}/finish/", {"exit": "timed_out", "cost_usd": 0.4, "turns": 12,
+                                                   "closing": "aimed at the account dump"}, format="json")
+    reported = BotRun.objects.get(pk=run)
+    kept = RoundRecord.objects.get(round_number=found.pk)
+    assert (reported.exit, reported.cost_usd, reported.turns, reported.finished) == ("round_ended", 0.4, 12,
+                                                                                    found.ended)
+    assert (kept.bot["attack"]["exit"], kept.bot["attack"]["cost_usd"]) == ("round_ended", 0.4)
+    assert kept.debrief["bots"][0]["closing"] == "aimed at the account dump"
 
 
 def test_records_older_than_90_days_are_pruned(learner):

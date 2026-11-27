@@ -320,7 +320,8 @@ class BotRunFinish(LauncherView):
                               asked["refusals"], asked["closing"])
         found = run.player.round
         found.refresh_from_db()
-        records.keep_when_due(found)
+        if records.keep_when_due(found) is None:
+            records.restate_bots(found)
         return Response(serializers.RunShown(run).data)
 
 

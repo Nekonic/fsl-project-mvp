@@ -64,6 +64,14 @@ def keep_when_due(found: Round) -> RoundRecord | None:
     return keep(found) if due(found) else None
 
 
+def restate_bots(found: Round) -> None:
+    for kept in RoundRecord.objects.filter(round_number=found.pk):
+        kept.bot = bot_summary(found)
+        if kept.debrief:
+            kept.debrief = {**kept.debrief, "bots": debrief.bot_lines(found)}
+        kept.save(update_fields=["bot", "debrief"])
+
+
 def prune(now: datetime | None = None) -> int:
     cutoff = (now or timezone.now()) - timedelta(days=settings.RETAIN_RECORDS_DAYS)
     deleted, _ = RoundRecord.objects.filter(kept__lt=cutoff).delete()

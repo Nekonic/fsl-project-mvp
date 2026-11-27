@@ -333,6 +333,7 @@ def finish(found: Round, reason: str, sides_closed: bool = False) -> Round:
         found.refresh_from_db()
         return found
     found.refresh_from_db()
+    bot_runs.end_with_round(found, found.ended or timezone.now())
     if not sides_closed:
         close_sides(found)
     if was == CREATED:

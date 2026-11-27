@@ -16,7 +16,8 @@ from users import players as player_tokens
 
 QUEUED, RUNNING, FINISHED, FAILED = "queued", "running", "finished", "failed"
 OVER = (FINISHED, FAILED)
-FAILED_EXITS = frozenset({"launcher_restarted", "crashed", "error", "round_ended", "timed_out"})
+ROUND_ENDED = "round_ended"
+FAILED_EXITS = frozenset({"launcher_restarted", "crashed", "error", ROUND_ENDED, "timed_out"})
 NOTE_TEXT_MAX = 2000
 EARLY_END_GRACE_S = 60
 SIDE_PROMPTS = {"attack": "attacker", "defence": "defender"}
@@ -82,6 +83,11 @@ def fail(runs: Iterable[BotRun], exit_reason: str, at: datetime) -> None:
         player_tokens.revoke_token(run.player, at)
 
 
+def end_with_round(found: Round, at: datetime) -> None:
+    fail(BotRun.objects.filter(player__round=found).exclude(status__in=OVER).select_related("player"), ROUND_ENDED,
+         at)
+
+
 def stance_of(player: Player) -> dict[str, Any] | None:
     card = catalog.card(player.card) if player.card else None
     return None if card is None else {**card.shown(), "notice": catalog.notice(), "stance": card.stance()}
@@ -92,7 +98,7 @@ def claim(restarted: bool = False, launcher: Mapping | None = None) -> Claimed |
     if restarted:
         fail(BotRun.objects.filter(status=RUNNING).select_related("player"), "launcher_restarted", at)
     fail(BotRun.objects.filter(status=QUEUED, player__round__phase=Phase.ENDED.value).select_related("player"),
-         "round_ended", at)
+         ROUND_ENDED, at)
     for run in BotRun.objects.filter(status=QUEUED, player__round__phase=Phase.RUNNING.value).order_by("queued", "id"):
         with transaction.atomic():
             if not BotRun.objects.filter(pk=run.pk, status=QUEUED).update(status=RUNNING, claimed=at,
@@ -118,9 +124,10 @@ def finish(run: BotRun, exit_reason: str, cost_usd: float | None, turns: int | N
            closing: str) -> BotRun:
     at = timezone.now()
     status = FAILED if exit_reason in FAILED_EXITS else FINISHED
-    BotRun.objects.filter(pk=run.pk).exclude(status__in=OVER).update(
-        status=status, exit=exit_reason, cost_usd=cost_usd, turns=turns, refusals=refusals,
-        closing=closing[:NOTE_TEXT_MAX * 5], finished=at)
+    tally = {"cost_usd": cost_usd, "turns": turns, "refusals": refusals, "closing": closing[:NOTE_TEXT_MAX * 5]}
+    if not BotRun.objects.filter(pk=run.pk).exclude(status__in=OVER).update(status=status, exit=exit_reason,
+                                                                            finished=at, **tally):
+        BotRun.objects.filter(pk=run.pk, exit=ROUND_ENDED, cost_usd=None, turns=None).update(**tally)
     player_tokens.revoke_token(run.player, at)
     run.refresh_from_db()
     return run
