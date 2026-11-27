@@ -46,7 +46,9 @@ export function useEvents(round: number | null | undefined, kinds: string[] | nu
 
 export function useEventCount(following: Following | undefined): number {
   const [count, setCount] = useState(0);
-  useEvents(following?.round, following?.kinds ?? [], () => setCount((was) => was + 1));
+  useEvents(following?.round, following?.kinds ?? [], (_events, backlog) => {
+    if (!backlog) setCount((was) => was + 1);
+  });
   return following ? count : 0;
 }
 
