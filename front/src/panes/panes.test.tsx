@@ -5,6 +5,7 @@ import { t, tFor } from "../strings";
 import { playerFacts } from "../console/RoundHeader";
 import { FiredBadge } from "./AttackCases";
 import { Brief } from "./Brief";
+import { shellStateOf } from "./Terminal";
 import { IdsRules } from "./IdsRules";
 import { fallenNames } from "./Loot";
 import { nodeLabel, zoneCaption } from "./Map";
@@ -99,6 +100,22 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("shellStateOf", () => {
+  function frameWith(html: string, lines: string[] | null) {
+    const page = document.implementation.createHTMLDocument("t");
+    page.body.innerHTML = html;
+    const term = lines === null ? undefined : { buffer: { active: { length: lines.length, getLine: (row: number) => ({ translateToString: () => lines[row] ?? "" }) } } };
+    return { contentDocument: page, contentWindow: { term } } as unknown as HTMLIFrameElement;
+  }
+
+  it("waits until the shell has printed something, and sees a gateway refusal", () => {
+    expect(shellStateOf(frameWith("<p>Loading</p>", null))).toBe("connecting");
+    expect(shellStateOf(frameWith("<h1>503 Service Temporarily Unavailable</h1>", null))).toBe("refused");
+    expect(shellStateOf(frameWith('<div class="xterm"></div>', ["", ""]))).toBe("connecting");
+    expect(shellStateOf(frameWith('<div class="xterm"></div>', ["", "analyst@kali:~$ "]))).toBe("ready");
+  });
+});
 
 describe("FiredBadge", () => {
   const last = { at: "2026-01-01T00:00:00Z", status: null, run: 7, running: true, exit_code: null };
