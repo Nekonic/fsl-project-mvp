@@ -9,7 +9,34 @@ Updated: 2026-11-27.
 
 ## Where things stand
 
-- The tree is `slot-fix` (2026-11-27): `review2` with the causes of the
+- The tree is `demo` (2026-11-27, the evening before the pvp demo):
+  `slot-fix` with `ingest-fix`, `no-baseline`, `problem-body` and
+  `pvp-no-problem` merged. The bot-vs-bot rounds are dropped by their own
+  migration (scoring 0002, run before training 0004) because on PostgreSQL
+  the delete and the ALTER TABLE in one migration refused ("pending trigger
+  events"); a store test migrates a PostgreSQL store with a running
+  bot-vs-bot round and a detection from 0003. Dropping an allocation locks
+  its rounds and forgets their detections again after the delete (the bot
+  run claim answered 500 on a detection stored while its round was
+  deleted). A pvp round's time limit is `CR_PVP_TIME_LIMIT_SECONDS`, 30
+  min by default. The problem fold of a pvp round names the wargame in
+  Korean; the pvp debrief has no opponent bot section. Ending a running
+  round closes both sides and stops the customers before the final read
+  (it took 44 s with both consoles open). Problems 18 and 21 (the old pvp
+  problems) are deleted; the bot problems 16, 17, 19 and 20 are published.
+  On the cloud: four replaces (12 min 48 s, 12 min 22 s, 12 min 58 s,
+  13 min 38 s; the first came up at training 0003 because of the
+  migration), every slot refilled, no bot-vs-bot round left. A two-person
+  Playwright rehearsal of the demo (admin attacks, `pvp-defender` defends,
+  board) passed every step in the last run: start 35 s, the defender's
+  rule test 10 s, end 27 s. In a pvp round the slot's starting WAF
+  already refuses every single-request board case (403 from CRS), so the
+  defender's own rule refuses an attack CRS refused already; a 200-then-403
+  story needs a start posture, which pvp no longer has. Acceptance from
+  the platform VM (`bin/verify --changed --live` against the dev before
+  the merge, which lists all 34 files): stopped at the one-hour limit,
+  54 passed and 0 failed in the groups that finished, four groups unfinished.
+- Before that the tree was `slot-fix` (2026-11-27): `review2` with the causes of the
   last full acceptance's failures fixed (`docs/DECISIONS.md` 2026-11-27):
   an IDS alert Elasticsearch indexed after a later WAF line is read (the
   alert cursor reads 30 s back), `defence_traffic`'s `next` names one
