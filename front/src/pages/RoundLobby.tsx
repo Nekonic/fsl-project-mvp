@@ -117,7 +117,12 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
       key: "act", label: "", kind: "end",
       cell: (line) => {
         if (line.phase === "created") {
-          return <Button tone="primary" small busy={start.busy} disabled={closed || !allocation.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>;
+          return (
+            <Row>
+              <Button tone="primary" small busy={start.busy} disabled={closed || !allocation.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>
+              {start.busy && <Text small tone="muted">{t("lobby.starting")}</Text>}
+            </Row>
+          );
         }
         if (line.phase === "running" || line.phase === "starting") {
           const mine = seatOfUser(line, username);
@@ -125,6 +130,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
             <Row>
               {mine && <Button tone="primary" small href={to.player(line.round, mine)}>{t(mine === "attack" ? "page.attack" : "page.defence")}</Button>}
               <ConfirmButton small busy={end.busy} disabled={line.phase === "starting"} confirm={t("lobby.end_confirm")} onConfirm={() => void endRound(line.round)}>{t("lobby.end")}</ConfirmButton>
+              {end.busy && <Text small tone="muted">{t("lobby.ending")}</Text>}
             </Row>
           );
         }

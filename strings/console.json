@@ -304,6 +304,8 @@
   "lobby.player.none": "플레이어 없음",
   "lobby.start": "시작",
   "lobby.end": "끝내기",
+  "lobby.starting": "시작하는 중입니다. 30초쯤 걸립니다.",
+  "lobby.ending": "끝내는 중입니다. 최대 1분쯤 걸립니다.",
   "lobby.end_confirm": "끝내기 확인 (양쪽 모두 끝납니다)",
   "lobby.create": "라운드 만들기",
   "lobby.create_submit": "만들기",

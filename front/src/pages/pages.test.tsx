@@ -149,6 +149,27 @@ describe("RoundLobby create", () => {
   });
 });
 
+describe("RoundLobby start", () => {
+  it("says the round is starting while the start call runs", async () => {
+    let started: (value: Response) => void = () => undefined;
+    const round = { round: 81, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "created",
+      players: [{ side: "attack", client: "human", username: "a", bot_name: "", step: "", bot_run: null, left_of_round_s: null },
+        { side: "defence", client: "human", username: "b", bot_name: "", step: "", bot_run: null, left_of_round_s: null }] };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/start/") && init?.method === "POST") return new Promise<Response>((resolve) => { started = resolve; });
+      if (url.includes("/events/")) return Promise.resolve(json({ events: [], next: 0 }));
+      if (url.endsWith("/heartbeat/")) return Promise.resolve(json({ expires_at: "2026-01-01T00:30:00Z" }));
+      if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return Promise.resolve(json([]));
+      return Promise.resolve(json({ allocation: 66, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [round] }));
+    }));
+    render(<RoundLobby params={{ allocation: "66" }} />);
+    (await screen.findByText(t("lobby.start"))).closest("button")?.click();
+    expect(await screen.findByText(t("lobby.starting"))).toBeTruthy();
+    started(json({ round: 81, phase: "running" }));
+  });
+});
+
 describe("bot stopped early", () => {
   const bot = { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "", bot_run: "finished" };
 
