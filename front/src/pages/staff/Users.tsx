@@ -1,5 +1,5 @@
 import type { Schemas } from "../../api/client";
-import { useResource, useRowAction } from "../../api/hooks";
+import { useResource, useRowAction, useSession } from "../../api/hooks";
 import { clock, count, day } from "../../format";
 import type { PageProps } from "../../routes";
 import { AppPage } from "../../shell/AppPage";
@@ -39,6 +39,7 @@ function roleBadge(account: Account, muted: boolean) {
 function AccountsCard({ section, accounts, onChanged }: { section: StandingSection; accounts: Account[]; onChanged: (account: Account) => void }) {
   const approve = useRowAction<string, "post", "/api/staff/users/{username}/approve/">("post", "/api/staff/users/{username}/approve/");
   const disable = useRowAction<string, "post", "/api/staff/users/{username}/disable/">("post", "/api/staff/users/{username}/disable/");
+  const { me } = useSession();
   const muted = section.standing === "disabled";
   const settled = (said: { data?: Account }) => said.data && onChanged(said.data);
   const every: Record<StandingSection["columns"][number], Column<Account>> = {
@@ -58,7 +59,7 @@ function AccountsCard({ section, accounts, onChanged }: { section: StandingSecti
     },
     disable: {
       key: "disable", label: "", kind: "end",
-      cell: (account) => (
+      cell: (account) => account.username === me?.user ? <Text tone="muted">{t("users.self")}</Text> : (
         <RowActions error={disable.errorFor(account.username) && errorText(disable.errorFor(account.username))}>
           <Button small busy={disable.busyFor(account.username)}
             onClick={() => void disable.run(account.username, { params: { username: account.username } }).then(settled)}>
