@@ -34,12 +34,23 @@ function useSubmissions(round: number): LootSubmission[] {
   return submitted.get(round) ?? [];
 }
 
-function asLoot(text: string): unknown {
+function isPair(row: unknown): boolean {
+  if (Array.isArray(row)) return row.length === 2 && typeof row[0] === "string" && typeof row[1] === "string";
+  if (!row || typeof row !== "object") return false;
+  const { username, hash, password } = row as Record<string, unknown>;
+  return typeof username === "string" && typeof (hash ?? password) === "string";
+}
+
+export function lootOf(text: string): unknown {
+  let value: unknown;
   try {
-    return JSON.parse(text) as unknown;
+    value = JSON.parse(text) as unknown;
   } catch {
-    return text;
+    return undefined;
   }
+  if (Array.isArray(value)) return value.some(isPair) ? value : undefined;
+  if (value && typeof value === "object") return Object.values(value).some((digest) => typeof digest === "string") ? value : undefined;
+  return undefined;
 }
 
 export function fallenNames(said: { objective: { name: string } | null; objectives?: Array<{ name: string }> }): string[] {
@@ -47,12 +58,12 @@ export function fallenNames(said: { objective: { name: string } | null; objectiv
   return said.objective ? [said.objective.name] : [];
 }
 
-function SubmissionRow({ submission }: { submission: LootSubmission }) {
+export function SubmissionRow({ submission }: { submission: LootSubmission }) {
   return (
     <ListRow
       id={<Text mono tone="muted">{clock(submission.at)}</Text>}
-      main={<Text strong>{submission.objectives.length ? submission.objectives.join(", ") : t("loot.no_match")}</Text>}
-      side={submission.lost ? <Badge tone="danger">{t("objective.lost")}</Badge> : <Badge tone="muted">{t("loot.not_taken")}</Badge>}
+      main={submission.lost ? <Text strong>{submission.objectives.join(", ")}</Text> : <Text tone="muted">{t("loot.no_match")}</Text>}
+      side={submission.lost ? <Badge tone="danger">{t("objective.lost")}</Badge> : undefined}
     />
   );
 }
@@ -61,11 +72,15 @@ function LootForm({ round }: { round: number }) {
   const state = useAttackState(round);
   const loot = useAction("post", "/api/rounds/{round_id}/attack/loot/");
   const [text, setText] = useState("");
+  const [unreadable, setUnreadable] = useState(false);
   const open = attackWritesOpen(state.data);
 
   const submit = async () => {
     if (!text.trim()) return;
-    const said = await loot.run({ params: { round_id: round }, body: { value: asLoot(text) } });
+    const value = lootOf(text);
+    setUnreadable(value === undefined);
+    if (value === undefined) return;
+    const said = await loot.run({ params: { round_id: round }, body: { value } });
     if (!said) return;
     remember(round, { at: new Date().toISOString(), lost: said.lost, objectives: fallenNames(said) });
     if (said.lost) {
@@ -77,11 +92,12 @@ function LootForm({ round }: { round: number }) {
   return (
     <Card pad="sm">
       <Form onSubmit={() => void submit()}>
-        <TextArea mono rows={7} value={text} onValue={setText} label={t("pane.loot")} disabled={!open} />
+        <TextArea mono rows={7} value={text} onValue={(typed) => { setText(typed); setUnreadable(false); }} label={t("pane.loot")} disabled={!open} />
         <FormActions>
           <Button tone="danger" small type="submit" busy={loot.busy} disabled={!open || !text.trim()}>{t("loot.submit")}</Button>
         </FormActions>
-        {loot.error && <ErrorNotice error={loot.error} />}
+        {unreadable && <Text tone="danger" small>{t("error.loot_format")}</Text>}
+        {!unreadable && loot.error && <ErrorNotice error={loot.error} />}
       </Form>
     </Card>
   );

@@ -71,9 +71,8 @@ def prune(now: datetime | None = None) -> int:
 
 
 def mine(user, problem_id: int | None = None) -> list[RoundRecord]:
-    found = RoundRecord.objects.all()
-    if not user.is_staff:
-        found = found.filter(Q(attack_user=user) | Q(defence_user=user))
+    found = RoundRecord.objects.filter(Q(attack_user=user) | Q(defence_user=user))
+    found = found.filter(Q(problem=None) | Q(problem__published=True))
     if problem_id is not None:
         found = found.filter(problem_id=problem_id)
     return list(found[:200])

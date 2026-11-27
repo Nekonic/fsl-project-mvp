@@ -243,7 +243,7 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 @media (max-width: 639px) { .form-grid { grid-template-columns: minmax(0, 1fr); } .form-grid .span-2 { grid-column: auto; } }
 .error-list li { padding: 6px 0; border-top: 1px solid var(--danger-line); font-size: var(--text-md); color: var(--danger-text); }
 .error-list li:first-child { border-top: 0; }
-.error-path { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--danger-soft); color: var(--danger-text); padding: 1px 6px; border-radius: var(--radius-sm); margin-right: 6px; }
+.error-path { font-weight: 600; font-size: var(--text-sm); background: var(--danger-soft); color: var(--danger-text); padding: 1px 6px; border-radius: var(--radius-sm); margin-right: 6px; }
 
 .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 12px; border-radius: var(--radius-md); font-size: var(--text-md); background: var(--subdued); color: var(--text); }
 .notice-title { font-weight: 700; }
@@ -400,7 +400,7 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 .list-group + .pick-row, .pick-row:first-child { border-top: 0; }
 .pick-row:hover { background: var(--border-subdued); }
 .pick-row[aria-current="true"], .pick-row[aria-current="page"] { background: var(--raised); border-left-color: var(--lime); }
-.pick-no { width: 18px; flex-shrink: 0; font-weight: 700; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.pick-no { min-width: 3ch; white-space: nowrap; flex-shrink: 0; font-weight: 700; color: var(--text-faint); font-variant-numeric: tabular-nums; }
 .pick-title { color: var(--heading); font-weight: 600; font-size: var(--text-md); line-height: 1.45; }
 .case-line { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--panel); font-family: var(--font-mono); font-size: var(--text-code); color: var(--heading); min-width: 0; }
 .case-line + .case-line { margin-top: 6px; }

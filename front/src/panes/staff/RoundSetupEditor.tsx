@@ -1,13 +1,13 @@
 import type { Schemas } from "../../api/client";
 import { errorLine, t, tFor, type ShownError } from "../../strings";
-import { Checkbox, Field, FormGrid, Input, Row, Select, Stack, Subhead, Text, type Option, EditorGroup, FieldNote, LineList, WithUnit } from "../../ui";
+import { Checkbox, Field, FormGrid, Input, Row, Stack, Subhead, Text, EditorGroup, FieldNote, LineList, WithUnit } from "../../ui";
 import { MATCHUPS, textUnder, type SetupBody } from "./document";
 
 export interface RoundSetupEditorProps {
   setup: SetupBody;
   onSetup: (setup: SetupBody) => void;
   errors: ShownError[];
-  postures: Option[];
+  checkAdd?: (setup: SetupBody, path: string) => Promise<string | undefined>;
   steps: Schemas["StepLine"][];
   cards: Schemas["CardLine"][];
   objectiveNames?: Record<string, string>;
@@ -32,15 +32,19 @@ function lineNote(errors: ShownError[], path: string): string | undefined {
   return found.length ? found.map(errorLine).join(" ") : undefined;
 }
 
-export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, cards, objectiveNames = {} }: RoundSetupEditorProps) {
+export function RoundSetupEditor({ setup, onSetup, errors, checkAdd, steps, cards, objectiveNames = {} }: RoundSetupEditorProps) {
   const change = (patch: Partial<SetupBody>) => onSetup({ ...setup, ...patch });
+  const added = async (patch: Partial<SetupBody>, path: string) => {
+    const next = { ...setup, ...patch };
+    const refused = checkAdd ? await checkAdd(next, path) : undefined;
+    if (!refused) onSetup(next);
+    return refused;
+  };
   const cases = setup.probe_cases ?? [];
   const objectives = setup.objectives ?? [];
   const botSteps = setup.bot_steps ?? [];
   const chosenCards = setup.cards ?? [];
   const toggleMatchup = (matchup: SetupBody["matchups"][number], on: boolean) => change({ matchups: toggled(setup.matchups, matchup, on) as SetupBody["matchups"] });
-  const postureOptions: Option[] = [{ value: "", label: t("common.none") }, ...postures];
-  if (setup.posture && !postures.some((option) => option.value === setup.posture)) postureOptions.push({ value: setup.posture, label: setup.posture });
 
   return (
     <>
@@ -84,14 +88,14 @@ export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, card
             lines={cases.map((name, index) => ({ text: name, bad: Boolean(lineNote(errors, `round.probe_cases[${index}]`)), note: lineNote(errors, `round.probe_cases[${index}]`) }))}
             removeLabel={t("staff.remove")} onRemove={(index) => change({ probe_cases: cases.filter((_, which) => which !== index) })}
             addLabel={t("staff.round.case_add")} placeholder={t("staff.round.case_placeholder")}
-            onAdd={(name) => change({ probe_cases: [...cases, name] })} />
+            onAdd={(name) => added({ probe_cases: [...cases, name] }, `round.probe_cases[${cases.length}]`)} />
         </EditorGroup>
         <EditorGroup label={t("staff.round.objectives")}>
           <LineList
             lines={objectives.map((key, index) => ({ text: objectiveLabel(objectiveNames, key), bad: Boolean(lineNote(errors, `round.objectives[${index}]`)), note: lineNote(errors, `round.objectives[${index}]`) }))}
             removeLabel={t("staff.remove")} onRemove={(index) => change({ objectives: objectives.filter((_, which) => which !== index) })}
             addLabel={t("staff.round.objective_add")} placeholder={t("staff.round.objective_placeholder")}
-            onAdd={(key) => change({ objectives: [...objectives, key] })} />
+            onAdd={(key) => added({ objectives: [...objectives, key] }, `round.objectives[${objectives.length}]`)} />
         </EditorGroup>
       </FormGrid>
 
@@ -105,9 +109,6 @@ export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, card
           <WithUnit unit={t("staff.seconds")}>
             <Input mono inputMode="numeric" value={setup.time_limit_s ?? ""} onValue={(text) => change({ time_limit_s: text.trim() ? whole(text) : null })} />
           </WithUnit>
-        </Field>
-        <Field label={t("staff.problem.start_posture")} error={textUnder(errors, "round.posture")}>
-          <Select value={setup.posture ?? ""} options={postureOptions} onValue={(name) => change({ posture: name || null })} />
         </Field>
       </FormGrid>
     </>

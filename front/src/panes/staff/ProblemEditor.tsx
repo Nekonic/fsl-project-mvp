@@ -4,7 +4,8 @@ import { useAction, useResource } from "../../api/hooks";
 import { errorLine, errorText, t, type ShownError } from "../../strings";
 import { Button, ErrorList, ErrorNotice, Field, FormGrid, Input, Loading, Select, Stack, Switch, Text, TextArea, type Option, Chips, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, PublishRow } from "../../ui";
 import { objectiveNamesOf, usePostures, useWargames, wargameLabel } from "./catalog";
-import { asShownErrors, blankDraft, built, downloadJson, draftOf, postureInline, SIDES, textUnder, type Draft } from "./document";
+import { useLeaveGuard } from "../../router";
+import { asShownErrors, blankDraft, built, downloadJson, draftOf, fieldName, postureInline, SIDES, textUnder, type Draft, type SetupBody } from "./document";
 import { RoundSetupEditor } from "./RoundSetupEditor";
 
 export interface ProblemEditorProps {
@@ -22,6 +23,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   const postures = usePostures();
   const steps = useResource("/api/bot-steps/", {});
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [baseline, setBaseline] = useState<string | null>(null);
   const [errors, setErrors] = useState<ShownError[]>([]);
   const [checked, setChecked] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -34,14 +36,22 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   const saveError = problemId ? update.error : create.error;
 
   useEffect(() => {
-    if (stored.data) setDraft(draftOf(stored.data));
+    if (!stored.data) return;
+    const loaded = draftOf(stored.data);
+    setDraft(loaded);
+    setBaseline(JSON.stringify(loaded));
   }, [stored.data]);
   useEffect(() => {
     if (saveError) setErrors(saveError.errors.filter((error) => !HELD_APART.includes(error.code)));
   }, [saveError]);
   useEffect(() => {
-    if (problemId === null && draft === null && wargames.length) setDraft(blankDraft(wargames[0]?.id ?? ""));
+    if (problemId !== null || draft !== null || !wargames.length) return;
+    const blank = blankDraft(wargames[0]?.id ?? "");
+    setDraft(blank);
+    setBaseline(JSON.stringify(blank));
   }, [problemId, draft, wargames]);
+  const unsaved = draft !== null && baseline !== null && JSON.stringify(draft) !== baseline;
+  const release = useLeaveGuard(unsaved ? t("staff.unsaved") : null);
 
   if (problemId !== null && stored.error) return <ErrorNotice error={stored.error} />;
   if (!draft) return <Loading>{t("common.loading")}</Loading>;
@@ -69,6 +79,8 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
       : await create.run({ body });
     if (!said) return;
     setErrors([]);
+    release();
+    setBaseline(JSON.stringify(draft));
     if (problemId) stored.setData(said);
     onSaved(said.problem.id);
   };
@@ -90,6 +102,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
     setDeleteError(undefined);
     try {
       await api.delete("/api/staff/problems/{problem_id}/", { params: { problem_id: problemId } });
+      release();
       onDeleted();
     } catch (failed) {
       setDeleteError(failed instanceof ApiError ? failed : new ApiError(0, [{ path: "", code: "network" }]));
@@ -102,10 +115,19 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   if (!wargames.some((wargame) => wargame.id === draft.problem.wargame)) wargameOptions.push({ value: draft.problem.wargame, label: draft.problem.wargame });
   const ownPostures = (postures.data ?? []).filter((posture) => posture.wargame === draft.problem.wargame);
   const postureOptions: Option[] = ownPostures.map((posture) => ({ value: posture.name, label: posture.name }));
-  const startName = draft.start_posture?.name ?? "";
+  const startName = draft.round.posture ?? draft.start_posture?.name ?? "";
   const startOptions: Option[] = [{ value: "", label: t("common.none") }, ...postureOptions];
   if (startName && !postureOptions.some((option) => option.value === startName)) startOptions.push({ value: startName, label: startName });
-  const pathed = errors.map((error) => ({ path: error.path, text: errorLine(error) }));
+  const pathed = errors.map((error) => ({ path: fieldName(error.path), text: errorLine(error) }));
+  const startError = [textUnder(errors, "start_posture"), textUnder(errors, "round.posture")].filter(Boolean).join(" ") || undefined;
+  const checkAdd = async (round: SetupBody, path: string) => {
+    try {
+      const said = await api.post("/api/staff/problems/validate/", { body: built({ ...draft, round }) });
+      return textUnder(asShownErrors(said.errors), path);
+    } catch (failed) {
+      return failed instanceof ApiError ? errorText(failed) : undefined;
+    }
+  };
   const bad = (path: string) => Boolean(textUnder(errors, path));
 
   const publish = (
@@ -158,11 +180,12 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
             <Field label={t("col.wargame")} error={textUnder(errors, "problem.wargame")}>
               <Select value={draft.problem.wargame} options={wargameOptions} bad={bad("problem.wargame")} onValue={(wargame) => changeProblem({ wargame })} />
             </Field>
-            <Field label={t("staff.problem.start_posture")} error={textUnder(errors, "start_posture")}>
-              <Select value={startName} options={startOptions} bad={bad("start_posture")}
+            <Field label={t("staff.problem.start_posture")} error={startError}>
+              <Select value={startName} options={startOptions} bad={Boolean(startError)}
                 onValue={(name) => {
                   const picked = ownPostures.find((posture) => posture.name === name);
-                  change({ start_posture: picked ? postureInline(picked) : name ? draft.start_posture : null });
+                  const kept = draft.start_posture?.name === name ? draft.start_posture : null;
+                  change({ start_posture: picked ? postureInline(picked) : kept, round: { ...draft.round, posture: picked || kept || !name ? null : name } });
                 }} />
             </Field>
             <Field wide label={t("staff.problem.title")} error={textUnder(errors, "problem.title")}>
@@ -178,7 +201,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
         </EditorSection>
 
         <EditorSection>
-          <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions}
+          <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} checkAdd={checkAdd}
             steps={steps.data ?? []} cards={chosenWargame?.cards ?? []} objectiveNames={objectiveNamesOf(chosenWargame)} />
           {publish}
         </EditorSection>

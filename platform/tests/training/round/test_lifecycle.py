@@ -311,6 +311,8 @@ def test_the_operator_ends_a_round_once(as_operator, allocation, problem, learne
 
 
 def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, allocation, problem, learner, other, make_user):
+    problem.published = True
+    problem.save()
     made = service.create_round(allocation, problem.pk, "def_vs_bot",
                                 {"attack": {"bot": {"name": "driven"}}, "defence": {"open": True}}).round
     browser.force_authenticate(make_user("stranger"))
@@ -335,6 +337,22 @@ def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, allocat
     assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [found.pk]
     browser.force_authenticate(staff)
     assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [found.pk]
+
+
+def test_learner_lists_leave_out_rounds_of_unpublished_problems_but_the_staff_open_list_keeps_them(
+        browser, allocation, problem, learner, staff):
+    hidden = service.create_round(allocation, problem.pk, "def_vs_bot",
+                                  {"attack": {"bot": {"name": "driven"}}, "defence": {"open": True}}).round
+    browser.force_authenticate(learner)
+    assert browser.get("/api/rounds/?mine=1").json() == []
+    assert browser.get("/api/rounds/?state=joinable").json() == []
+    browser.force_authenticate(staff)
+    assert browser.get("/api/rounds/?state=joinable").json() == []
+    assert [one["round"] for one in browser.get("/api/rounds/?state=open").json()] == [hidden.pk]
+    problem.published = True
+    problem.save()
+    browser.force_authenticate(learner)
+    assert [one["round"] for one in browser.get("/api/rounds/?mine=1").json()] == [hidden.pk]
 
 
 def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, cloud, allocation, problem, learner, other):

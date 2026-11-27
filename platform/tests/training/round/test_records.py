@@ -84,3 +84,17 @@ def test_a_detection_stored_while_its_round_is_deleted_goes_with_it(allocation, 
 
     assert not Round.objects.filter(pk=found.pk).exists()
     assert not Detection.objects.filter(round_id=found.pk).exists()
+
+
+def test_the_records_list_holds_only_the_users_own_rounds_of_published_problems(as_learner, learner, staff, problem):
+    RoundRecord.objects.create(round_number=1, matchup="def_vs_bot", problem=problem, defence_user=learner)
+    RoundRecord.objects.create(round_number=2, matchup="pvp", defence_user=learner)
+    RoundRecord.objects.create(round_number=3, matchup="pvp", defence_user=staff)
+
+    assert [line["round_number"] for line in as_learner.get("/api/records/").json()] == [2]
+    as_learner.force_authenticate(staff)
+    assert [line["round_number"] for line in as_learner.get("/api/records/").json()] == [3]
+    problem.published = True
+    problem.save()
+    as_learner.force_authenticate(learner)
+    assert [line["round_number"] for line in as_learner.get("/api/records/").json()] == [2, 1]

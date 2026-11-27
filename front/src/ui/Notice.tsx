@@ -48,7 +48,7 @@ export function ErrorList({ items }: ErrorListProps) {
   if (!items.length) return null;
   return (
     <ul class="error-list">
-      {items.map((item, index) => <li key={index}>{item.path && <code class="error-path">{item.path}</code>}{item.text}</li>)}
+      {items.map((item, index) => <li key={index}>{item.path && <><span class="error-path">{item.path}</span>{" "}</>}{item.text}</li>)}
     </ul>
   );
 }

@@ -162,16 +162,24 @@ export interface LineListProps {
   onRemove: (index: number) => void;
   addLabel: ComponentChildren;
   placeholder: string;
-  onAdd: (text: string) => void;
+  onAdd: (text: string) => void | Promise<string | undefined>;
 }
 
 export function LineList({ lines, removeLabel, onRemove, addLabel, placeholder, onAdd }: LineListProps) {
   const [typed, setTyped] = useState("");
-  const add = () => {
-    const text = typed.trim();
-    if (!text) return;
-    onAdd(text);
-    setTyped("");
+  const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const text = typed.trim();
+  const add = async () => {
+    if (!text || busy) return;
+    setBusy(true);
+    try {
+      const refused = await onAdd(text);
+      setRefusal(refused || undefined);
+      if (!refused) setTyped("");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div>
@@ -185,10 +193,11 @@ export function LineList({ lines, removeLabel, onRemove, addLabel, placeholder, 
       ])}
       <div class="line-add">
         <input class="input input-mono" value={typed} placeholder={placeholder} aria-label={placeholder}
-          onInput={(event) => setTyped((event.currentTarget as HTMLInputElement).value)}
-          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); add(); } }} />
-        <Button small onClick={add}>{addLabel}</Button>
+          onInput={(event) => { setTyped((event.currentTarget as HTMLInputElement).value); setRefusal(undefined); }}
+          onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void add(); } }} />
+        <Button small disabled={!text} busy={busy} onClick={() => void add()}>{addLabel}</Button>
       </div>
+      {refusal && <p class="field-error">{refusal}</p>}
     </div>
   );
 }

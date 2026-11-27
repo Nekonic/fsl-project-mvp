@@ -170,6 +170,8 @@ def players(found: Round) -> list[Player]:
 
 def rounds_for(user, mine: bool = False, state: str = "") -> list[Round]:
     found = Round.objects.select_related("allocation").order_by("-id")
+    if mine or state == "joinable" or not user.is_staff:
+        found = found.filter(Q(problem=None) | Q(problem__published=True))
     if mine or (state != "joinable" and not user.is_staff):
         found = found.filter(Q(players__user=user) | Q(allocation__opened_by=user)).distinct()
     if state == "open":

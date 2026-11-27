@@ -530,3 +530,13 @@ def test_a_response_is_an_origin_the_waf_spent_or_a_tested_version_the_defence_a
 
     assert {(one.kind, one.source_ip) for one in shown} == {("origin", denied.ip), ("version", None)}
     assert [one.at for one in shown if one.kind == "version"] == [at - timedelta(seconds=5)]
+
+
+def test_reading_the_allocation_ends_its_round_past_the_time_limit_so_the_lobby_offers_a_new_one(as_operator, running):
+    late = running.ends_at - running.started + timedelta(minutes=5)
+    Round.objects.filter(pk=running.pk).update(started=running.started - late, ends_at=running.ends_at - late)
+
+    shown = as_operator.get(f"/api/allocations/{running.allocation_id}/").json()
+
+    assert [(line["round"], line["phase"]) for line in shown["rounds"]] == [(running.pk, "ended")]
+    assert Round.objects.get(pk=running.pk).end_reason == "time_limit"

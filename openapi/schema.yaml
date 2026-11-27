@@ -5603,6 +5603,7 @@ components:
       - invalid
       - invalid_choice
       - kibana_unavailable
+      - loot_format
       - loot_not_taken
       - malformed
       - matchup_not_allowed
