@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/pr
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
+import { KeptPane } from "../ui";
 import { playerFacts } from "../console/RoundHeader";
 import { FiredBadge } from "./AttackCases";
 import { Brief } from "./Brief";
@@ -100,6 +101,17 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("KeptPane", () => {
+  it("keeps a hidden pane laid out at full size so a frame in it is not torn down", () => {
+    const shown = render(<KeptPane shown={false}><iframe title="kept" /></KeptPane>);
+    const pane = shown.container.firstElementChild as HTMLElement;
+    expect(pane.hasAttribute("hidden")).toBe(false);
+    expect(pane.classList.contains("pane-kept")).toBe(true);
+    shown.rerender(<KeptPane shown><iframe title="kept" /></KeptPane>);
+    expect((shown.container.firstElementChild as HTMLElement).classList.contains("pane-kept")).toBe(false);
+  });
+});
 
 describe("shellStateOf", () => {
   function frameWith(html: string, lines: string[] | null) {

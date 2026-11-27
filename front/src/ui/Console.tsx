@@ -79,7 +79,7 @@ export function ConsoleLayout({ rail, aside, children }: ConsoleLayoutProps) {
 }
 
 export function KeptPane({ shown, children }: { shown: boolean; children: ComponentChildren }) {
-  return <div class="pane" hidden={!shown}>{children}</div>;
+  return <div class={shown ? "pane" : "pane pane-kept"} aria-hidden={shown ? undefined : true} inert={shown ? undefined : true}>{children}</div>;
 }
 
 export function PaneSplit({ children }: { children: ComponentChildren }) {
