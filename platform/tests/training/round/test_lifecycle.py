@@ -112,6 +112,16 @@ def test_a_player_heartbeats_the_allocation_but_cannot_close_it_or_end_the_round
     refused(browser.post(url(found, "start/")), 403, "not_operator")
 
 
+def test_the_round_says_whether_the_viewer_operates_its_allocation(as_operator, browser, allocation, problem, learner, other):
+    found = pvp(allocation, other, learner)
+    by_operator = as_operator.get(url(found)).json()
+    browser.force_authenticate(other)
+    by_player = browser.get(url(found)).json()
+
+    assert by_operator["operated"] is True
+    assert by_player["operated"] is False
+
+
 def test_asking_for_a_slot_closes_an_allocation_past_its_limit_and_starts_rebuilding_its_slot(as_learner, cloud,
                                                                                             allocation, problem,
                                                                                             learner, other):

@@ -141,6 +141,11 @@ class RoundShown(serializers.Serializer):
     ends_at = serializers.DateTimeField(allow_null=True)
     ended = serializers.DateTimeField(allow_null=True)
     end_reason = serializers.CharField()
+    operated = serializers.SerializerMethodField()
+
+    @extend_schema_field(serializers.BooleanField())
+    def get_operated(self, found) -> bool:
+        return bool(self.context.get("operated", False))
 
 
 class ScoreQuery(serializers.Serializer):

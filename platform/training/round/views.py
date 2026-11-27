@@ -145,7 +145,8 @@ class RoundDetail(MatchView):
 
     @extend_schema(tags=TAGS, responses=serializers.RoundShown, operation_id="round_read")
     def get(self, request, round_id: int):
-        return Response(serializers.RoundShown(request.round).data)
+        operated = auth.operates(request, request.round.allocation)
+        return Response(serializers.RoundShown(request.round, context={"operated": operated}).data)
 
 
 class Score(MatchView):

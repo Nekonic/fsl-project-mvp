@@ -4530,6 +4530,9 @@ components:
           nullable: true
         end_reason:
           type: string
+        operated:
+          type: boolean
+          readOnly: true
       required:
       - allocation
       - end_reason
@@ -4537,6 +4540,7 @@ components:
       - ends_at
       - kind
       - matchup
+      - operated
       - phase
       - players
       - problem

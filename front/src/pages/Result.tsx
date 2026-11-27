@@ -20,7 +20,7 @@ function useResultRound(round: number) {
   const shown = useResource("/api/rounds/{round_id}/", { params: { round_id: round } }, { refreshOn: { round, kinds: ROUND_EVENTS } });
   const problemId = shown.data?.problem;
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
-  const allocationId = shown.data?.allocation;
+  const allocationId = shown.data?.operated ? shown.data.allocation : undefined;
   const allocation = useResource("/api/allocations/{allocation_id}/", allocationId ? { params: { allocation_id: allocationId } } : null);
   return { round: shown.data, problem: problem.data, allocation: allocation.data, error: shown.error };
 }

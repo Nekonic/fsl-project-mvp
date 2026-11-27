@@ -5,6 +5,7 @@ import { SessionContext } from "../api/hooks";
 import { t, tFor } from "../strings";
 import { DebriefReport, rowText } from "./Debrief";
 import { safeNext } from "./Login";
+import { Result } from "./Result";
 import { RoundLobby } from "./RoundLobby";
 import { wargameName } from "./wargameText";
 
@@ -212,3 +213,24 @@ describe("safeNext", () => {
     expect(safeNext(next, origin)).toBe("/");
   });
 });
+
+describe("result of a round the viewer only played", () => {
+  it("does not ask for an allocation the viewer does not operate", async () => {
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      asked.push(url);
+      if (url === "/api/rounds/81/") {
+        return json({ round: 81, allocation: 9, wargame: "board", problem: null, kind: "round", matchup: "pvp", phase: "ended", players: [],
+          started: null, ends_at: null, ended: null, end_reason: "ended_by_operator", operated: false });
+      }
+      if (url.startsWith("/api/rounds/81/events/")) return json({ events: [], next: 0 });
+      return json({});
+    }));
+    render(<Result params={{ round: "81" }} />);
+    for (let turn = 0; turn < 4; turn += 1) await settle();
+    expect(asked).toContain("/api/rounds/81/");
+    expect(asked.filter((url) => url.startsWith("/api/allocations/"))).toEqual([]);
+  });
+});
+
