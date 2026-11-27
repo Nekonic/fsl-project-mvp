@@ -11553,3 +11553,22 @@ The user: "별로 필요없다 그냥 문제공개해 뭐 내가 몇%인게 중�
 기준선제거". A bot problem is published without baselines, and a learner's result is shown
 without a percentile against bot-vs-bot rounds. Supersedes the 2026-11-24 ruling "A bot-vs-bot
 baseline". The baseline rounds, their staff button and the publish refusal are removed.
+
+## 2026-11-27 — Sign-out ends everything at once; a page follows only the events it shows
+
+The user, trying the pvp demo: "로그아웃 눌렀는데 왜 요청이 이리 많이 나오냐? 버튼 하나
+눌렀는데... 로그아웃도 제대로 안되고". The server ended the session, but the console kept the
+signed-in user in memory: the sign-in page saw it and sent the browser home, home's reads
+answered 401, the 401 sent it back to sign-in, and the two pages traded places until the rate
+limit answered 429 (249 to 303 requests in ten seconds, measured on the deployed platform).
+Sign-out, and a 401 from any call, now clear the session the console holds; every page then
+unmounts, which stops its polls, heartbeats and event follower, and the browser lands on the
+sign-in page once.
+
+The same sweep found the event follower paging through every `alert.seen` of a busy round
+(7,000 alerts, 36 pages) on pages that only wait for `round.ended`. The feed takes
+`kinds=`; the follower asks for the union of what its listeners want, and the cursor moves past
+the events it skipped. A resource no longer reads again for events that were already in the
+backlog when the page opened, and panes asking for the same resource in one render share one
+read. A player who does not operate the allocation no longer asks for it on the result page:
+the round says `operated`.
