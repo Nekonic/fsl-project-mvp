@@ -68,6 +68,28 @@ describe("follow", () => {
     expect(told).toEqual([[3, true], [2, false]]);
     stop();
   });
+
+  it("asks only for the kinds its listeners want, in one read", async () => {
+    const asked = answering(() => json(200, { events: [], next: 0 }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stops = [
+      follow(903, () => undefined, false, ["round.ended"]),
+      follow(903, () => undefined, false, ["rule.applied", "round.ended"]),
+    ];
+    await vi.advanceTimersByTimeAsync(0);
+    const reads = asked.filter((one) => one.url.includes("/events/")).map((one) => new URL(one.url, "http://localhost").searchParams.get("kinds"));
+    expect(reads).toEqual(["round.ended,rule.applied"]);
+    stops.forEach((stop) => stop());
+  });
+
+  it("asks for every kind when one listener wants them all", async () => {
+    const asked = answering(() => json(200, { events: [], next: 0 }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stops = [follow(904, () => undefined, false, ["round.ended"]), follow(904, () => undefined)];
+    await vi.advanceTimersByTimeAsync(0);
+    expect(asked.filter((one) => one.url.includes("/events/")).map((one) => one.url)).toEqual(["/api/rounds/904/events/"]);
+    stops.forEach((stop) => stop());
+  });
 });
 
 describe("holdAllocation", () => {

@@ -40,7 +40,7 @@ export function useEvents(round: number | null | undefined, kinds: string[] | nu
     return follow(round, (events, backlog) => {
       const matching = only ? events.filter((event) => only.has(event.kind)) : events;
       if (matching.length) handler.current(matching, backlog);
-    }, replay);
+    }, replay, only ? [...only] : null);
   }, [round, wanted, replay]);
 }
 

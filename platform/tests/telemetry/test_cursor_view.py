@@ -28,6 +28,16 @@ def test_a_bad_cursor_is_refused_by_path(as_staff, found, cursor, code):
     refused(as_staff.get(f"/api/rounds/{found.pk}/events/?after={cursor}"), 400, code, path="after")
 
 
+def test_the_feed_can_be_narrowed_to_some_kinds_and_refuses_an_unknown_one(as_staff, found):
+    log.append(found.pk, "round.started", {"ends_at": None})
+    log.append(found.pk, "player.joined", {"side": "attack", "client": "bot"})
+
+    page = as_staff.get(f"/api/rounds/{found.pk}/events/?kinds=round.started,round.ended").json()
+
+    assert [event["kind"] for event in page["events"]] == ["round.started"]
+    refused(as_staff.get(f"/api/rounds/{found.pk}/events/?kinds=round.paused"), 400, "invalid", path="kinds")
+
+
 def test_a_learner_without_a_player_is_refused_the_feed(as_learner, found):
     refused(as_learner.get(f"/api/rounds/{found.pk}/events/"), 403, "not_a_player")
 

@@ -111,3 +111,17 @@ def test_a_malformed_event_is_refused_and_nothing_is_stored(kind, body, player_s
 
 def test_the_event_has_no_relation_to_any_other_app():
     assert [field.name for field in Event._meta.get_fields() if field.is_relation] == []
+
+
+@pytest.mark.django_db
+def test_asking_for_some_kinds_skips_the_others_and_moves_the_cursor_past_them():
+    a_round_of_play()
+
+    page = log.after(ROUND, 0, STAFF, kinds=frozenset({"round.started", "round.ended"}))
+    newest = log.after(ROUND, 0, STAFF).events[-1]["id"]
+    log.append(ROUND, "round.ended", {"reason": "time_limit"})
+    later = log.after(ROUND, page.next, STAFF, kinds=frozenset({"round.ended"}))
+
+    assert [event["kind"] for event in page.events] == ["round.started"]
+    assert page.next == newest
+    assert [event["kind"] for event in later.events] == ["round.ended"]

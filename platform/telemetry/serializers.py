@@ -1,10 +1,19 @@
 from rest_framework import serializers
 
+from telemetry.events import KINDS
 from telemetry.models import ENGINE_CHOICES
 
 
 class Cursor(serializers.Serializer):
     after = serializers.IntegerField(min_value=0, default=0)
+    kinds = serializers.CharField(required=False, max_length=1000)
+
+    def validate_kinds(self, value):
+        asked = frozenset(part for part in value.split(",") if part)
+        unknown = sorted(asked - frozenset(KINDS))
+        if unknown:
+            raise serializers.ValidationError(f"unknown event kinds: {', '.join(unknown)}", code="invalid")
+        return asked
 
 
 class Event(serializers.Serializer):

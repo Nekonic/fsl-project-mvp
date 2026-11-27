@@ -13,7 +13,7 @@ const ALLOCATION_GONE = new Set(["allocation_closed", "unknown_allocation", "not
 class Follower {
   readonly round: number;
   private cursor: number | undefined;
-  private listeners = new Set<EventListener>();
+  private listeners = new Map<EventListener, string[] | null>();
   private seen: RoundEvent[] = [];
   private caughtUp = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -25,8 +25,8 @@ class Follower {
     this.round = round;
   }
 
-  subscribe(listener: EventListener, replay: boolean): () => void {
-    this.listeners.add(listener);
+  subscribe(listener: EventListener, replay: boolean, kinds: string[] | null): () => void {
+    this.listeners.set(listener, kinds && kinds.length ? kinds : null);
     if (replay && this.seen.length) listener(this.seen, true);
     this.start();
     return () => {
@@ -38,7 +38,16 @@ class Follower {
   private start(): void {
     if (this.running || this.ended) return;
     this.running = true;
-    void this.poll();
+    this.next(0);
+  }
+
+  private wanted(): string | undefined {
+    const kinds = new Set<string>();
+    for (const asked of this.listeners.values()) {
+      if (asked === null) return undefined;
+      asked.forEach((kind) => kinds.add(kind));
+    }
+    return [...kinds].sort().join(",");
   }
 
   private stop(): void {
@@ -58,7 +67,7 @@ class Follower {
     for (let page = 0; page < FOLLOW_PAGES_PER_READ && this.running; page += 1) {
       const said = await api.get("/api/rounds/{round_id}/events/", {
         params: { round_id: this.round },
-        query: this.cursor === undefined ? {} : { after: this.cursor },
+        query: { ...(this.cursor === undefined ? {} : { after: this.cursor }), kinds: this.wanted() },
       });
       this.cursor = said.next;
       if (!said.events.length) return { fresh, drained: true };
@@ -76,7 +85,7 @@ class Follower {
       if (fresh.length && this.running) {
         this.seen = [...this.seen, ...fresh];
         if (fresh.some((event) => event.kind === "round.ended")) this.ended = true;
-        this.listeners.forEach((listener) => listener(fresh, backlog));
+        [...this.listeners.keys()].forEach((listener) => listener(fresh, backlog));
       }
       this.next(FOLLOW_EVERY_MS);
     } catch (error) {
@@ -101,8 +110,8 @@ function followerOf(round: number): Follower {
   return found;
 }
 
-export function follow(round: number, listener: EventListener, replay = false): () => void {
-  return followerOf(round).subscribe(listener, replay);
+export function follow(round: number, listener: EventListener, replay = false, kinds: string[] | null = null): () => void {
+  return followerOf(round).subscribe(listener, replay, kinds);
 }
 
 interface HeldAllocation {

@@ -133,7 +133,15 @@ def shown(event: Event, viewer: Viewer) -> dict:
             "body": shown_body(event.kind, event.body, viewer)}
 
 
-def after(round_id: int, cursor: int, viewer: Viewer, limit: int = PAGE) -> Page:
-    found = list(Event.objects.filter(round_id=round_id, id__gt=cursor, kind__in=visible_kinds(viewer))
+def after(round_id: int, cursor: int, viewer: Viewer, limit: int = PAGE, kinds: frozenset[str] | None = None) -> Page:
+    wanted = visible_kinds(viewer) if kinds is None else sorted(frozenset(visible_kinds(viewer)) & kinds)
+    if kinds is None:
+        found = list(Event.objects.filter(round_id=round_id, id__gt=cursor, kind__in=wanted).order_by("id")[:limit])
+        return Page(events=[shown(event, viewer) for event in found], next=found[-1].id if found else cursor)
+    newest = Event.objects.filter(round_id=round_id, id__gt=cursor).order_by("-id").values_list("id", flat=True).first()
+    if newest is None:
+        return Page(events=[], next=cursor)
+    found = list(Event.objects.filter(round_id=round_id, id__gt=cursor, id__lte=newest, kind__in=wanted)
                  .order_by("id")[:limit])
-    return Page(events=[shown(event, viewer) for event in found], next=found[-1].id if found else cursor)
+    reached = found[-1].id if len(found) == limit else newest
+    return Page(events=[shown(event, viewer) for event in found], next=reached)

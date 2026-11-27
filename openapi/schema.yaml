@@ -1584,6 +1584,12 @@ paths:
           type: integer
           minimum: 0
           default: 0
+      - in: query
+        name: kinds
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 1000
       - in: path
         name: round_id
         schema:
