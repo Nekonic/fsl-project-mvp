@@ -460,6 +460,8 @@
   "staff.round.objective_placeholder": "목표 키",
   "staff.round.benign_every": "정상 트래픽 간격",
   "staff.round.time_limit": "제한 시간",
+  "staff.field.nth": "{field} {n}번째",
+  "staff.unsaved": "저장하지 않은 변경 사항이 있습니다. 이 페이지를 나가면 사라집니다.",
   "staff.postures.list": "방어 설정",
   "staff.postures.new": "새 방어 설정",
   "staff.postures.empty": "아직 방어 설정이 없습니다.",

@@ -243,7 +243,7 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 @media (max-width: 639px) { .form-grid { grid-template-columns: minmax(0, 1fr); } .form-grid .span-2 { grid-column: auto; } }
 .error-list li { padding: 6px 0; border-top: 1px solid var(--danger-line); font-size: var(--text-md); color: var(--danger-text); }
 .error-list li:first-child { border-top: 0; }
-.error-path { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--danger-soft); color: var(--danger-text); padding: 1px 6px; border-radius: var(--radius-sm); margin-right: 6px; }
+.error-path { font-weight: 600; font-size: var(--text-sm); background: var(--danger-soft); color: var(--danger-text); padding: 1px 6px; border-radius: var(--radius-sm); margin-right: 6px; }
 
 .notice { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 10px 12px; border-radius: var(--radius-md); font-size: var(--text-md); background: var(--subdued); color: var(--text); }
 .notice-title { font-weight: 700; }

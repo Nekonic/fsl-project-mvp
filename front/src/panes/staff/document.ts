@@ -1,5 +1,5 @@
 import type { Schemas } from "../../api/client";
-import { errorLine, type ShownError } from "../../strings";
+import { errorLine, t, type ShownError, type StringKey } from "../../strings";
 
 export type StoredDocument = Schemas["StoredDocument"];
 export type DocumentBody = Schemas["DocumentRequest"];
@@ -43,6 +43,32 @@ export function draftOf(stored: StoredDocument): Draft {
 
 export function built(draft: Draft): DocumentBody {
   return { problem: draft.problem, round: draft.round, start_posture: draft.start_posture };
+}
+
+const FIELD_NAMES: Array<[string, StringKey]> = [
+  ["problem.wargame", "col.wargame"],
+  ["problem.side", "staff.problem.side"],
+  ["problem.title", "staff.problem.title"],
+  ["problem.summary", "staff.problem.summary"],
+  ["problem.body", "staff.problem.body"],
+  ["problem.published", "staff.publish"],
+  ["start_posture", "staff.problem.start_posture"],
+  ["round.posture", "staff.problem.start_posture"],
+  ["round.matchups", "staff.round.matchups"],
+  ["round.bot_steps", "staff.round.bot_steps"],
+  ["round.cards", "staff.round.cards"],
+  ["round.probe_cases", "staff.round.probe_cases"],
+  ["round.objectives", "staff.round.objectives"],
+  ["round.benign_every_s", "staff.round.benign_every"],
+  ["round.time_limit_s", "staff.round.time_limit"],
+];
+
+export function fieldName(path: string): string {
+  const found = FIELD_NAMES.find(([prefix]) => path === prefix || path.startsWith(`${prefix}.`) || path.startsWith(`${prefix}[`));
+  if (!found) return path;
+  const [prefix, key] = found;
+  const index = /^\[(\d+)\]/.exec(path.slice(prefix.length));
+  return index ? t("staff.field.nth", { field: t(key), n: Number(index[1]) + 1 }) : t(key);
 }
 
 export function errorsUnder(errors: ShownError[], prefix: string): ShownError[] {
