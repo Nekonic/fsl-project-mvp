@@ -114,12 +114,16 @@ function AgainstApplied({ changes }: { changes: RuleTestResult["against_applied"
   );
 }
 
-function Untested({ untested }: { untested: RuleTestResult["untested"] }) {
+export function Untested({ untested }: { untested: RuleTestResult["untested"] }) {
   if (!untested.length) return null;
+  const reasons = [...new Set(untested.map((one) => one.reason))];
   return (
     <PaneSection title={t("rule_test.untested")} meta={t("rule_test.count", { count: untested.length })}>
-      {untested.map((one) => (
-        <span key={one.case}><Text tone="heading">{caseLabel(one)}</Text> <Text tone="muted">{tFor("rule_test.untested", one.reason)}</Text></span>
+      {reasons.map((reason) => (
+        <Stack key={reason} gap="sm">
+          <Text tone="muted">{tFor("rule_test.untested", reason)}</Text>
+          {untested.filter((one) => one.reason === reason).map((one) => <Text key={one.case} tone="heading">{caseLabel(one)}</Text>)}
+        </Stack>
       ))}
     </PaneSection>
   );

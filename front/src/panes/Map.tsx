@@ -2,6 +2,7 @@ import type cytoscapeFactory from "cytoscape";
 import type { Core, ElementDefinition, NodeSingular, StylesheetJson } from "cytoscape";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useResource } from "../api/hooks";
+import { usePaneShownAgain } from "./RuleTestTable";
 import { errorText, hasString, t } from "../strings";
 import { MapFrame, Pane } from "../ui";
 import type { PaneProps } from "./types";
@@ -308,6 +309,7 @@ export function TopologyView({ map }: { map: LearnerMap }) {
 
 export function MapPane({ round }: PaneProps) {
   const topology = useResource("/api/rounds/{round_id}/topology/", { params: { round_id: round } });
+  usePaneShownAgain("map", topology.reload);
   const [map, setMap] = useState<LearnerMap | null>(null);
   useEffect(() => setMap(asMap(topology.data)), [topology.data]);
   return (

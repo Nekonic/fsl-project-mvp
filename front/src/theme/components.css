@@ -344,6 +344,7 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 .aside-card-head b { flex: 1; color: var(--heading); }
 .aside-card-head > span { color: var(--text-muted); }
 .aside-fold > summary { cursor: pointer; list-style: none; }
+.aside-fold > summary .aside-title, .aside-fold > summary > :first-child { white-space: nowrap; flex-shrink: 0; }
 .aside-fold > summary::-webkit-details-marker { display: none; }
 .aside-fold > summary::after { content: "\25B8"; color: var(--text-muted); }
 .aside-fold[open] > summary::after { content: "\25BE"; }

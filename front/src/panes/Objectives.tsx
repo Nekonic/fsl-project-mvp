@@ -62,7 +62,7 @@ function ObjectiveCard({ objective }: { objective: ObjectiveShown }) {
 export function Objectives({ round, side, placement }: PaneProps) {
   const { objectives, error, loading } = useObjectives(round, side);
   const lost = objectives.filter((objective) => objective.state === "lost").length;
-  const tally = t("objective.tally", { lost, total: objectives.length });
+  const tally = objectives.length ? t("objective.tally", { lost, total: objectives.length }) : undefined;
   const body = loading ? <Loading>{t("common.loading")}</Loading> : error ? <ErrorNotice error={error} /> : null;
 
   if (placement === "aside") {

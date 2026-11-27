@@ -12,7 +12,7 @@ import { fallenNames } from "./Loot";
 import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
-import { rememberTest, RuleTestTable } from "./RuleTestTable";
+import { rememberTest, RuleTestTable, Untested } from "./RuleTestTable";
 import { Score, SCORE_PENDING_READ_EVERY_MS, ScoreReport } from "./Score";
 import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
 import { objectiveLabel } from "./staff/RoundSetupEditor";
@@ -42,6 +42,13 @@ describe("Objectives", () => {
     expect(screen.getAllByText(t("objective.lost")).length).toBe(1);
     expect(screen.getByText(t("objective.unseen"))).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\b(TP|FP|FN|TN)\b/);
+  });
+
+  it("shows no tally before the round has its objectives", async () => {
+    vi.stubGlobal("fetch", answering({ objectives: [] }));
+    render(<Objectives round={44} side="defence" placement="aside-lead" />);
+    await waitFor(() => expect(screen.getByText(t("pane.objectives"))).toBeTruthy());
+    expect(screen.queryByText(t("objective.tally", { lost: 0, total: 0 }))).toBeNull();
   });
 
   it("shows the Korean name of each objective without its key", async () => {
@@ -101,6 +108,14 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("Untested", () => {
+  it("says a shared reason once above the cases it covers", () => {
+    const untested = [1, 2, 3].map((n) => ({ case: `board-tool-${n}`, title: `도구 ${n}`, reason: "tool_case" }));
+    render(<Untested untested={untested as Parameters<typeof Untested>[0]["untested"]} />);
+    expect(screen.getAllByText(tFor("rule_test.untested", "tool_case"))).toHaveLength(1);
+  });
+});
 
 describe("ConfirmButton", () => {
   it("acts only on a second press within a few seconds, and disarms itself", async () => {
