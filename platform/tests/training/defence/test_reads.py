@@ -4,6 +4,7 @@ import pytest
 from django.utils import timezone
 
 from telemetry import alerts as alert_feed
+from telemetry import elastic
 from telemetry.models import Detection, Event
 from tests import rounds
 from tests.training.defence.conftest import SEARCH_RULE
@@ -142,19 +143,36 @@ def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_def
 
 
 def test_traffic_counts_requests_and_refusals_by_origin_from_the_access_log(as_defender, board_round, cyber_range,
-                                                                           es, at):
+                                                                           es, at, monkeypatch):
+    clock = [at + timedelta(seconds=elastic.SETTLE_SECONDS + 3.5)]
+    monkeypatch.setattr("telemetry.access.read_now", lambda: clock[0])
     es.add("a1", access(stamp(at), 200)).add("a2", access(stamp(at, 1), 403)).add("a3", access(stamp(at, 2), 200,
                                                                                                ip=CUSTOMER))
     es.add("s1", suricata(stamp(at, 3)))
 
     first = as_defender.get(url(board_round, "traffic/")).json()
     es.add("a4", access(stamp(at, 4), 400))
+    clock[0] = at + timedelta(minutes=1)
     second = as_defender.get(url(board_round, "traffic/"), {"after": first["next"]}).json()
 
     assert [(row["ip"], row["requests"], row["refused"]) for row in first["by_origin"]] == [
         (ATTACKER, 2, 1), (CUSTOMER, 1, 0)]
     assert [(row["ip"], row["requests"], row["refused"]) for row in second["by_origin"]] == [(ATTACKER, 1, 1)]
     assert as_defender.get(url(board_round, "traffic/"), {"after": "not-a-cursor"}).status_code == 400
+
+
+def test_the_traffic_cursor_stays_one_timestamp_however_many_requests_share_a_second(as_defender, board_round,
+                                                                                     cyber_range, es, at, monkeypatch):
+    monkeypatch.setattr("telemetry.access.read_now", lambda: at + timedelta(minutes=1))
+    for n in range(400):
+        es.add(f"busy{n}", access(stamp(at), 200))
+
+    first = as_defender.get(url(board_round, "traffic/")).json()
+    second = as_defender.get(url(board_round, "traffic/"), {"after": first["next"]})
+
+    assert [(row["ip"], row["requests"]) for row in first["by_origin"]] == [(ATTACKER, 400)]
+    assert second.status_code == 200 and second.json()["by_origin"] == []
+    assert len(first["next"]) < 100
 
 
 def test_the_state_shows_the_brief_target_objectives_versions_and_alert_count(as_defender, board_round, cyber_range,

@@ -153,7 +153,7 @@ for its reads, each read at most 5 s and no longer than what is left, and a read
 A read that fails or is not sent ends that check without moving the cursors, so the next check reads the same
 alerts again. Every check writes one line to the launcher log (`run <n>: watch check <s> s of <budget> s:` then
 each read with `200` or `failed (<why>)`, secrets masked). A turn's end does not end the run. When the phase is `ended` it sends a last message saying to read
-`round_score` and closes stdin. The run also ends when the step's turns (counted across messages) or budget are
+`round_score` and closes stdin, even when that check's alert or traffic read fails; when `defence_state` answers `401` (the run's token is revoked) it closes stdin at once. `defence_traffic`'s `next` names one timestamp, so it stays short however busy the round; the read hands the access log only up to 15 s before now, so a line Elasticsearch indexes late is still counted once. The run also ends when the step's turns (counted across messages) or budget are
 spent (`error_max_turns`, `error_max_budget_usd`).
 
 Claude Code has Bash and Write as its only tools. Bash is allowed only `python -m bots.cli` and

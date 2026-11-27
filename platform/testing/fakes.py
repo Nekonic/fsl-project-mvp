@@ -110,6 +110,8 @@ def _matches(hit: dict, query: dict) -> bool:
             [(name, bounds)] = clause["range"].items()
             if "gte" in bounds and str(_field(hit["_source"], name) or "") < str(bounds["gte"]):
                 return False
+            if "lt" in bounds and str(_field(hit["_source"], name) or "") >= str(bounds["lt"]):
+                return False
     for clause in clauses.get("must_not") or ():
         if "ids" in clause and hit["_id"] in clause["ids"]["values"]:
             return False

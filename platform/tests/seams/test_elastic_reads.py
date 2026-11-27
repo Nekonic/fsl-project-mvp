@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -30,7 +31,31 @@ def test_fetch_after_moves_its_cursor_and_never_hands_a_document_twice():
     ids = [doc_id for page in (first, second, third) for doc_id, _ in page]
     assert ids == ["d0", "d1", "d2", "d3"]
     assert fourth == [] and kept == cursor
-    assert cursor == {"at": "2026-11-19T10:00:02Z", "seen": ["d3"]}
+    assert cursor["at"] == "2026-11-19T10:00:02Z" and sorted(cursor["seen"]) == ["d0", "d1", "d2", "d3"]
+
+
+def test_a_document_indexed_after_a_later_one_is_still_handed_once():
+    es = FakeElastic()
+    es.add("waf", access("2026-11-27T05:43:49Z"))
+
+    with patch("telemetry.elastic.requests.post", es.post):
+        first, cursor = elastic.fetch_after(URL, "logs-1-*", None)
+        es.add("ids", access("2026-11-27T05:43:48.811Z", module="suricata"))
+        second, cursor = elastic.fetch_after(URL, "logs-1-*", cursor)
+        third, cursor = elastic.fetch_after(URL, "logs-1-*", cursor)
+
+    assert [d for d, _ in first] == ["waf"] and [d for d, _ in second] == ["ids"] and third == []
+
+
+def test_the_cursor_forgets_documents_older_than_the_late_window():
+    es = FakeElastic()
+    es.add("old", access("2026-11-19T10:00:00Z"))
+    es.add("new", access("2026-11-19T10:05:00Z"))
+
+    with patch("telemetry.elastic.requests.post", es.post):
+        _, cursor = elastic.fetch_after(URL, "logs-1-*", None)
+
+    assert list(cursor["seen"]) == ["new"]
 
 
 def test_documents_sharing_the_cursor_s_timestamp_across_pages_are_all_handed_once():
@@ -43,7 +68,7 @@ def test_documents_sharing_the_cursor_s_timestamp_across_pages_are_all_handed_on
         second, cursor = elastic.fetch_after(URL, "logs-*", cursor, size=2)
 
     assert [d for d, _ in first + second] == ["same0", "same1", "same2"]
-    assert cursor["seen"] == ["same0", "same1", "same2"]
+    assert sorted(cursor["seen"]) == ["same0", "same1", "same2"]
 
 
 def test_access_events_read_only_the_nginx_access_module():
@@ -73,7 +98,23 @@ def test_error_events_read_only_the_nginx_error_module_and_hand_each_line_with_i
     assert [(one["id"], one["at"].isoformat(), one["line"]) for one in events] == [
         ("e1", "2026-11-19T10:00:00+00:00", "access forbidden by rule, client: 5.188.10.10, server: board.com")]
     assert {"term": {"event.module": "nginx_error"}} in es.posted[0][1]["query"]["bool"]["filter"]
-    assert cursor == {"at": "2026-11-19T10:00:00Z", "seen": ["e1"]}
+    assert cursor == {"at": "2026-11-19T10:00:00Z", "seen": {"e1": "2026-11-19T10:00:00Z"}}
+
+
+def test_settled_access_events_hand_each_request_once_under_a_cursor_of_one_timestamp():
+    es = FakeElastic()
+    for n in range(300):
+        es.add(f"a{n}", access(f"2026-11-27T05:00:{n % 60:02d}Z"))
+    later = datetime(2026, 11, 27, 5, 1, 30, tzinfo=timezone.utc)
+
+    with patch("telemetry.elastic.requests.post", es.post):
+        first, since = elastic.settled_access_events(URL, "logs-1-*", "2026-11-27T05:00:00Z", now=later, size=100)
+        rest, since = elastic.settled_access_events(URL, "logs-1-*", since, now=later, size=1000)
+        none, kept = elastic.settled_access_events(URL, "logs-1-*", since, now=later, size=1000)
+
+    handed = [one["id"] for one in first + rest]
+    assert sorted(handed) == sorted(f"a{n}" for n in range(300)) and len(handed) == 300
+    assert none == [] and kept == since and len(since) < 40
 
 
 def test_the_ingest_pipeline_is_put_from_its_file_and_retried_until_elasticsearch_answers(tmp_path):

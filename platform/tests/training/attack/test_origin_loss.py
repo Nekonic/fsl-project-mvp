@@ -148,7 +148,7 @@ def test_the_error_cursor_moves_so_a_second_read_spends_nothing_again(attack_rou
     first, second = spent_from_log(es, attack_round), spent_from_log(es, attack_round)
 
     assert (first, second) == (1, 0)
-    assert AccessCursor.objects.get(allocation=attack_round.allocation).cursor["errors"]["seen"] == ["e1"]
+    assert AccessCursor.objects.get(allocation=attack_round.allocation).cursor["errors"]["seen"].keys() == {"e1"}
 
 
 def test_one_read_over_many_pages_spends_each_origin_it_names(attack_round, monkeypatch):

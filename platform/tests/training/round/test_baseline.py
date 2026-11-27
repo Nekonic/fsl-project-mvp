@@ -5,6 +5,7 @@ from sandbox import service as sandbox
 from tests.shape import refused
 from training.models import BotBaseline, Round, RoundRecord
 from training.round import baseline as baselines
+from training.round import lifecycle
 from training.round import records
 
 KEY = "launcher-placeholder-key"
@@ -92,6 +93,24 @@ def test_failed_runs_and_incomplete_records_do_not_count_and_the_baseline_fails_
     held.refresh_from_db()
     assert not RoundRecord.objects.get(round_number=second.pk).counts_for_baseline
     assert (held.status, held.attempts, held.samples) == ("failed", 2, [])
+
+
+def test_a_baseline_round_staff_ended_gives_its_slot_back_once_judged_while_its_runs_still_run(
+        bot_problem, runner, staff):
+    held = baselines.create(bot_problem.pk, "defence", "1", 2, staff)
+    baselines.advance()
+    runs = claimed_all(runner)
+    found = Round.objects.get(baseline_of=held)
+    lifecycle.end_round(found, "ended_by_operator")
+    baselines.advance()
+
+    found.refresh_from_db()
+    assert found.allocation.closed is not None and not RoundRecord.objects.filter(round_number=found.pk).exists()
+    assert list(Round.objects.filter(baseline_of=held).values_list("pk", flat=True)) == [found.pk]
+    finish_all(runner, runs)
+    refilled_and_advanced()
+    assert RoundRecord.objects.filter(round_number=found.pk).exists()
+    assert Round.objects.filter(baseline_of=held).exclude(pk=found.pk).count() == 1
 
 
 def test_the_percentile_shows_only_for_a_matching_current_baseline_and_publishing_needs_one(as_staff, bot_problem):

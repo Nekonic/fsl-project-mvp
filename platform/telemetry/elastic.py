@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,8 @@ ACCESS_MODULE = "nginx_access"
 ERROR_MODULE = "nginx_error"
 REFUSED_STATUSES = (400, 403)
 PAGE = 1000
+LATE_SECONDS = 30.0
+SETTLE_SECONDS = 15.0
 PIPELINE_TRIES = 30
 PIPELINE_PAUSE = 2.0
 
@@ -206,44 +208,113 @@ def _as_int(value: Any) -> int | None:
         return None
 
 
-def _after_query(cursor: dict | None, module: str | None, size: int) -> dict[str, Any]:
-    cursor = cursor or {}
-    filters: list[dict] = []
-    if cursor.get("at"):
-        filters.append({"range": {"@timestamp": {"gte": cursor["at"]}}})
-    if module:
-        filters.append({"term": {"event.module": module}})
-    return {
-        "size": size,
-        "track_total_hits": False,
-        "_source": {"excludes": ["message"]},
-        "sort": [{"@timestamp": {"order": "asc", "format": "strict_date_optional_time_nanos"}}],
-        "query": {"bool": {"filter": filters, "must_not": [{"ids": {"values": list(cursor.get("seen") or ())}}]}},
-    }
+def _stamp(value: Any) -> datetime | None:
+    parsed = _parse_time(value)
+    if parsed is None:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _iso(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def _seen_of(cursor: Mapping[str, Any]) -> dict[str, str]:
+    seen = cursor.get("seen") or {}
+    if isinstance(seen, Mapping):
+        return {str(doc_id): str(at) for doc_id, at in seen.items()}
+    return {str(doc_id): str(cursor.get("at") or "") for doc_id in seen}
+
+
+def _lower_bound(at: Any) -> str | None:
+    moment = _stamp(at)
+    if moment is None:
+        return str(at) if at else None
+    return _iso(moment - timedelta(seconds=LATE_SECONDS))
+
+
+def _range(field_name: str, bounds: dict[str, str]) -> dict[str, Any]:
+    return {"range": {field_name: bounds}}
 
 
 def _sorted_at(hit: dict) -> Any:
     return (hit.get("sort") or [None])[0] or hit.get("_source", {}).get("@timestamp")
 
 
+EARLIEST = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _later(one: Any, other: Any) -> Any:
+    if not one:
+        return other
+    return one if (_stamp(one) or EARLIEST) > (_stamp(other) or EARLIEST) else other
+
+
+def _kept_seen(seen: dict[str, str], last: Any) -> dict[str, str]:
+    newest = _stamp(last)
+    if newest is None:
+        return seen
+    oldest = newest - timedelta(seconds=LATE_SECONDS)
+    return {doc_id: at for doc_id, at in seen.items() if (_stamp(at) or newest) >= oldest}
+
+
+def _documents(hits: list[dict]) -> list[tuple[str, dict[str, Any]]]:
+    return [(hit["_id"], hit.get("_source", {})) for hit in hits]
+
+
+def _search(url: str, index: str, filters: list[dict], size: int, must_not: list[dict] | None = None) -> list[dict]:
+    body = {
+        "size": size,
+        "track_total_hits": False,
+        "_source": {"excludes": ["message"]},
+        "sort": [{"@timestamp": {"order": "asc", "format": "strict_date_optional_time_nanos"}}],
+        "query": {"bool": {"filter": filters, "must_not": must_not or []}},
+    }
+    return _posted(url, index, "_search?allow_partial_search_results=false", body).json().get(
+        "hits", {}).get("hits", [])
+
+
 def fetch_after(url: str, index: str, cursor: dict | None = None, size: int = PAGE,
                 module: str | None = None) -> tuple[list[tuple[str, dict[str, Any]]], dict]:
     previous = dict(cursor or {})
-    response = _posted(url, index, "_search?allow_partial_search_results=false", _after_query(previous, module, size))
-    hits = response.json().get("hits", {}).get("hits", [])
-    documents = [(hit["_id"], hit.get("_source", {})) for hit in hits]
+    lowest = _lower_bound(previous.get("at"))
+    filters = [_range("@timestamp", {"gte": lowest})] if lowest else []
+    if module:
+        filters.append({"term": {"event.module": module}})
+    hits = _search(url, index, filters, size, [{"ids": {"values": sorted(_seen_of(previous))}}])
     if not hits:
-        return documents, previous
+        return [], previous
+    latest = _later(previous.get("at"), _sorted_at(hits[-1]))
+    seen = {**_seen_of(previous), **{hit["_id"]: str(_sorted_at(hit)) for hit in hits}}
+    return _documents(hits), {"at": latest, "seen": _kept_seen(seen, latest)}
+
+
+def settled_after(url: str, index: str, since: str, until: datetime, size: int = PAGE,
+                  module: str | None = None) -> tuple[list[tuple[str, dict[str, Any]]], str]:
+    filters: list[dict] = [_range("@timestamp", {"gte": since, "lt": _iso(until)})]
+    if module:
+        filters.append({"term": {"event.module": module}})
+    hits = _search(url, index, filters, size)
+    if len(hits) < size:
+        return _documents(hits), _later(since, _iso(until))
     last = _sorted_at(hits[-1])
-    seen = [hit["_id"] for hit in hits if _sorted_at(hit) == last]
-    if last == previous.get("at"):
-        seen = list(previous.get("seen") or ()) + seen
-    return documents, {"at": last, "seen": seen}
+    whole = [hit for hit in hits if _sorted_at(hit) != last]
+    if whole:
+        return _documents(whole), str(last)
+    return _documents(hits), _iso((_stamp(last) or until) + timedelta(microseconds=1))
 
 
 def access_events(url: str, index: str, cursor: dict | None = None,
                   size: int = PAGE) -> tuple[list[dict[str, Any]], dict]:
     documents, moved = fetch_after(url, index, cursor, size, module=ACCESS_MODULE)
+    return [access_record(doc_id, doc) for doc_id, doc in documents
+            if (doc.get("event") or {}).get("module") == ACCESS_MODULE], moved
+
+
+def settled_access_events(url: str, index: str, since: str, now: datetime | None = None,
+                           size: int = PAGE) -> tuple[list[dict[str, Any]], str]:
+    until = (now or datetime.now(timezone.utc)) - timedelta(seconds=SETTLE_SECONDS)
+    documents, moved = settled_after(url, index, since, until, size, module=ACCESS_MODULE)
     return [access_record(doc_id, doc) for doc_id, doc in documents
             if (doc.get("event") or {}).get("module") == ACCESS_MODULE], moved
 

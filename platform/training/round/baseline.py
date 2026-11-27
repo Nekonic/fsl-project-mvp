@@ -6,6 +6,7 @@ from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 
 from cr import errors
@@ -83,7 +84,7 @@ def give_up_stuck_runs(found: Round) -> None:
 
 
 def move_round(found: Round) -> None:
-    if found.allocation.closed is None:
+    if found.allocation.closed is None and found.phase != Phase.ENDED.value:
         allocations.heartbeat(found.allocation)
     lifecycle.catch_up(found)
     found.refresh_from_db()
@@ -93,10 +94,17 @@ def move_round(found: Round) -> None:
         return
     lifecycle.judge_late(found)
     found.refresh_from_db()
+    if found.judged_at is not None and found.allocation.closed is None:
+        allocations.close_allocation(found.allocation)
     give_up_stuck_runs(found)
     records.keep_when_due(found)
-    if RoundRecord.objects.filter(round_number=found.pk).exists() and found.allocation.closed is None:
-        allocations.close_allocation(found.allocation)
+
+
+def unsettled(held: BotBaseline):
+    recorded = RoundRecord.objects.values("round_number")
+    return Round.objects.filter(baseline_of=held).filter(
+        Q(allocation__closed=None) | Q(phase=Phase.ENDED.value, started__isnull=False)).exclude(
+        pk__in=recorded).select_related("allocation", "baseline_of")
 
 
 def settle_status(held: BotBaseline) -> None:
@@ -106,7 +114,7 @@ def settle_status(held: BotBaseline) -> None:
                                    status=CURRENT).exclude(pk=held.pk).update(status=STALE)
         BotBaseline.objects.filter(pk=held.pk).update(status=CURRENT)
         return
-    if Round.objects.filter(baseline_of=held, allocation__closed=None).exists():
+    if unsettled(held).exists():
         return
     if held.attempts >= held.attempts_max:
         BotBaseline.objects.filter(pk=held.pk).update(status=FAILED)
@@ -133,8 +141,7 @@ def mark_stale() -> None:
 
 def advance() -> None:
     for held in BotBaseline.objects.filter(status=RUNNING).select_related("problem"):
-        for found in Round.objects.filter(baseline_of=held, allocation__closed=None).select_related(
-                "allocation", "baseline_of"):
+        for found in unsettled(held):
             move_round(found)
         settle_status(held)
     mark_stale()

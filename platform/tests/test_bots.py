@@ -884,6 +884,33 @@ def test_a_defence_run_ends_with_a_final_feed_when_the_round_ends_even_mid_turn(
     assert "round_score" in seen.said[0] and seen.closed == 1 and watching.closed
 
 
+def test_a_defence_run_ends_and_closes_its_input_when_the_round_ends_while_a_feed_read_fails():
+    seen = RoundSeen()
+
+    def read(operation, params):
+        if operation == "defence_traffic":
+            raise watch.Unread(operation)
+        return seen.read(operation, params)
+
+    watching = watch.Watch(read, seen.said.append, seen.close, "running")
+    seen.phase = "ended"
+    watching.tick()
+
+    assert len(seen.said) == 1 and "The round has ended (end_reason time)" in seen.said[0]
+    assert seen.closed == 1 and watching.closed
+
+
+def test_a_defence_watch_whose_token_is_revoked_stops_and_closes_its_input(platform):
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/state/", status=401, body={"errors": [{"code": "not_signed_in"}]})
+    reader = launcher.CheckReader(watch_settings(platform), claimed_run("defence"))
+    closed = []
+    watching = watch.Watch(reader, lambda text: None, lambda: closed.append(True), "running")
+
+    launcher.checked(watching, reader, 8.0)
+
+    assert watching.closed and closed == [True]
+
+
 def test_a_defence_run_ends_when_the_step_s_turns_are_spent_across_feeds():
     seen = RoundSeen()
     watching = seen.watch()

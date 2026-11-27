@@ -11505,3 +11505,35 @@ The reviews of the two branches found four defects; all four are fixed on `integ
   past it is not sent. A read that fails or is not sent ends the check without moving the alert or traffic
   cursor, so the next check reads the same rows. Each check writes one launcher log line with its duration and
   every read's status, secrets masked; it replaces the per-read failure line of the entry above.
+
+## 2026-11-27 — Board slots under the full acceptance, late-indexed alerts and the defence watch's end
+
+- **An alert indexed after a later one was never read.** In the 2026-11-27 run `test_apply_after_test`
+  found only the WAF's libinjection alert for `board-sqli-search`, yet slot 1's index holds the IDS alerts
+  `SQLi attempt - URI` and `tested SQL injection in search` for the same flow at 05:43:48.811. Their
+  `_seq_no` (93787-93789) is after the WAF's access and ModSecurity documents stamped 05:43:49 (93783-93786):
+  Elasticsearch indexed the IDS lines later, an ingest between the two moved the cursor to 05:43:49, and a
+  cursor that reads `@timestamp >= at` never went back. Across the run's documents a line was indexed up
+  to 5.9 s after one with a later timestamp. `fetch_after` now reads from 30 s before its cursor and keeps
+  the ids it handed in that window (`seen` maps id to timestamp, pruned past the window), so a late line is
+  handed once.
+- **The traffic cursor stays short.** `defence_traffic`'s `next` carried the ids that shared the last
+  second; nginx stamps whole seconds, so a busy second grew it past the 4096 characters `after` accepts and
+  round 381's defence bot got 400 on every later read. Traffic now reads the access log only up to 15 s
+  before now and its `next` names one timestamp: everything before it was handed, nothing after it was.
+  The bot's traffic feed is 15 s behind; alerts are not.
+- **The defence watch stops when its round ends.** Round 381's step-1 defence run read `defence_state`
+  `ended`, but the same check's traffic read answered 400, the check failed before the last feed, and from
+  04:51 the revoked token answered 401 to every check until the run was given up as `timed_out` (20 min),
+  so baseline 2 counted no round. The end feed now goes out and stdin closes even when that check's other
+  reads fail, and a 401 on `defence_state` closes stdin.
+- **A baseline round gives its slot back once judged.** Baseline round 382, ended by staff at 04:59:54,
+  kept its allocation, heartbeated by the baseline's advance, until its record was kept at 05:20:00 (the
+  20 min a stuck run is given); the baseline then opened round 389 (05:26:30-05:51:30) on a board slot
+  while the acceptance ran, and `test_strategy_comparison` and `test_window_correlation` waited 30 min for
+  a board slot and got `range_unavailable`. A loop left running since 2026-11-25 kept reading the baseline
+  and so kept it advancing; it was stopped. Now an ended baseline round's allocation closes once the round
+  is judged, and the baseline opens no next round until every ended round of it has its record.
+- **`ground_truth_unavailable` on round 406 is not read yet.** The round's start on slot 1 applied both
+  sensors (06:34:08, 06:34:13) and answered 503 at 06:34:32; the platform did not log why. It now logs the
+  reason a round did not start, with its slot.

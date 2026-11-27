@@ -19,7 +19,7 @@ import requests
 
 from bots import play, rest, signin, tools
 from bots.relay import Relay
-from bots.watch import Unread, Watch, interval_of, next_start
+from bots.watch import SeatGone, Unread, Watch, interval_of, next_start
 
 PLATFORM_VARIABLE = "CR_PLATFORM_URL"
 KEY_FILE_VARIABLE = "CR_BOT_LAUNCHER_KEY_FILE"
@@ -36,6 +36,7 @@ CREDENTIAL_VARIABLE = "CLAUDE_CODE_OAUTH_TOKEN"
 CLAUDE = "claude"
 CLAUDE_CODE_VERSION_VARIABLE = "CR_CLAUDE_CODE_VERSION"
 STOP_GRACE_SECONDS = 15.0
+SEAT_GONE = (401,)
 ALLOWED = ("Bash(python -m bots.cli *)", "Bash(sleep *)", "Edit(/*.json)")
 DENIED = ("mcp__*", "Bash(cat *)", "Bash(head *)", "Bash(tail *)", "Bash(less *)", "Bash(more *)", "Bash(grep *)",
           "Bash(rg *)", "Bash(find *)", "Bash(ls *)", "Bash(tree *)", "Bash(stat *)", "Bash(file *)", "Bash(wc *)",
@@ -305,6 +306,9 @@ class CheckReader:
             answer = rest.request(self.session, operation, round_id=self.claimed["round"], **params)
         except requests.RequestException as unreachable:
             return self.failed(operation, f"{type(unreachable).__name__}: {unreachable}")
+        if answer.status_code in SEAT_GONE:
+            self.statuses.append(f"{operation} answered {answer.status_code}, the seat is gone")
+            raise SeatGone(operation)
         if answer.status_code != 200:
             return self.failed(operation, f"answered {answer.status_code}: {answer.text[:200]}")
         try:

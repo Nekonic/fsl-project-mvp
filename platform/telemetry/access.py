@@ -6,7 +6,7 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from cr import errors
@@ -75,11 +75,16 @@ def decoded(token: str) -> dict:
     return cursor
 
 
+def read_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def traffic(found: Round, after: str = "") -> dict:
     cfg = configured().elastic
     start = found.started or found.allocation.opened
-    cursor = decoded(after) if after else {"at": start.isoformat()}
-    events, moved = elastic.access_events(cfg.url, cfg.index_of(found.allocation.slot or 0), cursor)
+    since = str(decoded(after).get("at") or start.isoformat()) if after else start.isoformat()
+    events, moved = elastic.settled_access_events(cfg.url, cfg.index_of(found.allocation.slot or 0), since,
+                                                  now=read_now())
     by_origin: dict[str, dict] = {}
     for event in events:
         if not event["source_ip"]:
@@ -90,7 +95,7 @@ def traffic(found: Round, after: str = "") -> dict:
         origin["refused"] += int(event["refused"])
         if event["at"] and (origin["last_at"] is None or event["at"] > origin["last_at"]):
             origin["last_at"] = event["at"]
-    return {"by_origin": sorted(by_origin.values(), key=lambda origin: origin["ip"]), "next": encoded(moved)}
+    return {"by_origin": sorted(by_origin.values(), key=lambda origin: origin["ip"]), "next": encoded({"at": moved})}
 
 
 def request_line(request: str) -> tuple[str, str] | None:

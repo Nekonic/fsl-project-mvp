@@ -18,6 +18,10 @@ class Unread(Exception):
     pass
 
 
+class SeatGone(Unread):
+    pass
+
+
 @dataclass
 class Seen:
     phase: str | None
@@ -160,18 +164,30 @@ class Watch:
         except Unread:
             return
 
+    def ending(self, state: Mapping) -> Feed:
+        try:
+            return self.gathered(state)
+        except Unread:
+            return Feed(phase=ENDED, phase_changed=self.seen.phase != ENDED,
+                        end_reason=str(state.get("end_reason") or ""), alerts=(), origins=(),
+                        new_addresses=frozenset())
+
     def checked(self) -> None:
         if self.closed:
             return
-        state = self.read("defence_state", {})
+        try:
+            state = self.read("defence_state", {})
+        except SeatGone:
+            self.stop()
+            return
         if "phase" not in state:
             return
-        ended = state.get("phase") == ENDED
-        if not (self.idle or ended):
+        if state.get("phase") == ENDED:
+            self.sent(self.ending(state))
+            self.stop()
+            return
+        if not self.idle:
             return
         feed = self.gathered(state)
-        if feed.ended:
-            self.sent(feed)
-            self.stop()
-        elif feed.news:
+        if feed.news:
             self.sent(feed)

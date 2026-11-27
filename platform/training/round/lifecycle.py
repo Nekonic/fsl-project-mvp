@@ -228,7 +228,8 @@ def start_round(found: Round) -> Round:
         passwords = customers.fresh_passwords(found)
         baselines.take_baseline(found, reach(found), passwords)
         origins.fill_pool(found)
-    except Exception:
+    except Exception as failed:
+        logger.warning("round %s on slot %s did not start: %s", found.pk, found.allocation.slot, failed)
         Round.objects.filter(pk=found.pk, phase=STARTING).update(phase=CREATED, started=None, ends_at=None)
         found.refresh_from_db()
         raise
