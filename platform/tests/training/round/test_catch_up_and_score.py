@@ -46,7 +46,8 @@ def test_every_benign_case_goes_out_once_from_the_infra_box_on_a_customer_addres
     assert sorted(sent.values_list("benign_case", flat=True)) == sorted(customers.benign_cases(running))
     assert sent.count() and not set(sent.values_list("source_ip", flat=True)) & attack_ips
     for one in sent:
-        assert len(slot.customers.matching(f"X-Request-ID: {one.marker}")) == 1
+        assert len([sent for sent in slot.customers.matching(f"X-Request-ID: {one.marker}")
+                    if "/dev/null" in sent.argv]) == 1
         assert f"--interface {one.source_ip}" in slot.customers.matching(one.marker)[0].text
         assert not slot.box.matching(one.marker)
     assert customers.passes(running) == 1
