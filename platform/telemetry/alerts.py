@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
@@ -178,16 +179,41 @@ def joined_later(found, joins: Mapping[str, Mapping[str, Any]]) -> None:
             Detection.objects.filter(pk=pk).update(**changed)
 
 
-def alerts(found: Round, after: int = 0, engine: str = "", rule: str = "", src: str = "") -> tuple[list, int]:
-    rows = Detection.objects.filter(round=found, id__gt=after)
+@dataclass(frozen=True)
+class AlertPage:
+    alerts: list[Detection]
+    next: int
+    more: bool
+    total: int
+
+
+def filtered(found: Round, engine: str = "", rule: str = "", src: str = ""):
+    rows = Detection.objects.filter(round=found)
     if engine:
         rows = rows.filter(engine=engine)
     if rule:
         rows = rows.filter(rule=rule)
     if src:
         rows = rows.filter(src_ip=src)
-    page = list(rows.order_by("id")[:ALERTS_PAGE])
+    return rows
+
+
+def alerts(found: Round, after: int = 0, engine: str = "", rule: str = "", src: str = "") -> tuple[list, int]:
+    page = list(filtered(found, engine, rule, src).filter(id__gt=after).order_by("id")[:ALERTS_PAGE])
     return page, page[-1].pk if page else after
+
+
+def alert_page(found: Round, after: int = 0, before: int | None = None, engine: str = "", rule: str = "",
+               src: str = "") -> AlertPage:
+    rows = filtered(found, engine, rule, src)
+    if before is None:
+        page, next_id = alerts(found, after, engine, rule, src)
+        return AlertPage(alerts=page, next=next_id, more=rows.filter(id__gt=next_id).exists(), total=rows.count())
+    older = rows.filter(id__lt=before) if before else rows
+    page = list(older.order_by("-id")[:ALERTS_PAGE])
+    next_id = page[-1].pk if page else before
+    return AlertPage(alerts=page, next=next_id, more=bool(page) and rows.filter(id__lt=next_id).exists(),
+                     total=rows.count())
 
 
 RECORD_FIELDS = ("detection_id", "timestamp", "src_ip", "marker", "engine", "rule", "signature", "uri", "blocked")

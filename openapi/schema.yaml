@@ -934,6 +934,11 @@ paths:
           minimum: 0
           default: 0
       - in: query
+        name: before
+        schema:
+          type: integer
+          minimum: 0
+      - in: query
         name: engine
         schema:
           enum:
@@ -2661,9 +2666,15 @@ components:
             $ref: '#/components/schemas/Alert'
         next:
           type: integer
+        more:
+          type: boolean
+        total:
+          type: integer
       required:
       - alerts
+      - more
       - next
+      - total
     AllocationDetail:
       type: object
       properties:

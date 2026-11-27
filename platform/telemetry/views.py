@@ -42,9 +42,9 @@ class Alerts(DefenceView):
                    operation_id="defence_alerts")
     def get(self, request, round_id: int):
         asked = given(serializers.AlertQuery, request.query_params)
-        rows, next_id = alert_feed.alerts(request.round, asked["after"], asked.get("engine", ""),
-                                          asked.get("rule", ""), asked.get("src", ""))
-        return Response(serializers.Alerts({"alerts": rows, "next": next_id}).data)
+        page = alert_feed.alert_page(request.round, asked["after"], asked.get("before"), asked.get("engine", ""),
+                                     asked.get("rule", ""), asked.get("src", ""))
+        return Response(serializers.Alerts(page).data)
 
 
 class Traffic(DefenceView):

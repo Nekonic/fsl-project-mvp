@@ -26,13 +26,27 @@ const ENGINE_OPTIONS = [
   { value: "waf", label: t("engine.waf") },
 ];
 
-function queryOf(filter: AlertFilter, after: number) {
+const NEWEST = 0;
+
+function queryOf(filter: AlertFilter, before: number) {
   return {
-    after,
+    before,
     ...(filter.engine ? { engine: filter.engine } : {}),
     ...(filter.rule.trim() ? { rule: filter.rule.trim() } : {}),
     ...(filter.src.trim() ? { src: filter.src.trim() } : {}),
   };
+}
+
+export function filtering(filter: AlertFilter): boolean {
+  return Boolean(filter.engine || filter.rule.trim() || filter.src.trim());
+}
+
+export function newestFirst(shown: Alert[], newest: Alert[]): { alerts: Alert[]; joined: boolean } {
+  const known = shown.length ? Math.max(...shown.map((one) => one.id)) : 0;
+  const reaches = newest.length === 0 || Math.min(...newest.map((one) => one.id)) <= known;
+  const kept = reaches ? new Map(shown.map((one) => [one.id, one])) : new Map<number, Alert>();
+  newest.forEach((one) => kept.set(one.id, one));
+  return { alerts: [...kept.values()].sort((a, b) => b.id - a.id), joined: reaches };
 }
 
 export function useAlertFeed(round: number, filter: AlertFilter) {
@@ -40,23 +54,37 @@ export function useAlertFeed(round: number, filter: AlertFilter) {
   const [error, setError] = useState<ApiError | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [more, setMore] = useState(false);
-  const cursor = useRef(0);
+  const [total, setTotal] = useState<number | undefined>(undefined);
+  const shown = useRef<Alert[]>([]);
+  const oldest = useRef(NEWEST);
   const asked = useRef(0);
 
-  const fetchFrom = useCallback(async (fresh: boolean) => {
+  const fetchPage = useCallback(async (older: boolean, fresh: boolean) => {
     const ask = fresh ? ++asked.current : asked.current;
-    if (fresh) cursor.current = 0;
+    if (fresh) {
+      shown.current = [];
+      oldest.current = NEWEST;
+    }
     setLoading(true);
     try {
-      const said = await api.get("/api/rounds/{round_id}/defence/alerts/", { params: { round_id: round }, query: queryOf(filter, cursor.current) });
-      if (ask !== asked.current) return;
-      cursor.current = said.next;
-      setAlerts((was) => {
-        const known = fresh ? new Map<number, Alert>() : new Map(was.map((one) => [one.id, one]));
-        said.alerts.forEach((one) => known.set(one.id, one));
-        return [...known.values()].sort((a, b) => b.id - a.id);
+      const said = await api.get("/api/rounds/{round_id}/defence/alerts/", {
+        params: { round_id: round }, query: queryOf(filter, older ? oldest.current : NEWEST),
       });
-      setMore(said.alerts.length > 0);
+      if (ask !== asked.current) return;
+      if (older) {
+        shown.current = [...shown.current, ...said.alerts.filter((one) => !shown.current.some((was) => was.id === one.id))];
+        oldest.current = said.next;
+        setMore(said.more);
+      } else {
+        const merged = newestFirst(shown.current, said.alerts);
+        shown.current = merged.alerts;
+        if (!merged.joined || oldest.current === NEWEST) {
+          oldest.current = said.next;
+          setMore(said.more);
+        }
+      }
+      setAlerts(shown.current);
+      setTotal(said.total);
       setError(undefined);
     } catch (failed) {
       if (ask === asked.current) setError(failed instanceof ApiError ? failed : new ApiError(0, [{ path: "", code: "network" }]));
@@ -66,12 +94,12 @@ export function useAlertFeed(round: number, filter: AlertFilter) {
   }, [round, filter]);
 
   useEffect(() => {
-    void fetchFrom(true);
-  }, [fetchFrom]);
+    void fetchPage(false, true);
+  }, [fetchPage]);
 
-  useEvents(round, ALERT_EVENTS, () => void fetchFrom(false));
+  useEvents(round, ALERT_EVENTS, () => void fetchPage(false, false));
 
-  return { alerts, error, loading, more, loadMore: () => void fetchFrom(false) };
+  return { alerts, error, loading, more, total, loadMore: () => void fetchPage(true, false) };
 }
 
 const ALERT_COLUMNS: Column<Alert>[] = [
@@ -103,10 +131,9 @@ function TrafficByOrigin({ round }: { round: number }) {
   );
 }
 
-function AlertTotal({ round }: { round: number }) {
-  const state = useResource("/api/rounds/{round_id}/defence/state/", { params: { round_id: round } }, { refreshOn: { round, kinds: COUNT_EVENTS } });
-  if (!state.data) return null;
-  return <>{t("alerts.total")} <Text mono tone="heading" strong>{count(state.data.alerts_total)}</Text></>;
+function AlertTotal({ total, filtered }: { total: number | undefined; filtered: boolean }) {
+  if (total === undefined) return null;
+  return <>{t(filtered ? "alerts.total_filtered" : "alerts.total")} <Text mono tone="heading" strong>{count(total)}</Text></>;
 }
 
 export function Alerts({ round }: PaneProps) {
@@ -115,7 +142,7 @@ export function Alerts({ round }: PaneProps) {
   const feed = useAlertFeed(round, filter);
 
   return (
-    <Pane title={t("pane.alerts")} meta={<AlertTotal round={round} />}>
+    <Pane title={t("pane.alerts")} meta={<AlertTotal total={feed.total} filtered={filtering(filter)} />}>
       <Form onSubmit={() => setFilter({ ...draft })}>
         <Filters>
           <Field label={t("col.engine")}>

@@ -392,6 +392,7 @@
   "rule_test.untested.tool_case": "도구 케이스는 녹화 재생이 안 됩니다.",
   "rule_test.untested.not_recorded": "녹화 없음",
   "alerts.total": "총 알림 수",
+  "alerts.total_filtered": "조건에 맞는 알림 수",
   "alerts.engine.all": "전체",
   "alerts.col.rule": "룰",
   "alerts.col.signature": "시그니처",
