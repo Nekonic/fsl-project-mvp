@@ -20,6 +20,7 @@ function useMe(): Session {
       current = false;
     };
   }, [asked]);
+  useEffect(() => onSignedOut(() => setMe(undefined)), []);
   return useMemo(() => ({ me, loading, reload: () => setAsked((was) => was + 1) }), [me, loading]);
 }
 
@@ -27,10 +28,6 @@ export function App() {
   const place = usePlace();
   const session = useMe();
   const found = resolve(place.path);
-
-  useEffect(() => onSignedOut(() => {
-    if (resolve(location.pathname)?.route.access !== "public") navigate(to.login(location.pathname + location.search), true);
-  }), []);
 
   const access = found?.route.access ?? "member";
   const refused = !session.loading && access !== "public" && (!session.me || (access === "staff" && !session.me.is_staff));

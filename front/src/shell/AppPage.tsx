@@ -1,6 +1,6 @@
 import type { ComponentChildren } from "preact";
 import { useEffect } from "preact/hooks";
-import { api } from "../api/client";
+import { announceSignedOut, api } from "../api/client";
 import { useSession } from "../api/hooks";
 import { to } from "../links";
 import { brandLabel, homeCrumb, signOutLabel, topNav } from "../nav";
@@ -21,6 +21,7 @@ export async function signOut(): Promise<void> {
     await api.post("/api/auth/logout/");
   } finally {
     navigate(to.login(), true);
+    announceSignedOut();
   }
 }
 

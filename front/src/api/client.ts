@@ -79,6 +79,10 @@ export function onSignedOut(listener: SignedOutListener): () => void {
   return () => signedOutListeners.delete(listener);
 }
 
+export function announceSignedOut(): void {
+  signedOutListeners.forEach((listener) => listener());
+}
+
 function cookie(name: string): string {
   const found = document.cookie.split("; ").find((part) => part.startsWith(`${name}=`));
   return found ? decodeURIComponent(found.slice(name.length + 1)) : "";
@@ -170,7 +174,7 @@ async function send(method: Method, url: string, body: unknown, signal: AbortSig
     await renewCsrf();
     return send(method, url, body, signal, true, timeoutMs);
   }
-  if (error.has("not_signed_in")) signedOutListeners.forEach((listener) => listener());
+  if (error.has("not_signed_in")) announceSignedOut();
   throw error;
 }
 
