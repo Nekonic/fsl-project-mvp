@@ -10,7 +10,7 @@ import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
 import { rememberTest, RuleTestTable } from "./RuleTestTable";
-import { ScoreReport } from "./Score";
+import { Score, SCORE_PENDING_READ_EVERY_MS, ScoreReport } from "./Score";
 import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
 import { objectiveLabel } from "./staff/RoundSetupEditor";
 import { judgedCase, VERDICT_NOTICE_MS, VerdictNotices } from "./Verdicts";
@@ -98,6 +98,26 @@ function cellsOf(text: string): string[] {
   if (!row) throw new Error(`no row holds ${text}`);
   return [...row.querySelectorAll("td")].map((cell) => cell.textContent ?? "");
 }
+
+describe("Score while the final judge is pending", () => {
+  it("reads the score again until it is final", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/events/")) return new Response(JSON.stringify({ events: [], next: 0 }), { status: 200, headers: { "Content-Type": "application/json" } });
+      reads += 1;
+      return new Response(JSON.stringify({ ...score, pending: reads < 2 }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<Score round={91} side="defence" placement="main" />);
+    await waitFor(() => expect(reads).toBe(1));
+    await vi.advanceTimersByTimeAsync(SCORE_PENDING_READ_EVERY_MS);
+    await waitFor(() => expect(reads).toBe(2));
+    await vi.advanceTimersByTimeAsync(SCORE_PENDING_READ_EVERY_MS * 2);
+    expect(reads).toBe(2);
+    vi.useRealTimers();
+  });
+});
 
 describe("ScoreReport", () => {
   it("marks each lost objective detected and responded with the response time, heads them with the objective score and counts the four verdicts", () => {

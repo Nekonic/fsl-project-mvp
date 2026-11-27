@@ -1,4 +1,5 @@
 import type { ComponentChild } from "preact";
+import { useEffect } from "preact/hooks";
 import { useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
 import { caseLabel, count } from "../format";
@@ -25,6 +26,7 @@ interface ObjectiveLine {
 }
 
 const SCORE_EVENTS = ["round.ended", "round.judged"];
+export const SCORE_PENDING_READ_EVERY_MS = 10_000;
 
 const VERDICT_TONE: Record<Verdict, TextTone> = { tp: "ok", tn: "ok", fn: "danger", fp: "danger" };
 
@@ -204,6 +206,13 @@ export function ScoreReport({ score }: { score: ScoreShown }) {
 
 export function Score({ round, side }: PaneProps) {
   const score = useResource("/api/rounds/{round_id}/score/", { params: { round_id: round } }, { refreshOn: { round, kinds: SCORE_EVENTS } });
+  const pending = score.data?.pending === true;
+  const reloadScore = score.reload;
+  useEffect(() => {
+    if (!pending) return undefined;
+    const timer = setInterval(reloadScore, SCORE_PENDING_READ_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [pending, reloadScore]);
   if (score.error?.has("round_running")) {
     return (
       <Notice
