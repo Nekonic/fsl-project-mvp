@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
 import { playerFacts } from "../console/RoundHeader";
+import { Brief } from "./Brief";
 import { IdsRules } from "./IdsRules";
 import { fallenNames } from "./Loot";
 import { nodeLabel, zoneCaption } from "./Map";
@@ -62,6 +63,20 @@ describe("Objectives", () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ errors: [{ path: "", code: "not_a_player" }] }), { status: 403 })));
     render(<Objectives round={41} side="attack" placement="main" />);
     await waitFor(() => expect(screen.getByText(t("error.not_a_player"))).toBeTruthy());
+  });
+});
+
+describe("Brief", () => {
+  it("folds the round's problem body into the aside for either side and shows it as text with its line breaks", async () => {
+    const body = "Situation line\nRules <i>line</i>";
+    vi.stubGlobal("fetch", answering({ brief: { title: "Board problem", summary: "Short summary", body }, objectives }));
+    const { container } = render(<Brief round={44} side="defence" placement="aside" />);
+    const fold = container.querySelector("details");
+    expect(fold?.querySelector("summary")?.textContent).toContain(t("pane.brief"));
+    const shown = await screen.findByText((_, node) => node?.classList.contains("prose") === true && node.textContent === body);
+    expect(fold?.contains(shown)).toBe(true);
+    expect(shown.querySelector("i")).toBeNull();
+    expect(screen.getByText("Short summary")).toBeTruthy();
   });
 });
 

@@ -342,6 +342,11 @@ textarea.input { height: auto; padding: 8px 10px; line-height: 20px; resize: ver
 .aside-card-head { display: flex; align-items: center; gap: 8px; }
 .aside-card-head b { flex: 1; color: var(--heading); }
 .aside-card-head > span { color: var(--text-muted); }
+.aside-fold > summary { cursor: pointer; list-style: none; }
+.aside-fold > summary::-webkit-details-marker { display: none; }
+.aside-fold > summary::after { content: "\25B8"; color: var(--text-muted); }
+.aside-fold[open] > summary::after { content: "\25BE"; }
+.aside-fold[open] > summary { padding-bottom: 6px; border-bottom: 1px solid var(--border-subdued); }
 .row-line { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid var(--border-subdued); }
 .row-line:first-child { border-top: 0; }
 .row-line > :first-child { flex: 1; min-width: 0; }

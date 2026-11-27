@@ -13,6 +13,7 @@ import {
   Badge, Button, Card, Choices, Code, Columns, Dot, ErrorNotice, Field, Form, FormActions, Hero, Input, Label, Loading, Notice, PageBody,
   Row, Select, Stack, Table, Task, Text, phaseTone, type Column,
 } from "../ui";
+import { ProblemText } from "../panes/Brief";
 import { wargameHost, wargameName } from "./wargameText";
 
 type Allocation = Schemas["AllocationDetail"];
@@ -222,6 +223,19 @@ function stepsOf(problem: Problem | undefined, steps: StepLine[]): StepLine[] {
   return steps.filter((step) => problem?.bot_steps.includes(step.id));
 }
 
+function ProblemBody({ problem }: { problem: string }) {
+  const read = useResource("/api/problems/{problem_id}/", problem ? { params: { problem_id: Number(problem) } } : null);
+  if (!problem) return null;
+  return (
+    <Card pad="md">
+      <Stack gap="sm">
+        <Text strong tone="heading" small>{t("lobby.problem_body")}</Text>
+        {read.data && String(read.data.id) === problem ? <ProblemText problem={read.data} /> : read.error ? <ErrorNotice error={read.error} /> : <Loading>{t("common.loading")}</Loading>}
+      </Stack>
+    </Card>
+  );
+}
+
 function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProps) {
   const staff = Boolean(useSession().me?.is_staff);
   const fitting = problems.filter((problem) => problem.wargame === allocation.wargame);
@@ -303,6 +317,7 @@ function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProp
             <Select value={chosen} onValue={setProblem} disabled={!fitting.length}
               options={fitting.map((one) => ({ value: String(one.id), label: one.title }))} />
           </Field>
+          <ProblemBody problem={chosen} />
           <Stack gap="sm">
             <Label>{t("col.matchup")}</Label>
             <Choices name="matchup" value={matchup} onValue={(next) => pickMatchup(next as Matchup)}

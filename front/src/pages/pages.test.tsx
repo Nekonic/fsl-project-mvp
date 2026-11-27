@@ -99,6 +99,25 @@ describe("RoundLobby rounds", () => {
   });
 });
 
+describe("RoundLobby problem body", () => {
+  it("shows the chosen problem's body as text with its line breaks, never as markup", async () => {
+    const body = "Situation line\nGoal <b>line</b>";
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/events/")) return json({ events: [], next: 0 });
+      if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
+      if (url.startsWith("/api/bot-steps/")) return json([]);
+      if (url === "/api/problems/7/") return json({ id: 7, kind: "round", wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["pvp"], bot_steps: [], body });
+      if (url.startsWith("/api/problems/")) return json([{ id: 7, kind: "round", wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["pvp"], bot_steps: [] }]);
+      return json({ allocation: 65, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [] });
+    }));
+    render(<RoundLobby params={{ allocation: "65" }} />);
+    const shown = await screen.findByText((_, node) => node?.classList.contains("prose") === true && node.textContent === body);
+    expect(shown.querySelector("b")).toBeNull();
+    expect(screen.getByText(t("lobby.problem_body"))).toBeTruthy();
+  });
+});
+
 describe("bot stopped early", () => {
   const bot = { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "", bot_run: "finished" };
 

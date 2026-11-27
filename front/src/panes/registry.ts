@@ -1,6 +1,7 @@
 import type { FunctionComponent } from "preact";
 import { Alerts } from "./Alerts";
 import { AttackCases } from "./AttackCases";
+import { Brief } from "./Brief";
 import { Origins } from "./Origins";
 import { IdsRules } from "./IdsRules";
 import { Kibana } from "./Kibana";
@@ -29,6 +30,7 @@ export const panes = {
   cases: AttackCases,
   applied: RuleVersions,
   score: Score,
+  brief: Brief,
 } satisfies Record<string, FunctionComponent<PaneProps>>;
 
 export type PaneId = keyof typeof panes;
