@@ -38,6 +38,15 @@ def test_the_feed_can_be_narrowed_to_some_kinds_and_refuses_an_unknown_one(as_st
     refused(as_staff.get(f"/api/rounds/{found.pk}/events/?kinds=round.paused"), 400, "invalid", path="kinds")
 
 
+def test_the_tail_skips_the_backlog_and_names_the_newest_event(as_staff, found):
+    log.append(found.pk, "round.started", {"ends_at": None})
+    last = log.append(found.pk, "player.joined", {"side": "attack", "client": "bot"})
+
+    page = as_staff.get(f"/api/rounds/{found.pk}/events/?tail=true").json()
+
+    assert page == {"events": [], "next": last.pk}
+
+
 def test_a_learner_without_a_player_is_refused_the_feed(as_learner, found):
     refused(as_learner.get(f"/api/rounds/{found.pk}/events/"), 403, "not_a_player")
 

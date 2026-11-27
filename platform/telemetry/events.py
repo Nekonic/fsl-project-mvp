@@ -133,6 +133,11 @@ def shown(event: Event, viewer: Viewer) -> dict:
             "body": shown_body(event.kind, event.body, viewer)}
 
 
+def newest(round_id: int, cursor: int) -> Page:
+    found = Event.objects.filter(round_id=round_id, id__gt=cursor).order_by("-id").values_list("id", flat=True).first()
+    return Page(events=[], next=found or cursor)
+
+
 def after(round_id: int, cursor: int, viewer: Viewer, limit: int = PAGE, kinds: frozenset[str] | None = None) -> Page:
     wanted = visible_kinds(viewer) if kinds is None else sorted(frozenset(visible_kinds(viewer)) & kinds)
     if kinds is None:

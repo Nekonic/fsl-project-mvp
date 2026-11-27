@@ -20,7 +20,9 @@ class RoundEvents(CatchingUpView):
         given.is_valid(raise_exception=True)
         viewer = log.Viewer(sides=frozenset(player.side for player in request.players),
                             staff=bool(getattr(request.user, "is_staff", False)), operator=request.operator)
-        page = log.after(request.round.pk, given.validated_data["after"], viewer, kinds=given.validated_data.get("kinds"))
+        asked = given.validated_data
+        page = (log.newest(request.round.pk, asked["after"]) if asked["tail"]
+                else log.after(request.round.pk, asked["after"], viewer, kinds=asked.get("kinds")))
         return Response(serializers.Page(page).data)
 
 

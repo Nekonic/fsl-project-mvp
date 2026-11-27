@@ -13,7 +13,7 @@ const ALLOCATION_GONE = new Set(["allocation_closed", "unknown_allocation", "not
 class Follower {
   readonly round: number;
   private cursor: number | undefined;
-  private listeners = new Map<EventListener, string[] | null>();
+  private listeners = new Map<EventListener, { kinds: string[] | null; replay: boolean }>();
   private seen: RoundEvent[] = [];
   private caughtUp = false;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
@@ -26,7 +26,7 @@ class Follower {
   }
 
   subscribe(listener: EventListener, replay: boolean, kinds: string[] | null): () => void {
-    this.listeners.set(listener, kinds && kinds.length ? kinds : null);
+    this.listeners.set(listener, { kinds: kinds && kinds.length ? kinds : null, replay });
     if (replay && this.seen.length) listener(this.seen, true);
     this.start();
     return () => {
@@ -41,13 +41,18 @@ class Follower {
     this.next(0);
   }
 
-  private wanted(): string | undefined {
+  private wanted(onlyReplaying = false): string | undefined {
     const kinds = new Set<string>();
     for (const asked of this.listeners.values()) {
-      if (asked === null) return undefined;
-      asked.forEach((kind) => kinds.add(kind));
+      if (onlyReplaying && !asked.replay) continue;
+      if (asked.kinds === null) return undefined;
+      asked.kinds.forEach((kind) => kinds.add(kind));
     }
     return [...kinds].sort().join(",");
+  }
+
+  private replaying(): boolean {
+    return [...this.listeners.values()].some((asked) => asked.replay);
   }
 
   private stop(): void {
@@ -64,10 +69,17 @@ class Follower {
 
   private async readBacklog(): Promise<{ fresh: RoundEvent[]; drained: boolean }> {
     const fresh: RoundEvent[] = [];
+    const first = this.cursor === undefined;
+    if (first && !this.replaying()) {
+      const said = await api.get("/api/rounds/{round_id}/events/", { params: { round_id: this.round }, query: { tail: true } });
+      this.cursor = said.next;
+      return { fresh, drained: true };
+    }
+    const kinds = this.wanted(first);
     for (let page = 0; page < FOLLOW_PAGES_PER_READ && this.running; page += 1) {
       const said = await api.get("/api/rounds/{round_id}/events/", {
         params: { round_id: this.round },
-        query: { ...(this.cursor === undefined ? {} : { after: this.cursor }), kinds: this.wanted() },
+        query: { ...(this.cursor === undefined ? {} : { after: this.cursor }), kinds: this.cursor === undefined || first ? kinds : this.wanted() },
       });
       this.cursor = said.next;
       if (!said.events.length) return { fresh, drained: true };

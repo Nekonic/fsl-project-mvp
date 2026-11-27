@@ -7,6 +7,7 @@ from telemetry.models import ENGINE_CHOICES
 class Cursor(serializers.Serializer):
     after = serializers.IntegerField(min_value=0, default=0)
     kinds = serializers.CharField(required=False, max_length=1000)
+    tail = serializers.BooleanField(required=False, default=False)
 
     def validate_kinds(self, value):
         asked = frozenset(part for part in value.split(",") if part)

@@ -47,7 +47,7 @@ describe("follow", () => {
       return json(200, eventsAfter(after, 450, 200));
     });
     const batches: number[] = [];
-    const stop = follow(901, (events) => batches.push(events.length));
+    const stop = follow(901, (events) => batches.push(events.length), true);
     await vi.waitFor(() => expect(batches).toEqual([450]));
     expect(asked.filter((one) => one.url.includes("/events/")).length).toBe(4);
     stop();
@@ -61,7 +61,7 @@ describe("follow", () => {
     });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const told: Array<[number, boolean]> = [];
-    const stop = follow(902, (events, backlog) => told.push([events.length, backlog]));
+    const stop = follow(902, (events, backlog) => told.push([events.length, backlog]), true);
     await vi.advanceTimersByTimeAsync(0);
     upTo = 5;
     await vi.advanceTimersByTimeAsync(FOLLOW_EVERY_MS);
@@ -76,9 +76,10 @@ describe("follow", () => {
       follow(903, () => undefined, false, ["round.ended"]),
       follow(903, () => undefined, false, ["rule.applied", "round.ended"]),
     ];
-    await vi.advanceTimersByTimeAsync(0);
-    const reads = asked.filter((one) => one.url.includes("/events/")).map((one) => new URL(one.url, "http://localhost").searchParams.get("kinds"));
-    expect(reads).toEqual(["round.ended,rule.applied"]);
+    await vi.advanceTimersByTimeAsync(FOLLOW_EVERY_MS + 10);
+    const reads = asked.filter((one) => one.url.includes("/events/")).map((one) => new URL(one.url, "http://localhost").searchParams);
+    expect(reads.map((query) => query.get("tail"))).toEqual(["true", null]);
+    expect(reads[1]!.get("kinds")).toBe("round.ended,rule.applied");
     stops.forEach((stop) => stop());
   });
 
@@ -86,8 +87,17 @@ describe("follow", () => {
     const asked = answering(() => json(200, { events: [], next: 0 }));
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const stops = [follow(904, () => undefined, false, ["round.ended"]), follow(904, () => undefined)];
+    await vi.advanceTimersByTimeAsync(FOLLOW_EVERY_MS + 10);
+    expect(asked.filter((one) => one.url.includes("/events/")).map((one) => one.url)).toEqual(["/api/rounds/904/events/?tail=true", "/api/rounds/904/events/?after=0"]);
+    stops.forEach((stop) => stop());
+  });
+
+  it("reads the backlog only of the kinds a replaying listener wants", async () => {
+    const asked = answering(() => json(200, { events: [], next: 0 }));
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const stops = [follow(905, () => undefined, false, ["alert.seen"]), follow(905, () => undefined, true, ["rule.applied"])];
     await vi.advanceTimersByTimeAsync(0);
-    expect(asked.filter((one) => one.url.includes("/events/")).map((one) => one.url)).toEqual(["/api/rounds/904/events/"]);
+    expect(asked.filter((one) => one.url.includes("/events/")).map((one) => one.url)).toEqual(["/api/rounds/905/events/?kinds=rule.applied"]);
     stops.forEach((stop) => stop());
   });
 });

@@ -1595,6 +1595,11 @@ paths:
         schema:
           type: integer
         required: true
+      - in: query
+        name: tail
+        schema:
+          type: boolean
+          default: false
       tags:
       - match
       security:
