@@ -11,6 +11,9 @@ def catch_up(request) -> None:
     held = getattr(request, "allocation", None) or (found.allocation if found is not None else None)
     if found is not None:
         lifecycle.catch_up(found)
+    elif held is not None:
+        for running in held.rounds.filter(phase=lifecycle.RUNNING):
+            lifecycle.catch_up(running)
     if held is not None:
         allocations.close_if_expired(held)
     if found is not None:
