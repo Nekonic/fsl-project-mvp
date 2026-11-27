@@ -6,6 +6,7 @@ import { t, tFor } from "../strings";
 import { DebriefReport, rowText } from "./Debrief";
 import { safeNext } from "./Login";
 import { Result } from "./Result";
+import { RoundAttack } from "./RoundAttack";
 import { RoundLobby } from "./RoundLobby";
 import { wargameName } from "./wargameText";
 
@@ -211,6 +212,25 @@ describe("safeNext", () => {
     ["http://range.example:8002/site/12/board.com/", undefined],
   ])("sends %s home", (next, origin) => {
     expect(safeNext(next, origin)).toBe("/");
+  });
+});
+
+describe("attack console of a wargame that takes no loot", () => {
+  it("leaves the loot pane out of the rail and the side column", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/rounds/82/attack/state/") {
+        return json({ round: 82, matchup: "pvp", phase: "running", started: null, ends_at: null, end_reason: "",
+          brief: { title: "Corp", summary: "", body: "" }, target: { public_url: "http://corp.com/", hosts: ["corp.com"] },
+          objectives: [], origins: [], remaining: { origin: null, left: 0, total: 0, spent: [] }, takes_loot: false });
+      }
+      if (url.startsWith("/api/rounds/82/events/")) return json({ events: [], next: 0 });
+      return new Response(JSON.stringify({ errors: [{ path: "", code: "not_found" }] }), { status: 404, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<RoundAttack params={{ round: "82" }} />);
+    for (let turn = 0; turn < 4; turn += 1) await settle();
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).not.toContain(t("pane.loot"));
+    expect(screen.queryByText(t("loot.title"))).toBeNull();
   });
 });
 

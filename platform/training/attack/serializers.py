@@ -55,6 +55,7 @@ class AttackState(serializers.Serializer):
     objectives = ObjectiveLine(many=True)
     origins = OriginLine(many=True)
     remaining = Remaining()
+    takes_loot = serializers.BooleanField()
 
 
 class CaseEntry(serializers.Serializer):

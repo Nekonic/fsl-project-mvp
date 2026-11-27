@@ -74,5 +74,6 @@ export const fixtures = [
       { id: "ar-1", label: "AR", ip: "181.8.0.10", spent_at: minutesFromNow(-2), spent_by: "limit_req" },
     ],
     remaining: spentAll,
+    takes_loot: true,
   }), { variant: "spent" }),
 ];

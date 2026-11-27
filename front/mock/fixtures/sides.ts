@@ -29,6 +29,7 @@ export const fixtures = [
       { id: "ar-1", label: "AR", ip: "181.8.0.10", spent_at: null, spent_by: "" },
     ],
     remaining,
+    takes_loot: true,
   })),
   reply("get", "/api/rounds/{round_id}/defence/state/", (asked) => ({
     ...roundState(Number(asked.params.round_id)),

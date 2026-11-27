@@ -2845,6 +2845,8 @@ components:
             $ref: '#/components/schemas/OriginLine'
         remaining:
           $ref: '#/components/schemas/Remaining'
+        takes_loot:
+          type: boolean
       required:
       - brief
       - end_reason
@@ -2856,6 +2858,7 @@ components:
       - remaining
       - round
       - started
+      - takes_loot
       - target
     AttackTarget:
       type: object

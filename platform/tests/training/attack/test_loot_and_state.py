@@ -3,8 +3,10 @@ import json
 import pytest
 
 from scoring import baseline as referee
+from tests import rounds
 from tests.scoring.targets import TRUTH, board_target
 from tests.training.attack.conftest import url
+from training.attack import actions
 
 pytestmark = pytest.mark.django_db
 
@@ -37,6 +39,11 @@ def test_wrong_loot_loses_nothing(as_attacker, looted_round):
                               format="json")
 
     assert answer.json()["lost"] is False and answer.json()["objective"] is None
+
+
+def test_the_state_says_whether_the_wargame_takes_loot(as_attacker, looted_round):
+    assert as_attacker.get(url(looted_round, "state/")).json()["takes_loot"] is True
+    assert actions.state(rounds.opened(rounds.problem("corp"))).takes_loot is False
 
 
 def test_the_state_names_the_brief_the_target_the_objectives_and_every_origin(as_attacker, looted_round):
