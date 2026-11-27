@@ -43,3 +43,11 @@ def test_every_attack_case_names_what_its_alert_must_mention_and_every_case_name
         "a true positive is corroborated only against the case's expect")
     assert [case["name"] for case in cases if not case["malicious"] and "expect" in case] == []
     assert sorted(name for name in set(names) if names.count(name) > 1) == []
+
+
+def test_every_case_carries_a_korean_title_for_the_learner():
+    cases = [case for path in sorted(CASES_DIR.glob("*.yaml"))
+             for case in yaml.safe_load(path.read_text(encoding="utf-8")) or []]
+
+    assert [case["name"] for case in cases
+            if not re.search("[가-힣]", str(case.get("title") or ""))] == []

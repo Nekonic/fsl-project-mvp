@@ -18,6 +18,7 @@ def test_the_case_list_holds_the_declared_attack_cases_only(as_attacker, attacke
     assert all(case["malicious"] is True for case in listed)
     assert not any(name.startswith("board-normal") for name in names)
     assert all(set(case) == {"case", "kind", "malicious", "title"} for case in listed)
+    assert names["board-sqli-search"]["title"] == "검색창 SQL 인젝션"
     assert "expect" not in json.dumps(listed)
 
 

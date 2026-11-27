@@ -1,4 +1,5 @@
 - name: corp-normal-home
+  title: "메인 페이지 접속"
   malicious: false
   correlation: marker
   request:
@@ -6,6 +7,7 @@
     path: /
 
 - name: corp-normal-registration-page
+  title: "회원가입 페이지 조회"
   malicious: false
   correlation: marker
   request:
@@ -15,6 +17,7 @@
       action: register
 
 - name: corp-normal-search
+  title: "사이트 내 검색"
   malicious: false
   correlation: marker
   request:
@@ -24,6 +27,7 @@
       s: "quarterly report"
 
 - name: corp-normal-registration
+  title: "일반 회원가입"
   malicious: false
   correlation: marker
   request:
@@ -45,6 +49,7 @@
       "confirm_user_password-4": "Welcome-2026-aA"
 
 - name: corp-rogue-admin
+  title: "회원가입 요청에 관리자 권한을 끼워 넣는 권한 상승"
   malicious: true
   stage: escalate-privileges
   technique: T1068
@@ -71,6 +76,7 @@
       "wp_càpabilities[administrator]": "1"
 
 - name: corp-option-flip
+  title: "플러그인 취약점으로 회원가입 허용 옵션 변경"
   malicious: true
   stage: escalate-privileges
   technique: T1190
@@ -90,6 +96,7 @@
       data: '{"type":"save_setting","append":false,"option":"users_can_register","value":"1"}'
 
 - name: corp-content-write
+  title: "인증 없이 남의 게시글 덮어쓰기"
   malicious: true
   stage: complete-mission
   technique: T1565

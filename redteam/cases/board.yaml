@@ -21,6 +21,7 @@
 
 # -- attacks ---------------------------------------------------------------
 - name: board-sqli-search
+  title: "검색창 SQL 인젝션"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -34,6 +35,7 @@
       q: "' OR 1=1--"
 
 - name: board-sqli-login-bypass
+  title: "SQL 인젝션 로그인 우회"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -48,6 +50,7 @@
       password: "anything"
 
 - name: board-sqli-union-search
+  title: "검색창 UNION SQL 인젝션으로 계정 테이블 조회"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -61,6 +64,7 @@
       q: "x' UNION SELECT username,password,3 FROM auth_user--"
 
 - name: board-sqli-orderby-sqlmap
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 계정 덤프"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -76,6 +80,7 @@
 # The first sqlmap run as a learner types it: the injection test
 # alone, sqlmap's own User-Agent, no dump. CRS 913100 names the scanner.
 - name: board-sqli-orderby-sqlmap-probe
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 취약점 점검"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -89,6 +94,7 @@
 # The same test with a browser User-Agent: 913100 no longer names the scanner,
 # and the payloads are the same, so the 942 rules still decide.
 - name: board-sqli-orderby-sqlmap-random-agent
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 점검, User-Agent 위장"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -103,6 +109,7 @@
 # --skip-waf so sqlmap sends no WAF-detection probe of its own, which would
 # trip the XSS and traversal signatures that still cover other parameters.
 - name: board-sqli-orderby-sqlmap-skip-waf
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 덤프, WAF 탐지 생략"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -124,6 +131,7 @@
 # drops the connection, and sqlmap ended "unable to connect" with one request
 # sent (4 of 10 runs at PL2 on OpenStack, 2026-10-13; 0 of 6 with the flag).
 - name: board-sqli-orderby-sqlmap-tamper
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 덤프, tamper 스크립트 우회"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -142,6 +150,7 @@
 # spaces turned into comments. Held at paranoia level 1 (2026-10-13); it is
 # the unseen variant of the unknown attack.
 - name: board-sqli-orderby-sqlmap-versioned
+  title: "정렬 파라미터 SQL 인젝션: sqlmap 덤프, MySQL 버전 주석 우회"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -156,6 +165,7 @@
          "--dump", "--batch", "--answers=crack=N", "--flush-session"]
 
 - name: board-xss-script-tag-in-search
+  title: "검색창 반사형 XSS (script 태그)"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -169,6 +179,7 @@
       q: "<script>alert(1)</script>"
 
 - name: board-xss-img-onerror-in-comment
+  title: "댓글 저장형 XSS (img onerror)"
   malicious: true
   stage: initial-compromise
   technique: T1190
@@ -190,6 +201,7 @@
       body: "<img src=x onerror=alert(1)>"
 
 - name: board-path-traversal-static
+  title: "정적 파일 경로 디렉터리 트래버설 (/etc/passwd)"
   malicious: true
   stage: complete-mission
   technique: T1190
@@ -202,6 +214,7 @@
 
 # -- benign ----------------------------------------------------------------
 - name: board-normal-search
+  title: "일반 검색"
   malicious: false
   correlation: marker
   request:
@@ -211,6 +224,7 @@
       q: "release notes"
 
 - name: board-normal-search-with-apostrophe
+  title: "작은따옴표가 들어간 일반 검색"
   malicious: false
   correlation: marker
   request:
@@ -220,6 +234,7 @@
       q: "O'Brien"
 
 - name: board-normal-post-list
+  title: "게시글 목록 조회"
   malicious: false
   correlation: marker
   request:
@@ -227,6 +242,7 @@
     path: /
 
 - name: board-normal-sort
+  title: "게시글 목록 정렬"
   malicious: false
   correlation: marker
   request:
@@ -239,6 +255,7 @@
 # paranoia level 3 (920272 and 942460, measured 2026-10-13); levels 1 and 2
 # serve it.
 - name: board-normal-search-korean
+  title: "한글 검색"
   malicious: false
   correlation: marker
   request:
@@ -253,6 +270,7 @@
 # csrftoken cookie and the form's csrfmiddlewaretoken, form-encoded, so the
 # board stores the comment instead of refusing it 403.
 - name: board-normal-comment
+  title: "일반 댓글 작성"
   malicious: false
   correlation: marker
   request:
