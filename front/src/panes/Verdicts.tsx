@@ -25,7 +25,7 @@ export function judgedCase(event: RoundEvent): JudgedCase {
   return {
     id: event.id,
     action: String(body.action ?? ""),
-    caseName: String(body.case ?? ""),
+    caseName: typeof body.title === "string" && body.title ? body.title : String(body.case ?? ""),
     verdict: String(body.verdict ?? ""),
     alerts: Number(body.alerts ?? 0),
     corroborated: typeof body.corroborated === "boolean" ? body.corroborated : null,

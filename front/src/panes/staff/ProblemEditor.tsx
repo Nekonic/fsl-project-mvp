@@ -3,7 +3,7 @@ import { api, ApiError } from "../../api/client";
 import { useAction, useResource } from "../../api/hooks";
 import { errorLine, errorText, t, type ShownError } from "../../strings";
 import { Button, ErrorList, ErrorNotice, Field, FormGrid, Input, Loading, Select, Stack, Switch, Text, TextArea, type Option, Chips, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, PublishRow } from "../../ui";
-import { usePostures, useWargames, wargameLabel } from "./catalog";
+import { objectiveNamesOf, usePostures, useWargames, wargameLabel } from "./catalog";
 import { asShownErrors, blankDraft, built, downloadJson, draftOf, postureInline, SIDES, textUnder, type Draft } from "./document";
 import { BaselinePanel } from "./BaselinePanel";
 import { RoundSetupEditor } from "./RoundSetupEditor";
@@ -48,6 +48,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
   if (!draft) return <Loading>{t("common.loading")}</Loading>;
 
   const revision = stored.data?.problem.revision;
+  const chosenWargame = wargames.find((wargame) => wargame.id === draft.problem.wargame);
   const change = (patch: Partial<Draft>) => {
     setDraft({ ...draft, ...patch });
     setChecked(false);
@@ -179,7 +180,7 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
 
         <EditorSection>
           <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions}
-            steps={steps.data ?? []} cards={wargames.find((wargame) => wargame.id === draft.problem.wargame)?.cards ?? []} />
+            steps={steps.data ?? []} cards={chosenWargame?.cards ?? []} objectiveNames={objectiveNamesOf(chosenWargame)} />
           <BaselinePanel problemId={problemId} saved={stored.data?.round} />
           {publish}
         </EditorSection>

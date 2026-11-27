@@ -38,6 +38,7 @@ export interface CallInit<P extends keyof paths, M extends Method> {
   query?: Partial<QueryOf<P, M>>;
   body?: BodyOf<P, M>;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 export class ApiError extends Error {
@@ -66,6 +67,7 @@ export class ApiError extends Error {
 }
 
 export const REQUEST_TIMEOUT_MS = 90_000;
+export const RULE_TEST_TIMEOUT_MS = 5 * 60_000;
 export const CSRF_COOKIE = "cr_csrf";
 export const CSRF_HEADER = "X-CSRFToken";
 
@@ -133,12 +135,12 @@ function bodyOf(text: string, status: number): unknown {
   }
 }
 
-async function send(method: Method, url: string, body: unknown, signal: AbortSignal | undefined, renewed: boolean): Promise<unknown> {
+async function send(method: Method, url: string, body: unknown, signal: AbortSignal | undefined, renewed: boolean, timeoutMs = REQUEST_TIMEOUT_MS): Promise<unknown> {
   if (signal?.aborted) throw abortedError();
   const writes = method !== "get";
   if (writes && !cookie(CSRF_COOKIE)) await renewCsrf();
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => timeout.abort(), timeoutMs);
   const aborted = () => timeout.abort();
   signal?.addEventListener("abort", aborted);
   let error: ApiError;
@@ -166,14 +168,14 @@ async function send(method: Method, url: string, body: unknown, signal: AbortSig
   }
   if (writes && !renewed && error.has("csrf_failed")) {
     await renewCsrf();
-    return send(method, url, body, signal, true);
+    return send(method, url, body, signal, true, timeoutMs);
   }
   if (error.has("not_signed_in")) signedOutListeners.forEach((listener) => listener());
   throw error;
 }
 
 export function call<M extends Method, P extends PathsWith<M>>(method: M, path: P, init: CallInit<P, M> = {}): Promise<Ok<P, M>> {
-  return send(method, urlOf(path, init.params, init.query), init.body, init.signal, false) as Promise<Ok<P, M>>;
+  return send(method, urlOf(path, init.params, init.query), init.body, init.signal, false, init.timeoutMs) as Promise<Ok<P, M>>;
 }
 
 export const api = {

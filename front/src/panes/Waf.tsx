@@ -1,5 +1,5 @@
 import { useEffect, useState } from "preact/hooks";
-import { api, type Schemas } from "../api/client";
+import { api, RULE_TEST_TIMEOUT_MS, type Schemas } from "../api/client";
 import { useResource } from "../api/hooks";
 import { clock } from "../format";
 import { t, tFor } from "../strings";
@@ -20,6 +20,31 @@ function contentOf(files: Record<string, string>): string {
 
 function changedOf(draft: Record<string, string>, live: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(draft).filter(([path, text]) => live[path] !== text));
+}
+
+function draftKey(round: number): string {
+  return `cr.waf_draft.${round}`;
+}
+
+export function keepDraft(round: number, base: number, changed: Record<string, string>): void {
+  try {
+    if (Object.keys(changed).length) localStorage.setItem(draftKey(round), JSON.stringify({ base, files: changed }));
+    else localStorage.removeItem(draftKey(round));
+  } catch {
+    return;
+  }
+}
+
+export function keptDraft(round: number, base: number, live: Record<string, string>): Record<string, string> {
+  try {
+    const held = JSON.parse(localStorage.getItem(draftKey(round)) ?? "null") as { base?: unknown; files?: unknown } | null;
+    if (!held || held.base !== base || typeof held.files !== "object" || held.files === null) return live;
+    const files = Object.entries(held.files as Record<string, unknown>)
+      .filter((entry): entry is [string, string] => entry[0] in live && typeof entry[1] === "string");
+    return { ...live, ...Object.fromEntries(files) };
+  } catch {
+    return live;
+  }
 }
 
 function StoredVersion({ round, version }: { round: number; version: number }) {
@@ -52,7 +77,7 @@ export function Waf({ round }: PaneProps) {
 
   useEffect(() => {
     if (!read.data) return;
-    setDraft(asMap(read.data.files));
+    setDraft(keptDraft(round, read.data.version, asMap(read.data.files)));
     setBase(read.data.version);
     setPath((was) => was || read.data?.files[0]?.path || "");
   }, [read.data]);
@@ -63,12 +88,13 @@ export function Waf({ round }: PaneProps) {
   const calls: BenchCalls = {
     check: () => api.post("/api/rounds/{round_id}/defence/waf/check/", { params: { round_id: round }, body: { files: changed } }),
     test: async () => {
-      const said = await api.post("/api/rounds/{round_id}/defence/waf/test/", { params: { round_id: round }, body: { files: changed } });
+      const said = await api.post("/api/rounds/{round_id}/defence/waf/test/", { params: { round_id: round }, body: { files: changed }, timeoutMs: RULE_TEST_TIMEOUT_MS });
       if (said.ok && content !== null) rememberTest(round, "waf", content, said.test);
       return said;
     },
     apply: async (tested) => {
       const said = await api.post("/api/rounds/{round_id}/defence/waf/apply/", { params: { round_id: round }, body: { files: changed, base_version: base, tested } });
+      keepDraft(round, said.version, {});
       setBase(said.version);
       versions.reload();
       read.reload();
@@ -102,7 +128,11 @@ export function Waf({ round }: PaneProps) {
           <Select mono value={path} options={fileOptions} label={t("waf.file")} onValue={setPath} />
           <Text tone="muted" small mono>{path}</Text>
           <CodeEditor minLines={12} value={draft[path] ?? ""} badLines={badLines} label={fileName(path)}
-            onValue={(text) => setDraft({ ...draft, [path]: text })} />
+            onValue={(text) => {
+              const edited = { ...draft, [path]: text };
+              setDraft(edited);
+              keepDraft(round, base, changedOf(edited, live));
+            }} />
           {Object.keys(changed).length > 0 && !bench.applicable && <Text tone="muted" small>{t("rules.apply_needs_test")}</Text>}
           <Text tone="muted" small>{t("waf.terminal_note")}</Text>
         </PaneSection>

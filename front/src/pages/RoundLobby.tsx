@@ -6,6 +6,7 @@ import { to } from "../links";
 import type { PageProps } from "../routes";
 import { navigate } from "../router";
 import { AppPage } from "../shell/AppPage";
+import { botRunText } from "../botRun";
 import { clock } from "../format";
 import { fieldErrors, t, tFor } from "../strings";
 import {
@@ -60,7 +61,7 @@ function PlayerCell({ line, side, seated, joining, onJoin }: PlayerCellProps) {
       <Stack gap="sm">
         <Text strong tone="heading">{player.step ? t("lobby.player.step", { step: tFor("bot_step", player.step) }) : t("lobby.player.bot")}</Text>
         {!player.step && <Text mono small tone="muted">{player.bot_name}</Text>}
-        {player.bot_run && <Text small tone="muted">{tFor("bot_run", player.bot_run)}</Text>}
+        {player.bot_run && <Text small tone="muted">{botRunText(player)}</Text>}
       </Stack>
     );
   }

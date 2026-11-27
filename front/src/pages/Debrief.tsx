@@ -1,5 +1,6 @@
 import type { Schemas } from "../api/client";
 import { useResource } from "../api/hooks";
+import { withStoppedEarly } from "../botRun";
 import { clockSeconds, count } from "../format";
 import { to } from "../links";
 import { ScoreReport } from "../panes/Score";
@@ -24,6 +25,7 @@ export interface BotLine {
   turns: number | null;
   refusals: number;
   closing: string;
+  stopped_early?: boolean | null;
 }
 
 export interface TimelineRow {
@@ -60,6 +62,7 @@ function paramsOf(row: TimelineRow, marks: ObjectiveMark[]): StringParams {
     if (typeof value === "string" || typeof value === "number") params[field] = value;
   }
   for (const field of ["origin", "case", "ip", "tool", "exit_code", "signature", "command", "name", "version"]) params[field] = text(row, field);
+  if (typeof row.case === "string" && typeof row.title === "string" && row.title) params.case = row.title;
   if ("engine" in row) params.engine = engineOf(row);
   if (row.kind === "rule.tested") params.result = t(row.passed ? "debrief.test.passed" : "debrief.test.failed");
   if (row.kind === "case.judged") params.verdict = tFor("verdict", text(row, "verdict"));
@@ -109,7 +112,7 @@ function Bots({ bots }: { bots: BotLine[] }) {
     { key: "side", label: t("debrief.col.side"), kind: "nowrap", cell: (bot) => tFor("side", bot.side) },
     { key: "step", label: t("debrief.col.step"), kind: "nowrap", cell: (bot) => stepName(bot.step) },
     { key: "model", label: t("debrief.col.model"), kind: "mono", cell: (bot) => bot.model },
-    { key: "exit", label: t("debrief.col.exit"), kind: "nowrap", cell: (bot) => (bot.exit ? tFor("bot_exit", bot.exit) : tFor("bot_run", bot.status)) },
+    { key: "exit", label: t("debrief.col.exit"), kind: "nowrap", cell: (bot) => withStoppedEarly(bot, bot.exit ? tFor("bot_exit", bot.exit) : tFor("bot_run", bot.status)) },
     { key: "cost", label: t("debrief.col.cost"), kind: "num", cell: (bot) => (bot.cost_usd === null ? "—" : t("debrief.cost", { cost: bot.cost_usd.toFixed(2) })) },
     { key: "turns", label: t("debrief.col.turns"), kind: "num", cell: (bot) => (bot.turns === null ? "—" : count(bot.turns)) },
     { key: "refusals", label: t("debrief.col.refusals"), kind: "num", cell: (bot) => count(bot.refusals) },
