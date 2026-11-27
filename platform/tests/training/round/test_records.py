@@ -4,7 +4,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from tests.training.round.conftest import bot_round
+from tests.training.round.conftest import bot_round, pvp
 from training.models import BotBaseline, Round, RoundRecord
 from training.round import allocation as allocations
 from training.round import lifecycle as service
@@ -61,3 +61,12 @@ def test_records_older_than_90_days_are_pruned_and_a_current_baselines_percentil
 
     assert list(RoundRecord.objects.values_list("round_number", flat=True)) == [2]
     assert records.standing_of(mine) == {"baseline": held.pk, "step": "1", "n": 4, "top_percent": 37.5}
+
+
+def test_a_pvp_record_names_its_wargame_and_no_problem(as_learner, allocation, learner, other):
+    found = service.start_round(pvp(allocation, other, learner))
+    service.end_round(found, "ended_by_operator")
+    kept = records.keep(Round.objects.get(pk=found.pk))
+
+    [line] = as_learner.get("/api/records/").json()
+    assert kept.problem is None and (line["wargame"], line["problem"], line["problem_title"]) == ("board", None, None)

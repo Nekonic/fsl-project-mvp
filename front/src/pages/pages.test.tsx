@@ -6,6 +6,7 @@ import { t, tFor } from "../strings";
 import { DebriefReport, rowText } from "./Debrief";
 import { safeNext } from "./Login";
 import { RoundLobby } from "./RoundLobby";
+import { wargameName } from "./wargameText";
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -86,16 +87,43 @@ describe("RoundLobby rounds", () => {
   }
 
   it("names an unpublished problem by the title on the round line and offers no second seat to a seated player", async () => {
-    lobbyWith([{ round: 70, problem: 9, problem_title: "Draft problem", kind: "round", matchup: "pvp", phase: "created", players: [human("attack", null), human("defence", "learner-one")] }]);
+    lobbyWith([{ round: 70, wargame: "board", problem: 9, problem_title: "Draft problem", kind: "round", matchup: "atk_vs_bot", phase: "created", players: [human("attack", null), human("defence", "learner-one")] }]);
     expect(await screen.findByText("Draft problem")).toBeTruthy();
     expect(screen.queryByText(t("player.join"))).toBeNull();
   });
 
+  it("names a pvp round by its wargame", async () => {
+    lobbyWith([{ round: 73, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "created", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
+    expect(await screen.findByText(wargameName("board"))).toBeTruthy();
+  });
+
   it("links a running round to the console of the player's own seat", async () => {
-    lobbyWith([{ round: 71, problem: 9, problem_title: "Draft problem", kind: "round", matchup: "pvp", phase: "running", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
+    lobbyWith([{ round: 71, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "running", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
     const link = (await screen.findByText(t("page.defence"))).closest("a");
     expect(link?.getAttribute("href")).toBe("/rounds/71/defence");
     expect(screen.queryByText(t("page.attack"))).toBeNull();
+  });
+});
+
+describe("RoundLobby create", () => {
+  it("opens a pvp round from the wargame with no problem", async () => {
+    const posted: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/events/")) return json({ events: [], next: 0 });
+      if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
+      if (url.endsWith("/rounds/") && init?.method === "POST") {
+        posted.push(JSON.parse(String(init.body)));
+        return new Response(JSON.stringify({ round: 80, players: [], bot_tokens: {} }), { status: 201, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return json([]);
+      return json({ allocation: 65, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [] });
+    }));
+    render(<RoundLobby params={{ allocation: "65" }} />);
+    const submit = (await screen.findByText(t("lobby.create_submit"))).closest("button");
+    await vi.waitFor(() => expect(submit?.disabled).toBe(false));
+    submit?.click();
+    await vi.waitFor(() => expect(posted).toEqual([{ matchup: "pvp", players: { attack: { open: true }, defence: { open: true } } }]));
   });
 });
 

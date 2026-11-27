@@ -36,7 +36,7 @@ from training.content import problems as content
 from training.defence import kibana_gate
 from training.defence import rules as defence
 from training.defence import terminal as defence_terminal
-from training.models import Allocation, BotBaseline, Round, Player
+from training.models import Allocation, BotBaseline, Problem, Round, Player
 from training.round import access as auth
 from training.round import bots as bot_runs
 from training.round import site
@@ -116,14 +116,25 @@ def refuse_closed_bot_rounds(players: dict[str, dict], by) -> None:
         raise errors.NotAPlayer(code="bot_rounds_closed", path=f"players.{launched[0]}.bot")
 
 
-def create_round(held: Allocation, problem_id: int, matchup: str, players: dict[str, dict], by=None,
-                 baseline: BotBaseline | None = None) -> Created:
-    if held.closed is not None:
-        raise errors.Conflict(code="allocation_closed")
+def problem_of(held: Allocation, problem_id: int | None, matchup: str) -> Problem | None:
+    if not round_rules.plays_a_problem(matchup):
+        if problem_id is not None:
+            raise errors.Invalid(code="problem_not_allowed", path="problem")
+        return None
+    if problem_id is None:
+        raise errors.Invalid(code="required", path="problem")
     problem = content.problem(problem_id)
     if problem.wargame_id != held.wargame_id or problem.kind != ROUND:
         raise errors.Invalid(code="invalid_choice", path="problem")
-    setup = content.snapshot(problem).get("round") or {}
+    return problem
+
+
+def create_round(held: Allocation, problem_id: int | None, matchup: str, players: dict[str, dict], by=None,
+                 baseline: BotBaseline | None = None) -> Created:
+    if held.closed is not None:
+        raise errors.Conflict(code="allocation_closed")
+    problem = problem_of(held, problem_id, matchup)
+    setup = content.round_snapshot(problem, held.wargame_id).get("round") or {}
     if baseline is None and matchup not in (setup.get("matchups") or []):
         raise errors.Invalid(code="matchup_not_allowed", path="matchup")
     if baseline is None:
@@ -218,7 +229,7 @@ def start_round(found: Round) -> Round:
     if not Round.objects.filter(pk=found.pk, phase=CREATED).update(phase=STARTING):
         raise errors.Conflict(code="round_started")
     try:
-        frozen = content.snapshot(found.problem)
+        frozen = content.round_snapshot(found.problem, found.allocation.wargame_id)
         begun = timezone.now()
         limit = (frozen.get("round") or {}).get("time_limit_s")
         found.snapshot, found.phase, found.started = frozen, STARTING, begun

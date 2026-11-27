@@ -7,7 +7,7 @@ WAF_FILES = {"/etc/nginx/modsecurity/crs/crs-setup.conf": "SecDefaultAction \"ph
 ROUND = {
     "problem": {"kind": "round", "wargame": "board", "side": "defence", "title": "Placeholder round",
                 "summary": "Placeholder summary", "body": "Placeholder body", "published": False},
-    "round": {"matchups": ["pvp", "def_vs_bot"], "posture": "placeholder start", "probe_cases": [],
+    "round": {"matchups": ["def_vs_bot"], "posture": "placeholder start", "probe_cases": [],
               "objectives": ["board-auth-user-admin"], "traffic": None, "benign_every_s": 30,
               "time_limit_s": 900, "bot_steps": [], "cards": []},
     "start_posture": {"name": "placeholder start", "suricata_rules": "", "waf_files": WAF_FILES},

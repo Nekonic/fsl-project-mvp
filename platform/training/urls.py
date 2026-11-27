@@ -11,6 +11,7 @@ ATTACK = "rounds/<int:round_id>/attack/"
 DEFENCE = "rounds/<int:round_id>/defence/"
 
 content_urls = [
+    path("wargames/", content.LearnerWargames.as_view()),
     path("problems/", content.Problems.as_view()),
     path("problems/<int:problem_id>/", content.OneProblem.as_view()),
     path("staff/problems/", content.StaffProblems.as_view()),

@@ -2632,6 +2632,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Errors'
+  /api/wargames/:
+    get:
+      operationId: wargames
+      tags:
+      - catalog
+      security:
+      - cr_session: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LearnerWargame'
+          description: ''
+        default:
+          description: refused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Errors'
 components:
   schemas:
     Account:
@@ -3239,6 +3261,7 @@ components:
       properties:
         problem:
           type: integer
+          nullable: true
         matchup:
           $ref: '#/components/schemas/MatchupEnum'
         players:
@@ -3246,7 +3269,6 @@ components:
       required:
       - matchup
       - players
-      - problem
     Created:
       type: object
       properties:
@@ -3732,6 +3754,16 @@ components:
       - summary
       - title
       - wargame
+    LearnerWargame:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+      required:
+      - id
+      - title
     LootRequest:
       type: object
       properties:
@@ -3809,12 +3841,10 @@ components:
         * `bot_vs_bot` - bot_vs_bot
     MatchupsEnum:
       enum:
-      - pvp
       - def_vs_bot
       - atk_vs_bot
       type: string
       description: |-
-        * `pvp` - pvp
         * `def_vs_bot` - def_vs_bot
         * `atk_vs_bot` - atk_vs_bot
     Me:
@@ -4332,6 +4362,9 @@ components:
           type: integer
         round_number:
           type: integer
+        wargame:
+          type: string
+          nullable: true
         problem:
           type: integer
           nullable: true
@@ -4377,6 +4410,7 @@ components:
       - standing
       - started
       - steps
+      - wargame
     RecordShown:
       type: object
       properties:
@@ -4384,6 +4418,9 @@ components:
           type: integer
         round_number:
           type: integer
+        wargame:
+          type: string
+          nullable: true
         problem:
           type: integer
           nullable: true
@@ -4439,6 +4476,7 @@ components:
       - standing
       - started
       - steps
+      - wargame
     Refill:
       type: object
       properties:
@@ -4492,10 +4530,14 @@ components:
       properties:
         round:
           type: integer
+        wargame:
+          type: string
         problem:
           type: integer
+          nullable: true
         problem_title:
           type: string
+          nullable: true
         kind:
           type: string
         matchup:
@@ -4514,6 +4556,7 @@ components:
       - problem
       - problem_title
       - round
+      - wargame
     RoundPhaseEnum:
       enum:
       - created
@@ -4611,8 +4654,11 @@ components:
           type: integer
         allocation:
           type: integer
+        wargame:
+          type: string
         problem:
           type: integer
+          nullable: true
         kind:
           type: string
         matchup:
@@ -4649,6 +4695,7 @@ components:
       - problem
       - round
       - started
+      - wargame
     RuleCheck:
       type: object
       properties:
@@ -5740,6 +5787,7 @@ components:
       - player_taken
       - players_open
       - probe_running
+      - problem_not_allowed
       - range_drifted
       - range_not_cloud
       - range_unavailable

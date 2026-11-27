@@ -13,7 +13,7 @@ ROUND = "/api/rounds/{round_id}/"
 SIDES = ("attack", "defence")
 SHARED = {
     ROUND: {"allocation", "end_reason", "ended", "ends_at", "kind", "matchup", "phase", "players", "problem", "round",
-            "started"},
+            "started", "wargame"},
     f"{ROUND}events/": {"events", "next"},
     f"{ROUND}score/": {"errors"},
     f"{ROUND}debrief/": {"errors"},
@@ -54,7 +54,7 @@ def defender(make_user):
 
 @pytest.fixture
 def running(allocation, problem, other, defender):
-    return service.start_round(pvp(allocation, problem, other, defender))
+    return service.start_round(pvp(allocation, other, defender))
 
 
 @pytest.fixture

@@ -13,7 +13,7 @@ from django.db.models import F, ProtectedError
 
 from cr import errors
 from domain.problems import validate_problem
-from domain.round_rules import bot_sides, human_side
+from domain.round_rules import Matchup, bot_sides, human_side
 from sandbox.crs import editable, refusals
 from training.content import bots, catalog
 from training.models import BotBaseline, Posture, ProbeSet, Problem, RoundSetup, Wargame
@@ -286,6 +286,23 @@ def delete_problem(problem_id: int) -> None:
         raise errors.Conflict(code="in_use") from refused
 
 
+def wargame_part(declared: catalog.Wargame) -> dict[str, Any]:
+    return {"id": declared.id, "title": declared.title, "image": declared.image,
+            "public_url": declared.public_url, "hosts": list(declared.hosts),
+            "objective_model": declared.objective_model, "case_file": declared.case_file,
+            "secret": declared.secret}
+
+
+def objectives_part(declared: catalog.Wargame, chosen: set[str] | None) -> list[dict[str, Any]]:
+    return [{"key": tier.key, "name": tier.name, "category": tier.category, "difficulty": tier.difficulty,
+             "rule": tier.rule}
+            for tier in declared.objectives if chosen is None or tier.key in chosen]
+
+
+def declared_round_part(declared: catalog.Wargame) -> dict[str, Any]:
+    return {"benign_cases": list(declared.benign_cases), "limit_floor_rpm": declared.limit_floor_rpm}
+
+
 def snapshot(found: Problem) -> dict[str, Any]:
     declared = catalog.read(source(), found.wargame_id)
     setup = setup_of(found)
@@ -293,14 +310,9 @@ def snapshot(found: Problem) -> dict[str, Any]:
     frozen = {
         "problem": {"id": found.pk, "kind": found.kind, "side": found.side, "title": found.title,
                     "summary": found.summary, "body": found.body, "revision": found.revision},
-        "wargame": {"id": declared.id, "title": declared.title, "image": declared.image,
-                    "public_url": declared.public_url, "hosts": list(declared.hosts),
-                    "objective_model": declared.objective_model, "case_file": declared.case_file,
-                    "secret": declared.secret},
+        "wargame": wargame_part(declared),
         "start_posture": posture_document(found.start_posture),
-        "objectives": [{"key": tier.key, "name": tier.name, "category": tier.category, "difficulty": tier.difficulty,
-                        "rule": tier.rule}
-                       for tier in declared.objectives if chosen is None or tier.key in chosen],
+        "objectives": objectives_part(declared, chosen),
         "round": None,
     }
     if setup is not None:
@@ -308,10 +320,27 @@ def snapshot(found: Problem) -> dict[str, Any]:
             **setup_document(setup),
             "posture": posture_document(setup.posture or found.start_posture),
             "traffic": setup.traffic or declared.default_traffic,
-            "benign_cases": list(declared.benign_cases),
-            "limit_floor_rpm": declared.limit_floor_rpm,
+            **declared_round_part(declared),
         }
     return json.loads(json.dumps(frozen))
+
+
+def wargame_snapshot(wargame_id: str) -> dict[str, Any]:
+    declared = catalog.read(source(), wargame_id)
+    frozen = {
+        "problem": None,
+        "wargame": wargame_part(declared),
+        "start_posture": None,
+        "objectives": objectives_part(declared, None),
+        "round": {"matchups": [Matchup.PVP.value], "posture": None, "probe_cases": [], "objectives": [],
+                  "traffic": declared.default_traffic, "benign_every_s": DEFAULT_BENIGN_EVERY_S,
+                  "time_limit_s": None, "bot_steps": [], "cards": [], **declared_round_part(declared)},
+    }
+    return json.loads(json.dumps(frozen))
+
+
+def round_snapshot(found: Problem | None, wargame_id: str) -> dict[str, Any]:
+    return snapshot(found) if found is not None else wargame_snapshot(wargame_id)
 
 
 def postures():

@@ -18,6 +18,10 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 | `def_vs_bot` | AI 공격 봇 | 사람 |
 | `atk_vs_bot` | 사람 | AI 수비 봇 |
 
+`pvp`는 문제 없이 워게임에서 엽니다. 라운드 내용은 그 워게임의 목표와 케이스 전부이고, 시작 방어 설정은 슬롯에
+올라가 있는 그대로입니다. 문제는 봇 매치업(`def_vs_bot`, `atk_vs_bot`)에만 씁니다. 라운드를 만들 때 `pvp`에 문제를
+주면 `400 problem_not_allowed`, 봇 매치업에 문제가 없으면 `400 required`입니다.
+
 사람 콘솔과 봇은 같은 API를 씁니다. 공격 API(`/api/rounds/<id>/attack/`)와 방어 API(`/api/rounds/<id>/defence/`)가
 하나씩 있고, 봇은 사람과 같은 엔드포인트를 같은 권한으로 호출합니다. 터미널도 마찬가지입니다. 봇은 특정 모델에
 묶이지 않습니다. 지금은 Claude Code가 `bots/cli.py`로 봇 플레이어를 맡고, 다른 모델은 `bots/provider.py` 인터페이스로

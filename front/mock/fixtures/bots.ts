@@ -40,7 +40,7 @@ const debrief = {
 const standing = { baseline: 3, step: "2", n: 20, top_percent: 35 };
 
 const recordLine = (record: number, round: number, withStanding: boolean) => ({
-  record, round_number: round, problem: 7, problem_title: "Board wargame", matchup: "def_vs_bot", steps: { attack: "2" }, started: minutesFromNow(-90 - record),
+  record, round_number: round, wargame: "board", problem: 7, problem_title: "Board wargame", matchup: "def_vs_bot", steps: { attack: "2" }, started: minutesFromNow(-90 - record),
   ended: minutesFromNow(-60 - record), end_reason: "time_limit", incomplete: false, baseline: null, standing: withStanding ? standing : null,
 });
 

@@ -9,6 +9,7 @@ import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Button, ErrorNotice, Hero, Notice, PageBody } from "../ui";
 import { standingText } from "./Records";
+import { wargameName } from "./wargameText";
 
 const ROUND_EVENTS = ["round.ended"];
 
@@ -23,7 +24,7 @@ function useResultRound(round: number) {
   const allocationId = shown.data?.allocation;
   const allocation = useResource("/api/allocations/{allocation_id}/", allocationId ? { params: { allocation_id: allocationId } } : null);
   const ended = shown.data?.phase === "ended";
-  const records = useResource("/api/records/", ended && problemId ? { query: { problem: problemId } } : null);
+  const records = useResource("/api/records/", ended ? { query: problemId ? { problem: problemId } : {} } : null);
   const record = (records.data ?? []).find((line) => line.round_number === round);
   return { round: shown.data, problem: problem.data, allocation: allocation.data, record, error: shown.error };
 }
@@ -37,13 +38,14 @@ export function Result({ params }: PageProps) {
   const standing = standingText(record?.standing);
   const ended = shown?.phase === "ended";
   const span = shown?.started && shown.ended ? `${clock(shown.started)}–${clock(shown.ended)}` : "";
-  const lead = [problem?.title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
+  const title = problem?.title ?? (shown && shown.problem === null ? wargameName(shown.wargame) : undefined);
+  const lead = [title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
   const nextRound = allocation && !allocation.closed ? <Button tone="primary" href={to.allocation(allocation.allocation)}>{t("result.next_round")}</Button> : null;
 
   return (
     <AppPage
       title={t("page.result")}
-      crumbs={[...(problem ? [{ label: problem.title }] : []), { label: t("result.crumb") }]}
+      crumbs={[...(title ? [{ label: title }] : []), { label: t("result.crumb") }]}
     >
       {ended && (
         <Hero

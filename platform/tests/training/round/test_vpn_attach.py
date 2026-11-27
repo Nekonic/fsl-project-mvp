@@ -20,7 +20,7 @@ def test_the_profile_is_attached_only_to_the_human_attack_seat_at_start_and_deta
         cloud, allocation, problem, learner, other, monkeypatch, tmp_path, ending):
     monkeypatch.setenv("CR_VPN_DIR", str(tmp_path / "vpn"))
     attacker, defender = (vpn.issue(user, "192.0.2.10").profile for user in (other, learner))
-    found = pvp(allocation, problem, other, learner)
+    found = pvp(allocation, other, learner)
     box = cloud.in_slot(allocation.slot).box
 
     assert box.matching("set-peer") == []
@@ -43,6 +43,6 @@ def test_an_attached_profile_lists_only_its_round_s_wargame_target(cloud, alloca
                                                                    monkeypatch, tmp_path):
     monkeypatch.setenv("CR_VPN_DIR", str(tmp_path / "vpn"))
     attacker = vpn.issue(other, "192.0.2.10").profile
-    service.start_round(pvp(allocation, problem, other, learner))
+    service.start_round(pvp(allocation, other, learner))
 
     assert vpn.targets(VpnProfile.objects.get(pk=attacker.pk)) == (("board", "http://121.134.88.42/"),)

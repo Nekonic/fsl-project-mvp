@@ -18,7 +18,7 @@ def test_a_learner_lists_only_published_problems(stored, as_learner):
 
     assert as_learner.get("/api/problems/").json() == [
         {"id": shown, "kind": "round", "wargame": "board", "side": "defence", "title": "Placeholder round",
-         "summary": "Placeholder summary", "matchups": ["pvp", "def_vs_bot"], "bot_steps": []}]
+         "summary": "Placeholder summary", "matchups": ["def_vs_bot"], "bot_steps": []}]
 
 
 def test_a_learner_reads_a_published_problem_with_only_its_matchups_and_steps_from_the_setup(stored, as_learner):

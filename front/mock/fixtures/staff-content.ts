@@ -24,7 +24,7 @@ function wargameRound(id: number, wargame: string, title: string): Stored {
   return {
     problem: { id, kind: "round", wargame, side: "both", title, summary: "Placeholder summary for the match.", body: "", published: true, revision: 3, author: "staff-one", updated: UPDATED },
     round: {
-      matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], posture: "default",
+      matchups: ["def_vs_bot", "atk_vs_bot"], posture: "default",
       probe_cases: [`${wargame}-sqli-search`, `${wargame}-xss-script-tag-in-search`, `${wargame}-sqli-orderby-sqlmap-probe`, `${wargame}-path-traversal-static`, `${wargame}-normal-sort`],
       objectives: [`${wargame}-auth-user-partial`, `${wargame}-auth-user-admin`, `${wargame}-auth-user-full`],
       traffic: null, benign_every_s: 60, time_limit_s: 1800,

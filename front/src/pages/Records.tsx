@@ -8,6 +8,7 @@ import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Badge, Button, ErrorNotice, Hero, Loading, PageBody, Section, Stack, Table, Text, type Column } from "../ui";
 import { DebriefReport, stepsLine } from "./Debrief";
+import { wargameName } from "./wargameText";
 
 type RecordLine = Schemas["RecordLine"];
 type Standing = Schemas["Standing"];
@@ -18,8 +19,8 @@ export function standingText(standing: Standing | null | undefined): string {
   return standing ? t("result.standing", { n: standing.n, top: Math.round(standing.top_percent) }) : "";
 }
 
-function problemTitle(line: { problem_title: string | null }): string {
-  return line.problem_title ?? "—";
+function problemTitle(line: { problem_title: string | null; wargame: string | null }): string {
+  return line.problem_title ?? (line.wargame ? wargameName(line.wargame) : "—");
 }
 
 function endedAt(line: RecordLine): string {

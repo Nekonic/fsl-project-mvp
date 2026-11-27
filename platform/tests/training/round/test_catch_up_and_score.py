@@ -20,7 +20,10 @@ def read_due(found):
 
 @pytest.fixture
 def running(allocation, problem, learner, other):
-    found = service.start_round(pvp(allocation, problem, other, learner))
+    found = service.start_round(pvp(allocation, other, learner))
+    found.snapshot["round"].update(time_limit_s=900, benign_every_s=30)
+    found.ends_at = found.started + timedelta(seconds=900)
+    found.save(update_fields=["snapshot", "ends_at"])
     read_due(found)
     return found
 
@@ -134,7 +137,7 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
 def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, allocation, problem,
                                                                                    other, make_user, staff, side):
     defender = make_user("defender")
-    found = service.start_round(pvp(allocation, problem, other, defender))
+    found = service.start_round(pvp(allocation, other, defender))
     player = {"attack": other, "defence": defender}[side]
     browser.force_authenticate(player)
     refused(browser.get(url(found, "score/")), 409, "round_running")
@@ -151,7 +154,7 @@ def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correla
 
 
 def test_an_operator_who_plays_in_the_round_reads_its_score_only_after_the_end(browser, allocation, problem, other):
-    found = service.start_round(pvp(allocation, problem, allocation.opened_by, other))
+    found = service.start_round(pvp(allocation, allocation.opened_by, other))
     browser.force_authenticate(allocation.opened_by)
 
     refused(browser.get(url(found, "score/")), 409, "round_running")

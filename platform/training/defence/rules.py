@@ -64,7 +64,8 @@ def version_of(found: Round, engine: str) -> int:
 
 
 def state(found: Round) -> dict:
-    problem, wargame = found.snapshot.get("problem") or {}, found.snapshot.get("wargame") or {}
+    wargame = found.snapshot.get("wargame") or {}
+    problem = found.snapshot.get("problem") or {"title": wargame.get("title", "")}
     return {
         "round": found.pk, "matchup": found.matchup, "phase": found.phase, "started": found.started,
         "ends_at": found.ends_at, "end_reason": found.end_reason,

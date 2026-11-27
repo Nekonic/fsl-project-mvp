@@ -18,7 +18,7 @@ CATALOG = {
 ROUND = {
     "problem": {"kind": "round", "wargame": "board", "side": "defence", "title": "Hold the board",
                 "summary": "s", "body": "b", "published": False},
-    "round": {"matchups": ["def_vs_bot", "pvp"], "probe_cases": ["board-sqli"], "objectives": ["db-dump"],
+    "round": {"matchups": ["def_vs_bot"], "probe_cases": ["board-sqli"], "objectives": ["db-dump"],
               "benign_every_s": 30, "time_limit_s": None},
 }
 
@@ -50,7 +50,7 @@ def test_the_document_must_carry_a_problem():
     (lambda d: d["problem"].update(published="yes"), ("problem.published", "not_a_boolean")),
     (lambda d: d.pop("round"), ("round", "required")),
     (lambda d: d["round"].update(matchups=[]), ("round.matchups", "required")),
-    (lambda d: d["round"].update(matchups=["pvp", "atk_vs_bot"]), ("round.matchups[1]", "matchup_not_allowed")),
+    (lambda d: d["round"].update(matchups=["def_vs_bot", "atk_vs_bot"]), ("round.matchups[1]", "matchup_not_allowed")),
     (lambda d: d["round"].update(matchups=["solo"]), ("round.matchups[0]", "not_a_choice")),
     (lambda d: d["round"].update(probe_cases=["board-nope"]), ("round.probe_cases[0]", "unknown_case")),
     (lambda d: d["round"].update(probe_cases=["board-browse"]), ("round.probe_cases[0]", "not_malicious")),
@@ -64,14 +64,21 @@ def test_round_errors_come_back_by_path(edit, expected):
     assert errors(changed(ROUND, edit)) == [expected]
 
 
-def test_every_side_allows_pvp_and_only_its_own_bot_matchup():
+def test_every_side_allows_only_its_own_bot_matchup():
     attack = changed(ROUND, lambda d: d["problem"].update(side="attack"))
-    attack["round"]["matchups"] = ["pvp", "atk_vs_bot", "def_vs_bot"]
+    attack["round"]["matchups"] = ["atk_vs_bot", "def_vs_bot"]
     both = changed(ROUND, lambda d: d["problem"].update(side="both"))
-    both["round"]["matchups"] = ["pvp", "atk_vs_bot", "def_vs_bot"]
+    both["round"]["matchups"] = ["atk_vs_bot", "def_vs_bot"]
 
-    assert errors(attack) == [("round.matchups[2]", "matchup_not_allowed")]
+    assert errors(attack) == [("round.matchups[1]", "matchup_not_allowed")]
     assert errors(both) == []
+
+
+def test_no_side_takes_pvp_for_a_problem():
+    for side in ("attack", "defence", "both"):
+        doc = changed(ROUND, lambda d: (d["problem"].update(side=side), d["round"].update(matchups=["pvp"])))
+
+        assert errors(doc) == [("round.matchups[0]", "matchup_not_allowed")]
 
 
 def test_an_unknown_wargame_does_not_also_report_every_case():

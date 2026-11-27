@@ -35,9 +35,9 @@ PLAYERS = {
 }
 
 ALLOWED_MATCHUPS = {
-    Side.ATTACK: frozenset({Matchup.PVP, Matchup.ATK_VS_BOT}),
-    Side.DEFENCE: frozenset({Matchup.PVP, Matchup.DEF_VS_BOT}),
-    Side.BOTH: frozenset({Matchup.PVP, Matchup.DEF_VS_BOT, Matchup.ATK_VS_BOT}),
+    Side.ATTACK: frozenset({Matchup.ATK_VS_BOT}),
+    Side.DEFENCE: frozenset({Matchup.DEF_VS_BOT}),
+    Side.BOTH: frozenset({Matchup.DEF_VS_BOT, Matchup.ATK_VS_BOT}),
 }
 
 TIME_LIMIT = "time_limit"
@@ -51,6 +51,10 @@ END_REASONS = AUTOMATIC_REASONS + MANUAL_REASONS
 
 def bot_sides(matchup: str) -> tuple[str, ...]:
     return tuple(side.value for side, client in PLAYERS[Matchup(matchup)].items() if client == BOT)
+
+
+def plays_a_problem(matchup: str) -> bool:
+    return Matchup(matchup) != Matchup.PVP
 
 
 def human_side(matchup: str) -> str | None:

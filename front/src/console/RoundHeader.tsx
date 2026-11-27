@@ -8,6 +8,7 @@ import { t, tFor } from "../strings";
 import { Badge, Banner, Button, ErrorNotice, RoundBar } from "../ui";
 import { botRunText } from "../botRun";
 import { clock } from "../format";
+import { wargameName } from "../pages/wargameText";
 
 const FORFEIT_PATH = {
   attack: "/api/rounds/{round_id}/attack/forfeit/",
@@ -60,7 +61,8 @@ export function RoundHeader({ round, side }: RoundHeaderProps) {
   const forfeit = useAction("post", FORFEIT_PATH[side]);
   const [asking, setAsking] = useState(false);
   const ended = shown?.phase === "ended";
-  const what = [t("round.name", { round }), problem?.title, shown ? tFor("matchup", shown.matchup) : undefined].filter(Boolean).join(" · ");
+  const title = problem?.title ?? (shown && shown.problem === null ? wargameName(shown.wargame) : undefined);
+  const what = [t("round.name", { round }), title, shown ? tFor("matchup", shown.matchup) : undefined].filter(Boolean).join(" · ");
 
   const giveUp = async () => {
     if (!asking) {

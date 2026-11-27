@@ -2,7 +2,6 @@ import pytest
 
 import plays
 
-SETUP = plays.Setup(wargame="board", title="Acceptance pvp board", side="both", matchups=("pvp",))
 CONTROL = "board-sqli-search"
 
 
@@ -10,7 +9,7 @@ CONTROL = "board-sqli-search"
 def pvp_round(stack_is_up):
     username, defender = plays.human_account()
     try:
-        with plays.Round("board", SETUP, matchup="pvp", humans={"defence": (username, defender)}) as played:
+        with plays.Round("board", matchup="pvp", humans={"defence": (username, defender)}) as played:
             seen = {
                 "attack_reads_defence": plays.ask("defence_state", played.attack, round_id=played.round),
                 "defence_reads_attack": plays.ask("attack_state", played.defence, round_id=played.round),

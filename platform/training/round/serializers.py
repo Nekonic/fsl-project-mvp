@@ -36,8 +36,9 @@ class PlayerLine(serializers.Serializer):
 
 class RoundLine(serializers.Serializer):
     round = serializers.IntegerField(source="pk")
-    problem = serializers.IntegerField(source="problem_id")
-    problem_title = serializers.CharField(source="problem.title")
+    wargame = serializers.CharField(source="allocation.wargame_id")
+    problem = serializers.IntegerField(source="problem_id", allow_null=True)
+    problem_title = serializers.CharField(source="problem.title", allow_null=True)
     kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
@@ -98,7 +99,7 @@ class PlayersAsk(serializers.Serializer):
 
 
 class CreateRound(serializers.Serializer):
-    problem = serializers.IntegerField()
+    problem = serializers.IntegerField(required=False, allow_null=True, default=None)
     matchup = serializers.ChoiceField(choices=MATCHUPS)
     players = PlayersAsk()
 
@@ -131,7 +132,8 @@ class Ended(serializers.Serializer):
 class RoundShown(serializers.Serializer):
     round = serializers.IntegerField(source="pk")
     allocation = serializers.IntegerField(source="allocation_id")
-    problem = serializers.IntegerField(source="problem_id")
+    wargame = serializers.CharField(source="allocation.wargame_id")
+    problem = serializers.IntegerField(source="problem_id", allow_null=True)
     kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
@@ -411,6 +413,7 @@ class Standing(serializers.Serializer):
 class RecordLine(serializers.Serializer):
     record = serializers.IntegerField(source="pk")
     round_number = serializers.IntegerField()
+    wargame = serializers.CharField(source="wargame_id", allow_null=True)
     problem = serializers.IntegerField(source="problem_id", allow_null=True)
     problem_title = serializers.CharField(source="problem.title", allow_null=True)
     matchup = serializers.CharField()
