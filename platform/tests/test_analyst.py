@@ -250,4 +250,4 @@ def test_a_reload_refuses_a_snapshot_no_passed_test_lists_before_it_loads_it(rol
     staged = reload[reload.index("trap handed_back EXIT"):]
 
     assert staged.index(check) < staged.index(load)
-    assert "match no rule test that passed in this round" in reload
+    assert "테스트를 통과한" in reload and "반영하지 않았습니다" in reload

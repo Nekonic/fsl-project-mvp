@@ -16,7 +16,7 @@ measured() {
 
 refuse_measured() {
   if measured "$@"; then
-    echo "a defence file sets the platform's logging or includes another file; nothing was loaded" >&2
+    echo "플랫폼 로그 설정을 바꾸거나 다른 파일을 include하는 방어 파일이 있어 반영하지 않았습니다." >&2
     exit 1
   fi
 }
@@ -29,7 +29,7 @@ loaded_sha() {
 
 refuse_untested() {
   if ! grep -qxF "$(loaded_sha "$1")" "$PASSED" 2>/dev/null; then
-    echo "these files match no rule test that passed in this round; run the test in the console first; nothing was loaded" >&2
+    echo "이번 라운드에서 테스트를 통과한 파일과 다릅니다. 콘솔에서 먼저 테스트하세요. 반영하지 않았습니다." >&2
     exit 1
   fi
 }

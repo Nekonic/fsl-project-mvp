@@ -26,11 +26,11 @@ trap handed_back EXIT
 mkdir -p "$staged$(dirname "$RULE_FILE")"
 cp "$RULE_FILE" "$staged$RULE_FILE"
 if measured "$staged$RULE_FILE"; then
-  echo "a rule turns off the sensor's logging (config: logging); nothing was loaded" >&2
+  echo "센서 로그를 끄는 룰(config: logging)이 있어 반영하지 않았습니다." >&2
   exit 1
 fi
 if ! grep -qxF "$(sha256sum < "$staged$RULE_FILE" | cut -d' ' -f1)" "$PASSED" 2>/dev/null; then
-  echo "these rules match no rule test that passed in this round; run the test in the console first; nothing was loaded" >&2
+  echo "이번 라운드에서 테스트를 통과한 룰과 다릅니다. 콘솔에서 먼저 테스트하세요. 반영하지 않았습니다." >&2
   exit 1
 fi
 install -m 0644 -o root -g root "$staged$RULE_FILE" "$RULE_FILE.reloading"

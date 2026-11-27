@@ -37,5 +37,5 @@ def test_the_defence_shell_cannot_write_the_platform_s_logging(shell_round, chan
 
 def test_a_logging_directive_reloaded_from_the_shell_is_refused_before_it_loads(shell_round):
     assert not shell_round["reloaded"]["ok"], shell_round["reloaded"]
-    assert "nothing was loaded" in shell_round["reloaded"]["stderr"], shell_round["reloaded"]
+    assert "반영하지 않았습니다" in shell_round["reloaded"]["stderr"], shell_round["reloaded"]
     assert all(line["source"] != "terminal" for line in shell_round["versions"]), shell_round["versions"]
