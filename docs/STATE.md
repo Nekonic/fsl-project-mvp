@@ -28,7 +28,7 @@ in the loot pane, Korean objective names, the VPN profile listing only its
 round's target, the runner keeping a command's bytes as sent, a failed
 Claude child finishing as error, the kali command log stamping a command
 when it starts), and `review2` on top (the fixes of a second live review
-round, below); `main` holds the old product until gate 2. The cloud runs
+round, below), and `slot-fix` on top (2026-11-27, `docs/DECISIONS.md`: alerts Elasticsearch indexed late are read, the traffic cursor names one timestamp, the defence watch ends with its round, a judged baseline round gives its slot back, a round that does not start logs why); `main` holds the old product until gate 2. The cloud runs `slot-fix` since the afternoon of 2026-11-27: one replace (exit 0), then the full acceptance from the platform VM 101 passed, 0 failed, 0 errors in 1 h 38 min. Before that it ran
 `review2` since the morning of 2026-11-27: one replace (exit 0,
 12 min 45 s), a new bot OAuth token on the VM, then the full acceptance
 from the platform VM: 87 passed, 3 failed and 11 errors in 1 h 44 min, all

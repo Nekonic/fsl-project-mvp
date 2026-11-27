@@ -9,7 +9,17 @@ Updated: 2026-11-27.
 
 ## Where things stand
 
-- The tree is `review2` (2026-11-27): `review-fix` with the fixes of the
+- The tree is `slot-fix` (2026-11-27): `review2` with the causes of the
+  last full acceptance's failures fixed (`docs/DECISIONS.md` 2026-11-27):
+  an IDS alert Elasticsearch indexed after a later WAF line is read (the
+  alert cursor reads 30 s back), `defence_traffic`'s `next` names one
+  timestamp (traffic 15 s behind), the defence watch sends its end feed
+  and closes stdin when its round ends and on a 401, a staff-ended
+  baseline round closes its allocation once judged. A loop left reading
+  baseline 2 since 2026-11-25 was stopped. On the cloud: one replace
+  (exit 0), the full acceptance from the platform VM 101 passed, 0
+  failed, 0 errors in 1 h 38 min, in one run.
+- Before that the tree was `review2` (2026-11-27): `review-fix` with the fixes of the
   second live review round (`docs/STATE.md` "Where things stand"): one
   ModSecurity alert per refused request, the debrief grouped by rule and by
   benign case, Korean case titles on every case line, Korean origin
@@ -148,15 +158,10 @@ a docs review, the edge sets after an infra reboot. The list is in
 4. A platform read now and then takes over 5 s with three rounds at once
    (the watch skips that check); the ingest inside each read is the
    suspect (`docs/STATE.md` "Open points").
-5. Board slots under the full acceptance: `round_start` answered
-   `ground_truth_unavailable` and allocations `range_unavailable` in the
-   2026-11-27 run, and passed alone; the cause is not read yet.
-6. The defence bot's watch: the traffic cursor (`defence_traffic`'s
-   `next`) grew past the 4096 characters its `after` accepts in round 381,
-   so every later read answered 400; and the step-1 defence run kept
-   watching after its round ended (401s) until it was given up as
-   `timed_out`, so baseline 2 counted no round.
-7. A captured walk as a learner, a live review round with zero countable
+5. Round 406's `ground_truth_unavailable` (2026-11-27, slot 1) is not
+   explained: the platform did not log why; it now logs the reason a
+   round did not start, so the next one is readable.
+6. A captured walk as a learner, a live review round with zero countable
    findings, a docs review.
 8. External learners, the last task of the Player vs AI work: the
    public-IP forwards (UDP 51820-51919, TCP 2222, the console) and
