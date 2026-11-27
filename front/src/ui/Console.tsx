@@ -195,6 +195,24 @@ export function AsideCard({ title, meta, lost, children }: AsideCardProps) {
   );
 }
 
+export interface AsideFoldProps {
+  title: ComponentChildren;
+  meta?: ComponentChildren;
+  children?: ComponentChildren;
+}
+
+export function AsideFold({ title, meta, children }: AsideFoldProps) {
+  return (
+    <details class="aside-card aside-fold">
+      <summary class="aside-card-head">
+        <b>{title}</b>
+        {meta !== undefined && <span>{meta}</span>}
+      </summary>
+      {children}
+    </details>
+  );
+}
+
 export function RowLine({ children }: { children: ComponentChildren }) {
   return <div class="row-line">{children}</div>;
 }

@@ -36,13 +36,13 @@ export const layouts: Record<LayoutName, ConsoleSpec> = {
     mark: "attack",
     rail: [terminalKali, site, loot],
     asideLead: "origins",
-    aside: ["objectives", "loot", "cases"],
+    aside: ["brief", "objectives", "loot", "cases"],
   },
   defence: {
     side: "defence",
     mark: "defence",
     rail: [kibana, map, idsRules, waf, alerts, terminalWaf],
     asideLead: "objectives",
-    aside: ["applied"],
+    aside: ["brief", "applied"],
   },
 };
