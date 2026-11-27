@@ -38,7 +38,7 @@ def test_a_case_without_an_alert_waits_out_the_alert_delay_before_it_is_a_miss()
                rounds.case(BENIGN, AT, malicious=False)]
 
     assert judged(found, actions, [], AT + timedelta(seconds=10)) == []
-    assert judged(found, actions, [], AT + timedelta(seconds=32)) == [(SQLI, "fn", 0, False), (BENIGN, "tn", 0, None)]
+    assert judged(found, actions, [], AT + timedelta(seconds=32)) == [(SQLI, "fn", 0, None), (BENIGN, "tn", 0, None)]
 
 
 def test_an_alert_on_benign_traffic_is_a_false_positive_at_once():
@@ -77,7 +77,7 @@ def test_the_round_s_end_judges_every_case_left_and_ignores_what_came_after_it()
                rounds.case(XSS, AT + timedelta(seconds=9), malicious=True, expect="xss")]
     late = [rounds.detection("d1", AT + timedelta(seconds=8), marker=SQLI, signature="ET WEB SQL Injection")]
 
-    assert judged(found, actions, late, AT + timedelta(seconds=10)) == [(SQLI, "fn", 0, False)]
+    assert judged(found, actions, late, AT + timedelta(seconds=10)) == [(SQLI, "fn", 0, None)]
 
 
 def test_free_actions_are_never_judged():

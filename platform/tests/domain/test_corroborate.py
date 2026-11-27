@@ -9,6 +9,10 @@ def test_a_case_that_declares_nothing_is_not_judged():
     assert corroborated("", ["SQLi attempt - URI"]) is None
 
 
+def test_a_case_with_no_alert_has_nothing_to_corroborate():
+    assert corroborated("SQL", []) is None
+
+
 def test_evidence_matching_the_mechanism_corroborates_case_insensitively():
     assert corroborated("SQL", ["SQLi attempt - request body"]) is True
     assert corroborated("TRAVERSAL", ["path traversal attempt"]) is True

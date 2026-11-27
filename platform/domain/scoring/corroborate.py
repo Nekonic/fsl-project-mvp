@@ -6,11 +6,12 @@ from domain.types import CorrelationResult
 
 
 def corroborated(expect: str | None, signatures: Iterable[str], indiscriminate: Iterable[str] = ()) -> bool | None:
-    if not expect:
+    seen = list(signatures)
+    if not expect or not seen:
         return None
     needle = expect.lower()
     noise = set(indiscriminate)
-    return any(needle in signature.lower() for signature in signatures if signature not in noise)
+    return any(needle in signature.lower() for signature in seen if signature not in noise)
 
 
 def indiscriminate_signatures(result: CorrelationResult, signatures: Mapping[str, str]) -> frozenset[str]:

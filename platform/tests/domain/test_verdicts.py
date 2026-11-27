@@ -26,7 +26,7 @@ def test_an_ids_table_gives_each_recorded_case_one_verdict():
     result = table(PROBES, alerts, "ids")
 
     assert [(c.case, c.verdict, c.corroborated, c.recorded_run) for c in result.cases] == [
-        ("sqli", "tp", True, False), ("xss", "fn", False, False), ("browse", "tn", None, False),
+        ("sqli", "tp", True, False), ("xss", "fn", None, False), ("browse", "tn", None, False),
         ("sqlmap", "tp", True, True)]
     assert result.cases[0].alerts == (("1000001", "SQL injection"), ("1000001", "SQL injection"))
     assert dict(result.totals) == {"tp": 2, "fn": 1, "fp": 0, "tn": 1}

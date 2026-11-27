@@ -162,3 +162,16 @@ def test_a_fired_case_carries_the_marker_the_platform_chose_on_http_and_on_tools
     assert "X-Request-ID: action-9" in launched[0]
     assert "--headers=X-Request-ID: action-10" in launched[1]
     assert http["case_id"] == "abc" and tool["case_id"] == "abc"
+
+
+def test_the_prefetch_get_carries_the_action_marker_so_it_is_not_a_free_action():
+    launch, launched = _launcher(output='"nonce":"ab12"')
+    case = {"case_id": "c", "name": "n", "correlation": "marker",
+            "request": {"method": "POST", "path": "/a", "data": {"t": "{nonce}"},
+                        "prefetch": {"from": "/form", "pattern": r'"nonce":"([a-f0-9]+)"'}}}
+
+    harness.fire(case, launch, BASE, marker="action-11")
+
+    prefetch, sent = launched
+    assert prefetch[-1] == f"{BASE}/form"
+    assert "X-Request-ID: action-11" in prefetch and "X-Request-ID: action-11" in sent

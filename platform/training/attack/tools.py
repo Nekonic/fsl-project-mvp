@@ -62,12 +62,19 @@ def _inject(value: Any, tokens: dict[str, str]) -> Any:
         return [_inject(item, tokens) for item in value]
     return value
 
-def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float) -> dict[str, Any]:
+def prefetch_marker(case: dict[str, Any], marker: str | None) -> str | None:
+    return marker or (case.get("case_id") if case.get("correlation") == "marker" else None)
+
+def apply_prefetch(case: dict[str, Any], base_url: str, launch, timeout: float,
+                   marker: str | None = None) -> dict[str, Any]:
     spec = (case.get("request") or {}).get("prefetch")
     if not spec:
         return case
     headers = {name: value for name, value in ((case.get("request") or {}).get("headers") or {}).items()
                if not PLACEHOLDER.search(str(value))}
+    sent_marker = prefetch_marker(case, marker)
+    if sent_marker:
+        headers[MARKER_HEADER] = sent_marker
     argv = fetch_argv(f"{base_url.rstrip('/')}{spec['from']}", timeout, headers)
     try:
         result = launch(argv, timeout=timeout)

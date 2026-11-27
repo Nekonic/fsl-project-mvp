@@ -666,7 +666,7 @@ def fire_probe(allocation: Allocation, wargame: Mapping[str, Any], case: Mapping
 
     host = list(wargame["hosts"])[0]
     hosted = tools.apply_prefetch(with_host(dict(case), host), settings.box.target_url, launch,
-                                  firing.REQUEST_TIMEOUT)
+                                  firing.REQUEST_TIMEOUT, marker=marker)
     prepared = firing.build_request(hosted, settings.box.target_url, marker=marker)
     request = probe_request(prepared, host)
     answer, started, ended = sent_over(attacker, prepared.method, prepared.url,
