@@ -70,8 +70,11 @@ def prune(now: datetime | None = None) -> int:
     return deleted
 
 
+LISTED_WITHOUT = ("score", "debrief", "bot")
+
+
 def mine(user, problem_id: int | None = None) -> list[RoundRecord]:
-    found = RoundRecord.objects.all()
+    found = RoundRecord.objects.select_related("problem").defer(*LISTED_WITHOUT)
     if not user.is_staff:
         found = found.filter(Q(attack_user=user) | Q(defence_user=user))
     if problem_id is not None:
@@ -87,3 +90,7 @@ def record(record_id: int, user) -> RoundRecord:
         raise errors.NotAPlayer()
     return found
 
+
+def kept_score(found: Round) -> dict | None:
+    kept = RoundRecord.objects.filter(round_number=found.pk).exclude(score=None).values_list("score", flat=True).first()
+    return kept or None

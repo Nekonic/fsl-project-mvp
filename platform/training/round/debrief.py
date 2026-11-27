@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from domain.types import ACTION_ORIGIN_REQUEST, ActionRecord, DetectionRecord
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.content import bots as catalog
-from training.attack import actions as attack
 from training.models import Action, Player, Round
 from training.round import bots as bot_runs
 from training.round import lifecycle
@@ -17,6 +18,7 @@ ATTACK_KINDS = ("tool.started", "tool.ended", "command.run", "origin.spent", "or
 DEFENCE_KINDS = ("rule.tested", "rule.applied", "rule.refused", "case.judged")
 SHARED_KINDS = frozenset(name for name, kind in log.KINDS.items()
                          if kind.visible_to == log.BOTH and not name.startswith(("round.", "player.")))
+TIMELINE_KINDS = frozenset(ATTACK_KINDS) | frozenset(DEFENCE_KINDS) | SHARED_KINDS
 BOTH_SIDES = log.Viewer(sides=log.SIDES)
 BENIGN_VERDICTS = ("tn", "fp")
 
@@ -26,17 +28,12 @@ def when(at: datetime | None) -> str | None:
 
 
 def events_of(found: Round) -> list[dict]:
-    seen, cursor = [], 0
-    while True:
-        page = log.after(found.pk, cursor, BOTH_SIDES)
-        seen += page.events
-        if not page.events:
-            return seen
-        cursor = page.next
+    return log.every(found.pk, BOTH_SIDES, TIMELINE_KINDS)
 
 
-def action_rows(found: Round, free_alerts: dict[str, int]) -> list[dict]:
-    alerted = Counter(detection.marker for detection in alert_feed.detections(found) if detection.marker)
+def action_rows(found: Round, free_alerts: dict[str, int], seen: Sequence[DetectionRecord],
+                requests: Sequence[ActionRecord]) -> list[dict]:
+    alerted = Counter(detection.marker for detection in seen if detection.marker)
     rows, free = [], defaultdict(list)
     for action in Action.objects.filter(round=found).order_by("started", "id"):
         if action.case_id:
@@ -44,7 +41,7 @@ def action_rows(found: Round, free_alerts: dict[str, int]) -> list[dict]:
                          "origin": action.source_ip, "alerts": alerted[action.marker]})
         else:
             free[action.source_ip or ""].append((action.started, action.ended))
-    for request in sorted(attack.origin_records(found), key=lambda record: record.started_at):
+    for request in sorted(requests, key=lambda record: record.started_at):
         free[request.source_ip or ""].append((request.started_at, request.ended_at))
     for origin, actions in free.items():
         actions.sort(key=lambda action: action[0])
@@ -58,9 +55,9 @@ def free_alerts_of(score: dict) -> dict[str, int]:
     return {origin["ip"]: origin["alerts"] for origin in score["free_actions"]["by_origin"]}
 
 
-def alert_rows(found: Round) -> list[dict]:
+def alert_rows(seen: Sequence[DetectionRecord]) -> list[dict]:
     grouped: dict[tuple[str, str], list] = defaultdict(list)
-    for detection in alert_feed.detections(found):
+    for detection in seen:
         grouped[(detection.engine, detection.rule or detection.signature)].append(detection)
     rows = []
     for (engine, _), seen in grouped.items():
@@ -127,9 +124,13 @@ def objective_marks(score: dict) -> list[dict]:
 
 
 def compose(found: Round) -> dict[str, Any]:
-    score = lifecycle.shown_score(found, lifecycle.score(found))
+    seen = alert_feed.detections(found)
+    acted = tuple(lifecycle.actions(found))
+    requests = [one for one in acted if one.kind == ACTION_ORIGIN_REQUEST]
+    score = lifecycle.shown_score(found, lifecycle.score_over(found, acted, seen))
     titles = lifecycle.case_titles(found)
-    timeline = action_rows(found, free_alerts_of(score)) + alert_rows(found) + event_rows(found) + note_rows(found)
+    timeline = (action_rows(found, free_alerts_of(score), seen, requests) + alert_rows(seen) + event_rows(found)
+                + note_rows(found))
     timeline = [{**row, "title": titles.get(row["case"], row["case"])} if row.get("case") else row for row in timeline]
     timeline.sort(key=lambda row: row["at"] or "")
     return {

@@ -17,6 +17,7 @@ from training.models import Action, Origin, Round
 DENY = "deny"
 LIMIT_REQ = "limit_req"
 ORIGIN_MARKER = "log:"
+WHOLE_LOG_PAGE = 5000
 DENIED = re.compile(r"\baccess forbidden by rule, client: ([0-9A-Fa-f.:]+),")
 LIMITED = re.compile(r'\blimiting requests, excess: [0-9.]+ by zone "([^"]+)", client: ([0-9A-Fa-f.:]+),')
 
@@ -111,7 +112,7 @@ def logged_rows(found: Round):
     cursor: dict = {"at": found.started.isoformat()}
     handed: set[str] = set()
     while True:
-        events, cursor = elastic.access_events(cfg.url, index, cursor)
+        events, cursor = elastic.access_events(cfg.url, index, cursor, WHOLE_LOG_PAGE)
         fresh = [event for event in events if event["id"] not in handed]
         if not fresh:
             return

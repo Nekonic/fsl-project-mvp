@@ -156,6 +156,10 @@ class Score(MatchView):
                    operation_id="round_score")
     def get(self, request, round_id: int):
         asked = given(serializers.ScoreQuery, request.query_params)
+        kept = records.kept_score(request.round) if request.round.phase == service.ENDED and not asked.get(
+            "correlation") else None
+        if kept is not None:
+            return Response(serializers.Score({"pending": service.pending(request.round), **kept}).data)
         found = service.score_for(request.round, bool(request.user.is_staff),
                                   bool(request.user.is_staff) or (request.operator and not request.players),
                                   asked.get("correlation"))

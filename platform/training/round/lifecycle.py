@@ -489,7 +489,11 @@ def logged_actions(found: Round):
 
 
 def score(found: Round, correlation: str | None = None) -> referee.RoundScore:
-    return referee.score(found, actions(found), alert_feed.detections(found), correlation, responses(found))
+    return score_over(found, actions(found), alert_feed.detections(found), correlation)
+
+
+def score_over(found: Round, acted, seen, correlation: str | None = None) -> referee.RoundScore:
+    return referee.score(found, acted, seen, correlation, responses(found))
 
 
 def case_titles(found: Round) -> dict[str, str]:

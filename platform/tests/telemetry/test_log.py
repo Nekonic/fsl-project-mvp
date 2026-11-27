@@ -125,3 +125,17 @@ def test_asking_for_some_kinds_skips_the_others_and_moves_the_cursor_past_them()
     assert [event["kind"] for event in page.events] == ["round.started"]
     assert page.next == newest
     assert [event["kind"] for event in later.events] == ["round.ended"]
+
+
+@pytest.mark.django_db
+def test_every_event_of_the_asked_kinds_comes_back_in_one_read_past_any_number_of_other_events(
+        django_assert_num_queries):
+    a_round_of_play()
+    log.append_all(ROUND, "alert.seen", [{"alert": n, "engine": "waf", "signature": "x"} for n in range(450)],
+                   player_side="defence")
+    log.append(ROUND, "round.ended", {"reason": "time_limit"})
+
+    with django_assert_num_queries(1):
+        seen = log.every(ROUND, STAFF, frozenset({"round.started", "round.ended", "objective.lost"}))
+
+    assert [event["kind"] for event in seen] == ["round.started", "objective.lost", "round.ended"]

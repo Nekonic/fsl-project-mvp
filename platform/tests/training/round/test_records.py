@@ -68,6 +68,28 @@ def test_a_pvp_record_names_its_wargame_and_no_problem(as_learner, allocation, l
     assert kept.problem is None and (line["wargame"], line["problem"], line["problem_title"]) == ("board", None, None)
 
 
+def test_the_score_of_a_kept_round_is_read_from_its_record_without_scoring_the_alerts_again(
+        as_learner, allocation, learner, other, monkeypatch):
+    found = service.start_round(pvp(allocation, other, learner))
+    service.end_round(found, "ended_by_operator")
+    kept = records.keep(Round.objects.get(pk=found.pk))
+    monkeypatch.setattr(service, "score", lambda *given, **named: pytest.fail("scored again"))
+
+    shown = as_learner.get(f"/api/rounds/{found.pk}/score/").json()
+
+    assert shown["outcomes"]["totals"] == kept.score["outcomes"]["totals"]
+
+
+def test_the_record_list_leaves_the_kept_score_and_debrief_unread(allocation, learner, other):
+    found = service.start_round(pvp(allocation, other, learner))
+    service.end_round(found, "ended_by_operator")
+    records.keep(Round.objects.get(pk=found.pk))
+
+    [line] = records.mine(learner)
+
+    assert {"score", "debrief", "bot"} <= line.get_deferred_fields()
+
+
 def test_a_detection_stored_while_its_round_is_deleted_goes_with_it(allocation, learner, other):
     found = service.start_round(pvp(allocation, other, learner))
     service.end_round(found, "ended_by_operator")

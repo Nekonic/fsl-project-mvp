@@ -5,6 +5,7 @@ import pytest
 from domain.types import DetectionRecord
 from telemetry import events as log
 from telemetry.access import OriginRequest
+from telemetry.models import Detection
 from tests import rounds
 from training.attack.actions import origin_record
 from training.round import debrief
@@ -21,7 +22,7 @@ def test_the_attack_lane_carries_tunnelled_requests_grouped_by_origin_with_the_s
                                                   method="GET", host="board.com", path="/search/"))
                       for doc_id, offset in (("a1", 0), ("a2", 30)))
     between = rounds.detection("d2", AT + timedelta(seconds=15), marker=None, src_ip=ORIGIN)
-    monkeypatch.setattr(debrief.attack, "origin_records", lambda round_: tunnelled)
+    monkeypatch.setattr(debrief.lifecycle.attack, "origin_records", lambda round_: tunnelled)
     monkeypatch.setattr(debrief.alert_feed, "detections",
                         lambda round_: [rounds.detection("d1", AT + timedelta(seconds=31), marker=None, src_ip=ORIGIN), between])
 
@@ -33,14 +34,36 @@ def test_the_attack_lane_carries_tunnelled_requests_grouped_by_origin_with_the_s
     assert [origin["alerts"] for origin in composed["score"]["free_actions"]["by_origin"]] == [1]
 
 
+def test_the_debrief_reads_the_round_s_alerts_and_actions_once_however_many_parts_use_them(monkeypatch):
+    found = rounds.opened(rounds.problem(), started=AT - timedelta(minutes=30), phase="ended",
+                          ended=AT + timedelta(minutes=10))
+    reads = []
+    monkeypatch.setattr(debrief.alert_feed, "detections", lambda round_: reads.append("alerts") or [])
+    monkeypatch.setattr(debrief.lifecycle, "actions", lambda round_: reads.append("actions") or ())
+
+    debrief.compose(found)
+
+    assert sorted(reads) == ["actions", "alerts"]
+
+
+def test_the_alert_records_carry_every_field_the_score_reads_but_not_the_raw_document():
+    found = rounds.opened(rounds.problem(), started=AT - timedelta(minutes=30))
+    Detection.objects.create(round=found, detection_id="d1", engine="waf", rule="942100", signature="SQL Injection",
+                             timestamp=AT, src_ip=ORIGIN, marker="m1", uri="/search/", blocked=True,
+                             raw={"details": {"ruleId": "942100"}})
+
+    assert debrief.alert_feed.detections(found) == (DetectionRecord(
+        detection_id="d1", timestamp=AT, src_ip=ORIGIN, marker="m1", engine="waf", rule="942100",
+        signature="SQL Injection", uri="/search/", blocked=True),)
+
+
 def test_alerts_group_by_rule_so_one_deny_rule_is_one_row_however_many_requests_it_refused(monkeypatch):
     found = rounds.opened(rounds.problem(), started=AT - timedelta(minutes=30))
     refusals = [DetectionRecord(detection_id=f"a{n}", timestamp=AT + timedelta(seconds=n), src_ip=ORIGIN, marker=None,
                                 engine="waf", rule="403", signature=f"403 GET /p{n} HTTP/1.1", blocked=True)
                 for n in range(3)]
-    monkeypatch.setattr(debrief.alert_feed, "detections", lambda round_: refusals)
 
-    rows = debrief.alert_rows(found)
+    rows = debrief.alert_rows(refusals)
 
     assert rows == [{"lane": "defence", "kind": "alerts", "at": AT.isoformat(), "engine": "waf", "rule": "403",
                      "signature": "403 GET /p0 HTTP/1.1", "count": 3,
@@ -72,8 +95,8 @@ def test_every_case_line_the_console_shows_carries_the_case_s_korean_title(monke
     fired = (rounds.case("board-sqli-search", AT, malicious=True),)
     monkeypatch.setattr(debrief.lifecycle, "logged_actions", lambda round_: fired)
     monkeypatch.setattr(debrief.lifecycle, "actions", lambda round_: fired)
-    monkeypatch.setattr(debrief.attack, "running", lambda round_: set())
-    monkeypatch.setattr(debrief.attack, "origin_records", lambda round_: ())
+    monkeypatch.setattr(debrief.lifecycle.attack, "running", lambda round_: set())
+    monkeypatch.setattr(debrief.lifecycle.attack, "origin_records", lambda round_: ())
     monkeypatch.setattr(debrief.alert_feed, "detections", lambda round_: [])
     title = debrief.lifecycle.case_titles(found)["board-sqli-search"]
 

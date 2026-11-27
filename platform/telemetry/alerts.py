@@ -190,11 +190,12 @@ def alerts(found: Round, after: int = 0, engine: str = "", rule: str = "", src: 
     return page, page[-1].pk if page else after
 
 
+RECORD_FIELDS = ("detection_id", "timestamp", "src_ip", "marker", "engine", "rule", "signature", "uri", "blocked")
+
+
 def detections(found: Round) -> tuple[DetectionRecord, ...]:
-    return tuple(DetectionRecord(detection_id=row.detection_id, timestamp=row.timestamp, src_ip=row.src_ip,
-                                 marker=row.marker, engine=row.engine, rule=row.rule, signature=row.signature,
-                                 uri=row.uri, blocked=row.blocked)
-                 for row in Detection.objects.filter(round=found).order_by("timestamp", "id"))
+    rows = Detection.objects.filter(round=found).order_by("timestamp", "id").values_list(*RECORD_FIELDS)
+    return tuple(DetectionRecord(**dict(zip(RECORD_FIELDS, row))) for row in rows.iterator(chunk_size=5000))
 
 
 def ingest_alerts(found: Round) -> list[Detection]:
