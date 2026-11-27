@@ -52,6 +52,36 @@ export function useEventCount(following: Following | undefined): number {
   return following ? count : 0;
 }
 
+interface SharedRead {
+  said: Promise<unknown>;
+  abort: AbortController;
+  holders: number;
+}
+
+const readsThisPass = new Map<string, SharedRead>();
+
+function sharedRead(key: string, read: (signal: AbortSignal) => Promise<unknown>, signal: AbortSignal): Promise<unknown> {
+  let shared = readsThisPass.get(key);
+  if (!shared) {
+    const abort = new AbortController();
+    const made: SharedRead = { said: read(abort.signal), abort, holders: 0 };
+    readsThisPass.set(key, made);
+    setTimeout(() => {
+      if (readsThisPass.get(key) === made) readsThisPass.delete(key);
+    }, 0);
+    shared = made;
+  }
+  const mine = shared;
+  mine.holders += 1;
+  signal.addEventListener("abort", () => {
+    mine.holders -= 1;
+    if (mine.holders > 0) return;
+    mine.abort.abort();
+    if (readsThisPass.get(key) === mine) readsThisPass.delete(key);
+  }, { once: true });
+  return mine.said;
+}
+
 export function useResource<P extends PathsWith<"get">>(path: P, init: CallInit<P, "get"> | null, options: ResourceOptions = {}): Resource<Ok<P, "get">> {
   const [data, setData] = useState<Ok<P, "get"> | undefined>(undefined);
   const [error, setError] = useState<ApiError | undefined>(undefined);
@@ -69,7 +99,8 @@ export function useResource<P extends PathsWith<"get">>(path: P, init: CallInit<
     }
     const abort = new AbortController();
     setLoading(true);
-    call("get", path, { ...latest.current, signal: abort.signal })
+    const asking = latest.current;
+    sharedRead(key, (signal) => call("get", path, { ...asking, signal }), abort.signal)
       .then((said) => {
         if (abort.signal.aborted) return;
         setData(said as Ok<P, "get">);

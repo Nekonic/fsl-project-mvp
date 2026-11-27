@@ -57,4 +57,22 @@ describe("useResource refreshOn", () => {
     await settle();
     expect(reads).toEqual(["/api/rounds/71/", "/api/rounds/71/"]);
   });
+
+  it("reads a resource once when several panes ask for it in the same pass", async () => {
+    const reads: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      reads.push(String(input));
+      return json({ matchup: "pvp" });
+    }));
+    function StateRead() {
+      const state = useResource("/api/rounds/{round_id}/defence/state/", { params: { round_id: 72 } });
+      return <span>{state.data ? "read" : "waiting"}</span>;
+    }
+    const shown = render(<><StateRead /><StateRead /><StateRead /></>);
+    await settle();
+    await vi.advanceTimersByTimeAsync(10);
+    await settle();
+    expect(reads).toEqual(["/api/rounds/72/defence/state/"]);
+    expect(shown.getAllByText("read")).toHaveLength(3);
+  });
 });
