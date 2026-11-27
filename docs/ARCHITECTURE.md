@@ -330,7 +330,7 @@ sequenceDiagram
 | `staff` | `/api/vpn/profiles/`, `/api/users/<id>/vpn/` (DELETE) | 모든 계정의 프로필, 다른 계정 프로필 폐기 |
 | `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probe 녹화(`training/round`, `training/content`) |
 | `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/{attack,defence,ids},attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
-| `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |
+| `match` | `/api/rounds/<r>/events/?after=&kinds=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐. `kinds`를 주면 그 종류만 돌려주고 커서는 건너뛴 이벤트 뒤로 옮김 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/versions/<n>,ids/rules/test,ids/rules/tests/<t>,ids/terminal,waf,waf/versions,waf/versions/<n>,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. IDS 룰을 쓰는 경로는 없음. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
 | `catalog`, `staff` | `/api/wargames/`, `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 학습자 워게임 목록(`pvp`를 여는 곳), 문제 읽기와 작성. 학습자 문제 목록에 허용 대전 방식과 봇 난이도, 스태프 워게임 목록에 그 워게임의 공격 카드 |
