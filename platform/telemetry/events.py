@@ -100,7 +100,7 @@ class Page:
     next: int
 
 
-def append(round_id: int, kind: str, body: dict | None = None, player_side: str | None = None) -> Event:
+def checked(round_id: int, kind: str, body: dict | None = None, player_side: str | None = None) -> Event:
     if kind not in KINDS:
         raise LookupError(f"no event kind {kind!r}")
     if player_side is not None and player_side not in SIDES:
@@ -109,7 +109,18 @@ def append(round_id: int, kind: str, body: dict | None = None, player_side: str 
     problems = malformed(kind, given)
     if problems:
         raise TypeError(f"{kind} body: {', '.join(problems)}")
-    return Event.objects.create(round_id=round_id, kind=kind, player_side=player_side, body=given)
+    return Event(round_id=round_id, kind=kind, player_side=player_side, body=given)
+
+
+def append(round_id: int, kind: str, body: dict | None = None, player_side: str | None = None) -> Event:
+    made = checked(round_id, kind, body, player_side)
+    made.save()
+    return made
+
+
+def append_all(round_id: int, kind: str, bodies: list[dict], player_side: str | None = None) -> list[Event]:
+    made = [checked(round_id, kind, body, player_side) for body in bodies]
+    return Event.objects.bulk_create(made) if made else []
 
 
 def forget(round_ids: list[int]) -> int:

@@ -1,6 +1,8 @@
 from datetime import timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
 from telemetry import alerts as alert_feed
@@ -16,6 +18,7 @@ BASE = "/api/rounds/{round}/defence/"
 HTTP = "/etc/nginx/defence/http.conf"
 ATTACKER = "198.51.100.9"
 CUSTOMER = "203.0.113.50"
+LATER_LOG = timedelta(seconds=1.5)
 
 
 def url(found, tail):
@@ -249,3 +252,35 @@ def test_a_start_posture_with_no_waf_files_records_the_live_files_as_the_first_v
     [first] = service.versions(board_round, "waf")
     assert (first.version, first.source, first.files[HTTP]) == (1, "setup", "deny 192.0.2.1;\n")
     assert cyber_range.gateway.workers == 1, "recording what runs reloads nothing"
+
+
+def refused_request(at, marker, ip):
+    found = modsecurity(at, marker=marker or "", ip=ip)
+    found["transaction"]["response"] = {"http_code": 403}
+    return found
+
+
+def refused_access(at, marker, ip):
+    return dict(access(at, 403, ip=ip, marker=marker), request="GET /accounts/login/ HTTP/1.1")
+
+
+def detection_queries_of(found, es, pairs, at, reads, batch):
+    for number in range(pairs):
+        marker = f"m{batch}-{number}" if number % 2 else None
+        es.add(f"{reads.__name__}-{batch}-{number}", reads(stamp(at, number / 100), marker, f"198.51.{batch}.{number}"))
+    with CaptureQueriesContext(connection) as seen:
+        alert_feed.ingest_alerts(found)
+    return len([query for query in seen.captured_queries if "telemetry_detection" in query["sql"]])
+
+
+@pytest.mark.parametrize("reads", [(refused_request, refused_access), (refused_access, refused_request)])
+def test_blocked_requests_are_matched_with_queries_per_page_not_per_alert(board_round, cyber_range, es, at, reads):
+    earlier, later = reads
+    few = [detection_queries_of(board_round, es, 3, at, earlier, 1),
+           detection_queries_of(board_round, es, 3, at + LATER_LOG, later, 1)]
+    many = [detection_queries_of(board_round, es, 40, at + timedelta(hours=1), earlier, 2),
+            detection_queries_of(board_round, es, 40, at + timedelta(hours=1) + LATER_LOG, later, 2)]
+
+    assert few == many and max(many) <= 5
+    rows = Detection.objects.filter(round=board_round)
+    assert rows.count() == 43 and {(row.rule, row.blocked) for row in rows} == {("942100", True)}

@@ -47,22 +47,35 @@ def blocked(detection: Mapping[str, Any]) -> bool:
     return bool(detection.get("blocked"))
 
 
-def same_request(found, marker: str | None, src_ip: str | None, uri: str, at) -> models.QuerySet:
-    rows = Detection.objects.filter(round=found, engine=ENGINE_WAF, blocked=True)
-    if marker:
-        return rows.filter(marker=marker)
-    return rows.filter(marker__isnull=True, src_ip=src_ip or None, uri=uri,
-                       timestamp__range=(at - SAME_REQUEST_WITHIN, at + SAME_REQUEST_WITHIN))
+def request_key(marker: str | None, src_ip: str | None, uri: str) -> tuple:
+    return (marker,) if marker else (None, src_ip or None, uri)
 
 
-def refused_by_modsecurity(found, detection: Mapping[str, Any]) -> bool:
-    return same_request(found, detection.get("marker"), detection.get("src_ip"), uri_of(detection),
-                        detection.get("timestamp") or timezone.now()).filter(raw__has_key=MODSECURITY_KEY).exists()
+def same_request(one: Mapping[str, Any], other: Mapping[str, Any]) -> bool:
+    if request_key(one["marker"], one["src_ip"], one["uri"]) != request_key(other["marker"], other["src_ip"],
+                                                                            other["uri"]):
+        return False
+    return bool(one["marker"]) or abs(one["timestamp"] - other["timestamp"]) <= SAME_REQUEST_WITHIN
 
 
-def drop_access_refusals_of(row: Detection) -> None:
-    same_request(row.round, row.marker, row.src_ip, row.uri, row.timestamp).exclude(
-        raw__has_key=MODSECURITY_KEY).delete()
+def stored_blocked_near(found, requests: list[Mapping[str, Any]], from_modsecurity: bool) -> list[dict]:
+    if not requests:
+        return []
+    markers = sorted({one["marker"] for one in requests if one["marker"]})
+    unmarked = [one for one in requests if not one["marker"]]
+    near = models.Q(marker__in=markers) if markers else models.Q(pk__in=[])
+    if unmarked:
+        times = [one["timestamp"] for one in unmarked]
+        near |= models.Q(marker__isnull=True, src_ip__in=sorted({one["src_ip"] for one in unmarked if one["src_ip"]}),
+                         uri__in=sorted({one["uri"] for one in unmarked}),
+                         timestamp__range=(min(times) - SAME_REQUEST_WITHIN, max(times) + SAME_REQUEST_WITHIN))
+    rows = Detection.objects.filter(near, round=found, engine=ENGINE_WAF, blocked=True)
+    rows = rows.filter(raw__has_key=MODSECURITY_KEY) if from_modsecurity else rows.exclude(raw__has_key=MODSECURITY_KEY)
+    return list(rows.values("pk", "marker", "src_ip", "uri", "timestamp"))
+
+
+def matching_any(one: Mapping[str, Any], others: list[Mapping[str, Any]]) -> bool:
+    return any(same_request(one, other) for other in others)
 
 
 def without_nul(value: Any) -> Any:
@@ -75,25 +88,49 @@ def without_nul(value: Any) -> Any:
     return value
 
 
-def stored(found, detection: Mapping[str, Any]) -> Detection | None:
-    detection = without_nul(detection)
-    engine = ENGINE_OF.get(detection["source"])
-    if engine is None:
-        return None
-    if detection["source"] == "nginx" and refused_by_modsecurity(found, detection):
-        return None
-    row, created = Detection.objects.get_or_create(round=found, detection_id=str(detection["detection_id"]), defaults={
-        "engine": engine, "rule": rule_of(detection), "signature": str(detection.get("signature") or ""),
-        "severity": detection.get("severity"), "timestamp": detection.get("timestamp") or timezone.now(),
-        "src_ip": detection.get("src_ip") or None, "marker": detection.get("marker"), "uri": uri_of(detection),
-        "blocked": blocked(detection), "raw": detection.get("raw") or {}})
-    if not created:
-        return None
-    if detection["source"] == "modsecurity" and row.blocked:
-        drop_access_refusals_of(row)
-    log.append(found.pk, "alert.seen", {"alert": row.pk, "engine": row.engine, "signature": row.signature},
-               player_side=DEFENCE)
-    return row
+def as_request(detection: Mapping[str, Any]) -> dict[str, Any]:
+    return {"marker": detection.get("marker") or None, "src_ip": detection.get("src_ip") or None,
+            "uri": uri_of(detection), "timestamp": detection.get("timestamp") or timezone.now()}
+
+
+def row_of(found, detection: Mapping[str, Any]) -> Detection:
+    request = as_request(detection)
+    return Detection(round=found, detection_id=str(detection["detection_id"]), engine=ENGINE_OF[detection["source"]],
+                     rule=rule_of(detection), signature=str(detection.get("signature") or ""),
+                     severity=detection.get("severity"), timestamp=request["timestamp"], src_ip=request["src_ip"],
+                     marker=request["marker"], uri=request["uri"], blocked=blocked(detection),
+                     raw=detection.get("raw") or {})
+
+
+def not_yet_stored(found, detections: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    fresh = {str(one["detection_id"]): without_nul(one) for one in detections if one["source"] in ENGINE_OF}
+    held = set(Detection.objects.filter(round=found, detection_id__in=list(fresh)).values_list("detection_id",
+                                                                                              flat=True))
+    return [one for detection_id, one in fresh.items() if detection_id not in held]
+
+
+def refused_by_modsecurity(detection: Mapping[str, Any]) -> bool:
+    return detection["source"] == "modsecurity" and blocked(detection)
+
+
+def stored_all(found, detections: list[Mapping[str, Any]]) -> list[Detection]:
+    fresh = not_yet_stored(found, detections)
+    refusals = [as_request(one) for one in fresh if refused_by_modsecurity(one)]
+    access = [one for one in fresh if one["source"] == "nginx"]
+    refused = refusals + stored_blocked_near(found, [as_request(one) for one in access], from_modsecurity=True)
+    kept = [one for one in fresh if one["source"] != "nginx" or not matching_any(as_request(one), refused)]
+    rows = Detection.objects.bulk_create([row_of(found, one) for one in kept]) if kept else []
+    drop_access_refusals_of(found, refusals)
+    log.append_all(found.pk, "alert.seen", [{"alert": row.pk, "engine": row.engine, "signature": row.signature}
+                                            for row in rows], player_side=DEFENCE)
+    return rows
+
+
+def drop_access_refusals_of(found, refusals: list[Mapping[str, Any]]) -> None:
+    doubles = [row["pk"] for row in stored_blocked_near(found, refusals, from_modsecurity=False)
+               if matching_any(row, refusals)]
+    if doubles:
+        Detection.objects.filter(pk__in=doubles).delete()
 
 
 def cursor_of(found) -> AlertCursor:
@@ -111,7 +148,7 @@ def ingest(found, config: ElasticConfig) -> list[Detection]:
         documents, moved = elastic.fetch_after(config.url, index, held.cursor)
         page = elastic.transaction_joins(documents)
         joins = elastic.joined_with(joins, page)
-        made += [row for detection in elastic.normalize_all(documents, joins) if (row := stored(found, detection))]
+        made += stored_all(found, elastic.normalize_all(documents, joins))
         joined_later(found, page)
         held.cursor = {**moved, "joins": dict(list(joins.items())[-MOST_JOINS:])}
         held.save(update_fields=["cursor"])

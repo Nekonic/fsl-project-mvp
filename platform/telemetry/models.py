@@ -1,7 +1,7 @@
 from django.db import models
 from django.utils import timezone
 
-from domain.types import ENGINES
+from domain.types import ENGINE_WAF, ENGINES
 from training.models import Allocation, Round
 
 ENGINE_CHOICES = [(engine, engine) for engine in ENGINES]
@@ -37,6 +37,12 @@ class Detection(models.Model):
     class Meta:
         ordering = ["id"]
         constraints = [models.UniqueConstraint(fields=["round", "detection_id"], name="one_detection_per_round")]
+        indexes = [
+            models.Index(fields=["round", "marker"], name="blocked_waf_by_marker",
+                         condition=models.Q(blocked=True, engine=ENGINE_WAF)),
+            models.Index(fields=["round", "src_ip", "timestamp"], name="blocked_waf_unmarked",
+                         condition=models.Q(blocked=True, engine=ENGINE_WAF, marker__isnull=True)),
+        ]
 
 
 class AlertCursor(models.Model):
