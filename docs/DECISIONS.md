@@ -11546,3 +11546,10 @@ from the wargame in the lobby, and the round's content is the wargame's own obje
 cases. Problems stay for Player vs AI rounds, which carry the steps, cards and bot-vs-bot
 baselines. Rejected: a pvp problem per wargame (made on 2026-11-27 as problems 18 and 21 only
 because `create_round` takes a problem id for every round; removed).
+
+## 2026-11-27 — No bot-vs-bot baseline
+
+The user: "별로 필요없다 그냥 문제공개해 뭐 내가 몇%인게 중요한게 아니잖아", then "앞으로
+기준선제거". A bot problem is published without baselines, and a learner's result is shown
+without a percentile against bot-vs-bot rounds. Supersedes the 2026-11-24 ruling "A bot-vs-bot
+baseline". The baseline rounds, their staff button and the publish refusal are removed.
