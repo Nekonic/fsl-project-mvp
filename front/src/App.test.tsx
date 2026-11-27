@@ -65,6 +65,15 @@ describe("signing out", () => {
     expect(asked.filter((one) => one.url.startsWith("/api/") && !["/api/me/", "/api/auth/logout/", "/api/auth/csrf/"].includes(one.url.split("?")[0]!)).length).toBeLessThanOrEqual(4);
   });
 
+  it("keeps the pane of a console page in the address it sends a signed-out viewer back to", async () => {
+    server({ value: false });
+    history.replaceState(null, "", "/rounds/483/defence#waf");
+    render(<App />);
+    await settle();
+    expect(location.pathname).toBe("/login");
+    expect(new URLSearchParams(location.search).get("next")).toBe("/rounds/483/defence#waf");
+  });
+
   it("sends the viewer to sign in once when any call says the session is gone", async () => {
     const signedIn = { value: true };
     const asked = server(signedIn, (url) => url.startsWith("/api/rounds/"));

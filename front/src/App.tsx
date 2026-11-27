@@ -33,7 +33,7 @@ export function App() {
   const refused = !session.loading && access !== "public" && (!session.me || (access === "staff" && !session.me.is_staff));
   useEffect(() => {
     if (!found) navigate(to.home(), true);
-    else if (refused) navigate(session.me ? to.home() : to.login(place.path + place.hash), true);
+    else if (refused) navigate(session.me ? to.home() : to.login(location.pathname + location.search + location.hash), true);
   }, [found, refused]);
 
   if (!found || refused || (session.loading && access !== "public")) return null;
