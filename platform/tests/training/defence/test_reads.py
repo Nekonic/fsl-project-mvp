@@ -66,6 +66,24 @@ def test_alerts_requests_store_each_alert_once_with_its_engine_rule_and_marker(a
     assert seen.count() == 3 and {event.player_side for event in seen} == {"defence"}
 
 
+@pytest.mark.parametrize("first", ["modsecurity", "access"])
+@pytest.mark.parametrize("marker", ["m2", None])
+def test_a_request_modsecurity_refused_is_one_blocked_alert_not_a_second_access_log_one(board_round, cyber_range,
+                                                                                       es, at, first, marker):
+    modsecurity_at, access_at = (stamp(at), stamp(at, 1)) if first == "modsecurity" else (stamp(at, 1), stamp(at))
+    refused = modsecurity(modsecurity_at, marker=marker or "")
+    refused["transaction"]["response"] = {"http_code": 403}
+    reads = {"modsecurity": ("w1", refused),
+             "access": ("a1", dict(access(access_at, 403, marker=marker), request="GET /accounts/login/ HTTP/1.1"))}
+
+    es.add(*reads[first])
+    alert_feed.ingest_alerts(board_round)
+    es.add(*reads["access" if first == "modsecurity" else "modsecurity"])
+    alert_feed.ingest_alerts(board_round)
+
+    assert [(row.rule, row.blocked) for row in Detection.objects.filter(round=board_round)] == [("942100", True)]
+
+
 def test_an_alert_carrying_a_nul_character_is_stored_without_it_and_the_cursor_moves_on(board_round, cyber_range,
                                                                                        es, at):
     alert = suricata(stamp(at))

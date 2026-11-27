@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import timedelta
 from typing import Any
 
+from django.db import models
 from django.utils import timezone
 
 from cr.config import ElasticConfig, configured
@@ -18,6 +20,8 @@ MOST_JOINS = 2000
 ALERTS_PAGE = 200
 DEFENCE = "defence"
 NUL = "\x00"
+SAME_REQUEST_WITHIN = timedelta(seconds=2)
+MODSECURITY_KEY = "details"
 
 
 def rule_of(detection: Mapping[str, Any]) -> str:
@@ -40,9 +44,25 @@ def uri_of(detection: Mapping[str, Any]) -> str:
 
 
 def blocked(detection: Mapping[str, Any]) -> bool:
-    if detection["source"] == "nginx":
-        return True
-    return str(((detection.get("raw") or {}).get("alert") or {}).get("action") or "") == "blocked"
+    return bool(detection.get("blocked"))
+
+
+def same_request(found, marker: str | None, src_ip: str | None, uri: str, at) -> models.QuerySet:
+    rows = Detection.objects.filter(round=found, engine=ENGINE_WAF, blocked=True)
+    if marker:
+        return rows.filter(marker=marker)
+    return rows.filter(marker__isnull=True, src_ip=src_ip or None, uri=uri,
+                       timestamp__range=(at - SAME_REQUEST_WITHIN, at + SAME_REQUEST_WITHIN))
+
+
+def refused_by_modsecurity(found, detection: Mapping[str, Any]) -> bool:
+    return same_request(found, detection.get("marker"), detection.get("src_ip"), uri_of(detection),
+                        detection.get("timestamp") or timezone.now()).filter(raw__has_key=MODSECURITY_KEY).exists()
+
+
+def drop_access_refusals_of(row: Detection) -> None:
+    same_request(row.round, row.marker, row.src_ip, row.uri, row.timestamp).exclude(
+        raw__has_key=MODSECURITY_KEY).delete()
 
 
 def without_nul(value: Any) -> Any:
@@ -60,6 +80,8 @@ def stored(found, detection: Mapping[str, Any]) -> Detection | None:
     engine = ENGINE_OF.get(detection["source"])
     if engine is None:
         return None
+    if detection["source"] == "nginx" and refused_by_modsecurity(found, detection):
+        return None
     row, created = Detection.objects.get_or_create(round=found, detection_id=str(detection["detection_id"]), defaults={
         "engine": engine, "rule": rule_of(detection), "signature": str(detection.get("signature") or ""),
         "severity": detection.get("severity"), "timestamp": detection.get("timestamp") or timezone.now(),
@@ -67,6 +89,8 @@ def stored(found, detection: Mapping[str, Any]) -> Detection | None:
         "blocked": blocked(detection), "raw": detection.get("raw") or {}})
     if not created:
         return None
+    if detection["source"] == "modsecurity" and row.blocked:
+        drop_access_refusals_of(row)
     log.append(found.pk, "alert.seen", {"alert": row.pk, "engine": row.engine, "signature": row.signature},
                player_side=DEFENCE)
     return row

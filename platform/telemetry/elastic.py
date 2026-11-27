@@ -119,7 +119,7 @@ def _normalize_access(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
         return []
     return [{"detection_id": doc_id, "source": "nginx", "signature": f"{record['status']} {record['request']}",
              "severity": None, "timestamp": record["at"], "src_ip": record["source_ip"],
-             "marker": record["marker"], "raw": doc}]
+             "marker": record["marker"], "blocked": True, "raw": doc}]
 
 
 def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -136,6 +136,7 @@ def _normalize_suricata(doc_id: str, doc: dict[str, Any]) -> list[dict[str, Any]
             "timestamp": _parse_time(doc.get("timestamp")),
             "src_ip": doc.get("src_ip"),
             "marker": suricata_marker(doc.get("http") or {}),
+            "blocked": str(alert.get("action") or "") == "blocked",
             "raw": doc,
         }
     ]
@@ -150,6 +151,7 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
     marker = _header_lookup(request.get("headers") or {})
     timestamp = _parse_time(transaction.get("time_stamp")) or _parse_time(doc.get("@timestamp"))
     src_ip = transaction.get("client_ip")
+    refused = _as_int((transaction.get("response") or {}).get("http_code")) in REFUSED_STATUSES
 
     detections = []
     for position, message in enumerate(messages):
@@ -165,6 +167,7 @@ def _normalize_modsecurity(doc_id: str, doc: dict[str, Any]) -> list[dict[str, A
                 "timestamp": timestamp,
                 "src_ip": src_ip,
                 "marker": marker,
+                "blocked": refused,
                 "raw": dict(message, src_geo=doc.get("src_geo") or {}, request=request,
                             host_ip=transaction.get("host_ip"), host_port=transaction.get("host_port")),
             }

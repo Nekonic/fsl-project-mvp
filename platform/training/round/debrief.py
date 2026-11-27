@@ -18,6 +18,7 @@ DEFENCE_KINDS = ("rule.tested", "rule.applied", "rule.refused", "case.judged")
 SHARED_KINDS = frozenset(name for name, kind in log.KINDS.items()
                          if kind.visible_to == log.BOTH and not name.startswith(("round.", "player.")))
 BOTH_SIDES = log.Viewer(sides=log.SIDES)
+BENIGN_VERDICTS = ("tn", "fp")
 
 
 def when(at: datetime | None) -> str | None:
@@ -60,21 +61,43 @@ def free_alerts_of(score: dict) -> dict[str, int]:
 def alert_rows(found: Round) -> list[dict]:
     grouped: dict[tuple[str, str], list] = defaultdict(list)
     for detection in alert_feed.detections(found):
-        grouped[(detection.engine, detection.signature)].append(detection)
-    return [{"lane": DEFENCE, "kind": "alerts", "at": when(min(one.timestamp for one in seen)), "engine": engine,
-             "signature": signature, "count": len(seen), "until": when(max(one.timestamp for one in seen))}
-            for (engine, signature), seen in grouped.items()]
+        grouped[(detection.engine, detection.rule or detection.signature)].append(detection)
+    rows = []
+    for (engine, _), seen in grouped.items():
+        first = min(seen, key=lambda one: one.timestamp)
+        rows.append({"lane": DEFENCE, "kind": "alerts", "at": when(first.timestamp), "engine": engine,
+                     "rule": first.rule, "signature": first.signature, "count": len(seen),
+                     "until": when(max(one.timestamp for one in seen))})
+    return rows
+
+
+def fired_at(event: dict, fired: dict[str, datetime], end: datetime | None) -> datetime:
+    if event["kind"] == "case.judged" and event["body"].get("action") in fired:
+        return fired[event["body"]["action"]]
+    return min(event["at"], end) if end else event["at"]
 
 
 def event_rows(found: Round) -> list[dict]:
-    rows = []
+    fired = {record.action_id: record.started_at for record in lifecycle.logged_actions(found)}
+    end = found.ended or found.ends_at
+    rows, benign = [], {}
     for event in events_of(found):
         lane = ATTACK if event["kind"] in ATTACK_KINDS else DEFENCE if event["kind"] in DEFENCE_KINDS else None
         if event["kind"] in SHARED_KINDS:
             lane = BOTH
-        if lane is not None:
-            rows.append({"lane": lane, "kind": event["kind"], "at": when(event["at"]), **event["body"]})
-    return rows
+        if lane is None:
+            continue
+        at = fired_at(event, fired, end)
+        verdict = event["body"].get("verdict") if event["kind"] == "case.judged" else None
+        if verdict not in BENIGN_VERDICTS:
+            rows.append({"lane": lane, "kind": event["kind"], "at": when(at), **event["body"]})
+            continue
+        held = benign.setdefault((event["body"]["case"], verdict), {
+            "lane": lane, "kind": event["kind"], "at": when(at), **event["body"], "alerts": 0, "count": 0, "until": when(at)})
+        held["count"] += 1
+        held["alerts"] += event["body"].get("alerts") or 0
+        held["at"], held["until"] = min(held["at"], when(at)), max(held["until"], when(at))
+    return rows + list(benign.values())
 
 
 def note_rows(found: Round) -> list[dict]:
