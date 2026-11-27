@@ -51,7 +51,7 @@ class Invalid(DomainError):
         "unknown_field", "unknown_wargame",
         "unknown_objective", "unknown_profile", "matchup_not_allowed", "not_malicious",
         "not_recorded", "name_taken", "unknown_step", "unknown_card", "cards_missing", "step_not_allowed",
-        "problem_not_allowed",
+        "problem_not_allowed", "loot_format",
     })
 
 

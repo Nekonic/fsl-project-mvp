@@ -72,6 +72,8 @@ def submit_loot(found: Round, value: Any, actions: Sequence[ActionRecord] = (),
                 at: datetime | None = None) -> LootVerdict:
     if objective_model(found) != LOOT_VERIFIED:
         raise errors.Conflict(code="loot_not_taken")
+    if not loot.canonicalize(value):
+        raise errors.Invalid(code="loot_format", path="value")
     truth = found.baseline
     if not isinstance(truth, dict) or not truth:
         raise errors.Conflict(code="round_not_started")

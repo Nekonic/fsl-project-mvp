@@ -148,3 +148,14 @@ def test_loot_before_the_baseline_is_taken_is_refused():
         losses.submit_loot(rounds.opened(rounds.problem()), {"admin": TRUTH["admin"]})
 
     assert refused.value.code == "round_not_started"
+
+
+@pytest.mark.parametrize("value", ["not json", {}, [], [["admin"]], [{"name": "admin"}], 7])
+def test_loot_that_holds_no_username_and_hash_pair_is_refused_as_a_format_error(board_target, value):
+    found = started(board_target)
+
+    with pytest.raises(errors.Invalid) as refused:
+        losses.submit_loot(found, value, at=AT)
+
+    assert (refused.value.code, refused.value.errors[0].path) == ("loot_format", "value")
+    assert not Objective.objects.filter(round=found).exists()
