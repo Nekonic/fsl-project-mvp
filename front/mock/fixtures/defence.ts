@@ -148,11 +148,17 @@ export const fixtures = [
   }),
   reply("get", "/api/rounds/{round_id}/defence/alerts/", (asked) => {
     const after = Number(asked.query.get("after") ?? 0);
+    const before = asked.query.get("before");
     const engine = asked.query.get("engine");
     const rule = asked.query.get("rule");
     const src = asked.query.get("src");
-    const shown = alerts.filter((one) => one.id > after && (!engine || one.engine === engine) && (!rule || one.rule === rule) && (!src || one.src_ip === src));
-    return { alerts: shown, next: shown.length ? Math.max(...shown.map((one) => one.id)) : after };
+    const matching = alerts.filter((one) => (!engine || one.engine === engine) && (!rule || one.rule === rule) && (!src || one.src_ip === src));
+    if (before !== null) {
+      const older = matching.filter((one) => Number(before) === 0 || one.id < Number(before)).sort((a, b) => b.id - a.id);
+      return { alerts: older, next: older.length ? Math.min(...older.map((one) => one.id)) : Number(before), more: false, total: matching.length };
+    }
+    const shown = matching.filter((one) => one.id > after);
+    return { alerts: shown, next: shown.length ? Math.max(...shown.map((one) => one.id)) : after, more: false, total: matching.length };
   }),
   reply("get", "/api/rounds/{round_id}/defence/traffic/", {
     by_origin: [

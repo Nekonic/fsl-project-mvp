@@ -4,6 +4,7 @@ import { score } from "../../mock/fixtures/result";
 import { t, tFor } from "../strings";
 import { CONFIRM_ARMED_MS, ConfirmButton, KeptPane } from "../ui";
 import { playerFacts } from "../console/RoundHeader";
+import { Alerts, newestFirst } from "./Alerts";
 import { FiredBadge } from "./AttackCases";
 import { Brief } from "./Brief";
 import { shellStateOf } from "./Terminal";
@@ -257,6 +258,16 @@ describe("ScoreReport", () => {
     expect(cellsOf("5.188.10.10")[1]).toBe("998");
     expect(cellsOf("181.8.0.10")[1]).toBe("12");
     expect(document.body.textContent).not.toContain("one_case_one_decision");
+  });
+});
+
+describe("free actions labels", () => {
+  it("counts actions, not requests, and names the blocked column as alerts, since one tool run draws thousands", () => {
+    render(<ScoreReport score={score} />);
+    expect(t("result.actions")).toBe("행동");
+    expect(screen.getByRole("columnheader", { name: t("result.refused_alerts") })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: t("col.blocked") })).toBeNull();
+    expect(t("result.free_lead")).toContain("도구 실행");
   });
 });
 
@@ -571,5 +582,50 @@ describe("staff objective label", () => {
 describe("staff wargame label", () => {
   it("names the wargame in Korean beside its id", () => {
     expect(wargameLabel([{ id: "board", title: "Board" } as Parameters<typeof wargameLabel>[0][number]], "board")).toBe(`${t("wargame.board")} · board`);
+  });
+});
+
+describe("Alerts", () => {
+  const alert = (id: number) => ({ id, time: `2026-11-20T09:00:${String(id % 60).padStart(2, "0")}Z`, engine: "waf", rule: `r${id}`,
+    signature: `sig-${id}`, src_ip: "5.188.10.10", request_id: null, uri: "/", blocked: true });
+
+  function serving(pages: Record<string, { alerts: ReturnType<typeof alert>[]; next: number; more: boolean; total: number }>) {
+    const asked: URL[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), "http://localhost");
+      asked.push(url);
+      const body = url.pathname.endsWith("/defence/alerts/") ? pages[url.searchParams.get("before") ?? "none"]
+        : url.pathname.endsWith("/defence/traffic/") ? { by_origin: [], next: "" } : { events: [], next: 0 };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    return asked;
+  }
+
+  it("lists the newest alerts first, reads older ones only on asking, and offers no more once all are shown", async () => {
+    const asked = serving({ "0": { alerts: [alert(9), alert(8)], next: 8, more: true, total: 3 },
+      "8": { alerts: [alert(3)], next: 3, more: false, total: 3 } });
+    render(<Alerts round={61} side="defence" placement="main" />);
+    await waitFor(() => expect(screen.getByText("sig-9")).toBeTruthy());
+    expect(screen.getByText("3")).toBeTruthy();
+    fireEvent.click(screen.getByText(t("alerts.more")));
+    await waitFor(() => expect(screen.getByText("sig-3")).toBeTruthy());
+    const shown = screen.getAllByText(/^sig-/).map((cell) => cell.textContent);
+    expect(shown).toEqual(["sig-9", "sig-8", "sig-3"]);
+    expect(screen.queryByText(t("alerts.more"))).toBeNull();
+    expect(asked.filter((url) => url.pathname.endsWith("/defence/alerts/")).map((url) => url.searchParams.get("before"))).toEqual(["0", "8"]);
+  });
+
+  it("names the total as the filter's when a filter is on", async () => {
+    serving({ "0": { alerts: [alert(5)], next: 5, more: false, total: 1 } });
+    render(<Alerts round={62} side="defence" placement="main" />);
+    await waitFor(() => expect(document.body.textContent).toContain(t("alerts.total")));
+    fireEvent.input(screen.getByPlaceholderText("5.188.10.10"), { target: { value: "5.188.10.10" } });
+    fireEvent.click(screen.getByText(t("alerts.search")));
+    await waitFor(() => expect(document.body.textContent).toContain(t("alerts.total_filtered")));
+  });
+
+  it("joins a fresh newest page to the list it overlaps and replaces a list it leaves a gap after", () => {
+    expect(newestFirst([alert(5), alert(4)], [alert(7), alert(6), alert(5)])).toEqual({ alerts: [alert(7), alert(6), alert(5), alert(4)], joined: true });
+    expect(newestFirst([alert(5), alert(4)], [alert(9), alert(8)])).toEqual({ alerts: [alert(9), alert(8)], joined: false });
   });
 });

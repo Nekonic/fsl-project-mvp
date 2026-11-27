@@ -64,14 +64,26 @@ def keep_when_due(found: Round) -> RoundRecord | None:
     return keep(found) if due(found) else None
 
 
+def restate_bots(found: Round) -> None:
+    for kept in RoundRecord.objects.filter(round_number=found.pk):
+        kept.bot = bot_summary(found)
+        if kept.debrief:
+            kept.debrief = {**kept.debrief, "bots": debrief.bot_lines(found)}
+        kept.save(update_fields=["bot", "debrief"])
+
+
 def prune(now: datetime | None = None) -> int:
     cutoff = (now or timezone.now()) - timedelta(days=settings.RETAIN_RECORDS_DAYS)
     deleted, _ = RoundRecord.objects.filter(kept__lt=cutoff).delete()
     return deleted
 
 
+LISTED_WITHOUT = ("score", "debrief", "bot")
+
+
 def mine(user, problem_id: int | None = None) -> list[RoundRecord]:
-    found = RoundRecord.objects.filter(Q(attack_user=user) | Q(defence_user=user))
+    found = RoundRecord.objects.select_related("problem").defer(*LISTED_WITHOUT)
+    found = found.filter(Q(attack_user=user) | Q(defence_user=user))
     found = found.filter(Q(problem=None) | Q(problem__published=True))
     if problem_id is not None:
         found = found.filter(problem_id=problem_id)
@@ -84,5 +96,11 @@ def record(record_id: int, user) -> RoundRecord:
         raise errors.NotFound(code="unknown_record")
     if not user.is_staff and user.pk not in (found.attack_user_id, found.defence_user_id):
         raise errors.NotAPlayer()
+    if found.debrief:
+        found.debrief = debrief.cleaned(found.debrief)
     return found
 
+
+def kept_score(found: Round) -> dict | None:
+    kept = RoundRecord.objects.filter(round_number=found.pk).exclude(score=None).values_list("score", flat=True).first()
+    return kept or None

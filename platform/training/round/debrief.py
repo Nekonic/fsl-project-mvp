@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import re
 from collections import Counter, defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
+from domain.types import ACTION_ORIGIN_REQUEST, ENGINE_WAF, ActionRecord, DetectionRecord
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.content import bots as catalog
-from training.attack import actions as attack
 from training.models import Action, Player, Round
 from training.round import bots as bot_runs
 from training.round import lifecycle
@@ -17,8 +19,13 @@ ATTACK_KINDS = ("tool.started", "tool.ended", "command.run", "origin.spent", "or
 DEFENCE_KINDS = ("rule.tested", "rule.applied", "rule.refused", "case.judged")
 SHARED_KINDS = frozenset(name for name, kind in log.KINDS.items()
                          if kind.visible_to == log.BOTH and not name.startswith(("round.", "player.")))
+TIMELINE_KINDS = frozenset(ATTACK_KINDS) | frozenset(DEFENCE_KINDS) | SHARED_KINDS
 BOTH_SIDES = log.Viewer(sides=log.SIDES)
 BENIGN_VERDICTS = ("tn", "fp")
+SHOWN_NOTES = frozenset({"text", "result"})
+KOREAN = re.compile("[\uac00-\ud7a3]")
+EMPHASIS = re.compile(r"\*\*|__|`")
+HEADING = re.compile(r"(?m)^\s{0,3}#{1,6}\s+")
 
 
 def when(at: datetime | None) -> str | None:
@@ -26,17 +33,12 @@ def when(at: datetime | None) -> str | None:
 
 
 def events_of(found: Round) -> list[dict]:
-    seen, cursor = [], 0
-    while True:
-        page = log.after(found.pk, cursor, BOTH_SIDES)
-        seen += page.events
-        if not page.events:
-            return seen
-        cursor = page.next
+    return log.every(found.pk, BOTH_SIDES, TIMELINE_KINDS)
 
 
-def action_rows(found: Round, free_alerts: dict[str, int]) -> list[dict]:
-    alerted = Counter(detection.marker for detection in alert_feed.detections(found) if detection.marker)
+def action_rows(found: Round, free_alerts: dict[str, int], seen: Sequence[DetectionRecord],
+                requests: Sequence[ActionRecord]) -> list[dict]:
+    alerted = Counter(detection.marker for detection in seen if detection.marker)
     rows, free = [], defaultdict(list)
     for action in Action.objects.filter(round=found).order_by("started", "id"):
         if action.case_id:
@@ -44,7 +46,7 @@ def action_rows(found: Round, free_alerts: dict[str, int]) -> list[dict]:
                          "origin": action.source_ip, "alerts": alerted[action.marker]})
         else:
             free[action.source_ip or ""].append((action.started, action.ended))
-    for request in sorted(attack.origin_records(found), key=lambda record: record.started_at):
+    for request in sorted(requests, key=lambda record: record.started_at):
         free[request.source_ip or ""].append((request.started_at, request.ended_at))
     for origin, actions in free.items():
         actions.sort(key=lambda action: action[0])
@@ -58,16 +60,31 @@ def free_alerts_of(score: dict) -> dict[str, int]:
     return {origin["ip"]: origin["alerts"] for origin in score["free_actions"]["by_origin"]}
 
 
-def alert_rows(found: Round) -> list[dict]:
-    grouped: dict[tuple[str, str], list] = defaultdict(list)
-    for detection in alert_feed.detections(found):
-        grouped[(detection.engine, detection.rule or detection.signature)].append(detection)
+def access_refusal(detection: DetectionRecord) -> bool:
+    return (detection.engine == ENGINE_WAF and len(detection.rule) == 3 and detection.rule.isdigit()
+            and detection.signature.startswith(f"{detection.rule} "))
+
+
+def alert_group(detection: DetectionRecord, owners: frozenset[str]) -> tuple:
+    owner = detection.marker if detection.marker in owners else None
+    if access_refusal(detection):
+        return owner, detection.engine, detection.rule
+    return owner, detection.engine, None if owner else detection.rule or detection.signature
+
+
+def alert_rows(seen: Sequence[DetectionRecord], owners: frozenset[str] = frozenset()) -> list[dict]:
+    grouped: dict[tuple, list[DetectionRecord]] = defaultdict(list)
+    for detection in seen:
+        grouped[alert_group(detection, owners)].append(detection)
     rows = []
-    for (engine, _), seen in grouped.items():
-        first = min(seen, key=lambda one: one.timestamp)
+    for (_, engine, _), held in grouped.items():
+        first = min(held, key=lambda one: one.timestamp)
+        rules = Counter((one.rule, one.signature) for one in held)
+        rule, signature = max(rules, key=rules.__getitem__)
         rows.append({"lane": DEFENCE, "kind": "alerts", "at": when(first.timestamp), "engine": engine,
-                     "rule": first.rule, "signature": first.signature, "count": len(seen),
-                     "until": when(max(one.timestamp for one in seen))})
+                     "rule": rule, "signature": signature, "count": len(held),
+                     "rules": len({one.rule or one.signature for one in held}),
+                     "until": when(max(one.timestamp for one in held))})
     return rows
 
 
@@ -100,9 +117,30 @@ def event_rows(found: Round) -> list[dict]:
     return rows + list(benign.values())
 
 
+def plain(text: str) -> str:
+    return HEADING.sub("", EMPHASIS.sub("", text)).strip()
+
+
+def shown_note(kind: str, text: str) -> str | None:
+    if kind not in SHOWN_NOTES or not KOREAN.search(text):
+        return None
+    return plain(text) or None
+
+
 def note_rows(found: Round) -> list[dict]:
-    return [{"lane": note.run.player.side, "kind": "bot_note", "at": when(note.at), "note": note.kind,
-             "text": note.text} for note in bot_runs.notes_of(found)]
+    rows = [{"lane": note.run.player.side, "kind": "bot_note", "at": when(note.at), "note": note.kind,
+             "text": shown_note(note.kind, note.text)} for note in bot_runs.notes_of(found)]
+    return [row for row in rows if row["text"]]
+
+
+def cleaned(composed: dict[str, Any]) -> dict[str, Any]:
+    timeline = []
+    for row in composed.get("timeline") or []:
+        if row.get("kind") != "bot_note":
+            timeline.append(row)
+        elif (text := shown_note(str(row.get("note")), str(row.get("text") or ""))) is not None:
+            timeline.append({**row, "text": text})
+    return {**composed, "timeline": timeline}
 
 
 def bot_lines(found: Round) -> list[dict]:
@@ -127,9 +165,14 @@ def objective_marks(score: dict) -> list[dict]:
 
 
 def compose(found: Round) -> dict[str, Any]:
-    score = lifecycle.shown_score(found, lifecycle.score(found))
+    seen = alert_feed.detections(found)
+    acted = tuple(lifecycle.actions(found))
+    requests = [one for one in acted if one.kind == ACTION_ORIGIN_REQUEST]
+    score = lifecycle.shown_score(found, lifecycle.score_over(found, acted, seen))
     titles = lifecycle.case_titles(found)
-    timeline = action_rows(found, free_alerts_of(score)) + alert_rows(found) + event_rows(found) + note_rows(found)
+    owners = frozenset(one.marker for one in acted if one.kind != ACTION_ORIGIN_REQUEST and one.marker)
+    timeline = (action_rows(found, free_alerts_of(score), seen, requests) + alert_rows(seen, owners)
+                + event_rows(found) + note_rows(found))
     timeline = [{**row, "title": titles.get(row["case"], row["case"])} if row.get("case") else row for row in timeline]
     timeline.sort(key=lambda row: row["at"] or "")
     return {

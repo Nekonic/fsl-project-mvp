@@ -156,6 +156,10 @@ class Score(MatchView):
                    operation_id="round_score")
     def get(self, request, round_id: int):
         asked = given(serializers.ScoreQuery, request.query_params)
+        kept = records.kept_score(request.round) if request.round.phase == service.ENDED and not asked.get(
+            "correlation") else None
+        if kept is not None:
+            return Response(serializers.Score({"pending": service.pending(request.round), **kept}).data)
         found = service.score_for(request.round, bool(request.user.is_staff),
                                   bool(request.user.is_staff) or (request.operator and not request.players),
                                   asked.get("correlation"))
@@ -254,7 +258,8 @@ class Debrief(MatchView):
         if found.phase != service.ENDED:
             raise errors.Conflict(code="round_running")
         kept = RoundRecord.objects.filter(round_number=found.pk).first()
-        return Response(serializers.Debrief(kept.debrief if kept and kept.debrief else debriefs.compose(found)).data)
+        return Response(serializers.Debrief(debriefs.cleaned(kept.debrief) if kept and kept.debrief
+                                            else debriefs.compose(found)).data)
 
 
 class BotSteps(MatchView):
@@ -316,7 +321,8 @@ class BotRunFinish(LauncherView):
                               asked["refusals"], asked["closing"])
         found = run.player.round
         found.refresh_from_db()
-        records.keep_when_due(found)
+        if records.keep_when_due(found) is None:
+            records.restate_bots(found)
         return Response(serializers.RunShown(run).data)
 
 

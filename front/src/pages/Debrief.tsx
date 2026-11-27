@@ -1,7 +1,7 @@
 import type { Schemas } from "../api/client";
 import { useResource } from "../api/hooks";
 import { withStoppedEarly } from "../botRun";
-import { clockSeconds, count } from "../format";
+import { clockSeconds, count, ro } from "../format";
 import { to } from "../links";
 import { ScoreReport } from "../panes/Score";
 import type { PageProps } from "../routes";
@@ -65,6 +65,7 @@ function paramsOf(row: TimelineRow, marks: ObjectiveMark[]): StringParams {
   if (typeof row.case === "string" && typeof row.title === "string" && row.title) params.case = row.title;
   if ("engine" in row) params.engine = engineOf(row);
   if (row.kind === "rule.tested") params.result = t(row.passed ? "debrief.test.passed" : "debrief.test.failed");
+  if (row.kind === "origin.switched") params.ro = ro(text(row, "ip"));
   if (row.kind === "case.judged") params.verdict = tFor("verdict", text(row, "verdict"));
   if (row.kind === "bot_note") params.note = tFor("debrief.note", text(row, "note"));
   if (typeof row.count === "number") params.count = count(row.count);
@@ -74,8 +75,21 @@ function paramsOf(row: TimelineRow, marks: ObjectiveMark[]): StringParams {
   return params;
 }
 
+const HTTP_STATUS = /^\d{3}$/;
+
+export function accessRefusal(row: TimelineRow): boolean {
+  const rule = typeof row.rule === "string" ? row.rule : "";
+  return row.kind === "alerts" && row.engine === "waf" && HTTP_STATUS.test(rule)
+    && typeof row.signature === "string" && row.signature.startsWith(`${rule} `);
+}
+
 export function rowText(row: TimelineRow, marks: ObjectiveMark[] = []): string {
-  return tFor("debrief.row", row.kind, paramsOf(row, marks));
+  const params = paramsOf(row, marks);
+  if (accessRefusal(row)) return t("debrief.row.access_refusals", { ...params, status: text(row, "rule") });
+  if (row.kind === "alerts" && typeof row.rules === "number" && row.rules > 1) {
+    return t("debrief.row.alerts_rules", { ...params, others: count(row.rules - 1) });
+  }
+  return tFor("debrief.row", row.kind, params);
 }
 
 function laneCell(row: TimelineRow, lane: string, marks: ObjectiveMark[]) {

@@ -150,3 +150,8 @@ def after(round_id: int, cursor: int, viewer: Viewer, limit: int = PAGE, kinds: 
                  .order_by("id")[:limit])
     reached = found[-1].id if len(found) == limit else newest
     return Page(events=[shown(event, viewer) for event in found], next=reached)
+
+
+def every(round_id: int, viewer: Viewer, kinds: frozenset[str]) -> list[dict]:
+    wanted = sorted(frozenset(visible_kinds(viewer)) & kinds)
+    return [shown(event, viewer) for event in Event.objects.filter(round_id=round_id, kind__in=wanted).order_by("id")]

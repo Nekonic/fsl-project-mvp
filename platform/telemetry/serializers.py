@@ -32,6 +32,7 @@ class Page(serializers.Serializer):
 
 class AlertQuery(serializers.Serializer):
     after = serializers.IntegerField(min_value=0, default=0)
+    before = serializers.IntegerField(min_value=0, required=False)
     engine = serializers.ChoiceField(choices=ENGINE_CHOICES, required=False)
     rule = serializers.CharField(required=False, max_length=64)
     src = serializers.IPAddressField(required=False)
@@ -56,6 +57,8 @@ class Alert(serializers.Serializer):
 class Alerts(serializers.Serializer):
     alerts = Alert(many=True)
     next = serializers.IntegerField()
+    more = serializers.BooleanField()
+    total = serializers.IntegerField()
 
 
 class TrafficOrigin(serializers.Serializer):
