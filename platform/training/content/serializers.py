@@ -4,7 +4,7 @@ from rest_framework import serializers
 from training.content import bots as bot_catalog
 from training.models import PROBLEM_KINDS, PROBLEM_SIDES
 
-MATCHUPS = ["pvp", "def_vs_bot", "atk_vs_bot"]
+MATCHUPS = ["def_vs_bot", "atk_vs_bot"]
 
 
 class RoundSetup(serializers.Serializer):
@@ -116,6 +116,11 @@ class Wargame(serializers.Serializer):
     def get_cards(self, wargame) -> list[dict]:
         return [{"id": card.id, "technique": card.technique, "name": card.name}
                 for card in bot_catalog.cards() if wargame.id in card.wargames]
+
+
+class LearnerWargame(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
 
 
 class LearnerProblemSummary(serializers.Serializer):

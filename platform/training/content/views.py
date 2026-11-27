@@ -21,6 +21,12 @@ class Problems(APIView):
         return Response(serializers.LearnerProblemSummary(service.published(), many=True).data)
 
 
+class LearnerWargames(APIView):
+    @extend_schema(tags=CATALOG, responses=serializers.LearnerWargame(many=True), operation_id="wargames")
+    def get(self, request):
+        return Response(serializers.LearnerWargame(service.wargames(), many=True).data)
+
+
 class OneProblem(APIView):
     @extend_schema(tags=CATALOG, responses=serializers.LearnerProblem, operation_id="problem")
     def get(self, request, problem_id: int):

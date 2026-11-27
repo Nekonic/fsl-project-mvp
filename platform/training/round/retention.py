@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
+from telemetry import alerts
 from telemetry import events as log
 from training.models import Allocation, Round
 from training.round import records, site
@@ -32,8 +33,10 @@ def drop(allocation_ids: Iterable[int]) -> list[int]:
             records.keep(found)
         round_ids = list(Round.objects.filter(allocation_id=allocation_id).values_list("pk", flat=True))
         with transaction.atomic():
+            list(Round.objects.select_for_update().filter(pk__in=round_ids).values_list("pk", flat=True))
             log.forget(round_ids)
             Allocation.objects.filter(pk=allocation_id).delete()
+            alerts.forget(round_ids)
         for round_id in round_ids:
             site.forget(round_id)
         dropped.append(allocation_id)

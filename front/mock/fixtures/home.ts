@@ -1,23 +1,24 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
 export const problems = [
-  { id: 7, kind: "round", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match", matchups: ["pvp", "def_vs_bot", "atk_vs_bot"], bot_steps: ["1", "2", "3"] },
-  { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match", matchups: ["pvp", "def_vs_bot"], bot_steps: ["1", "2"] },
+  { id: 7, kind: "round", wargame: "board", side: "both", title: "Board wargame", summary: "Placeholder summary for the board match", matchups: ["def_vs_bot", "atk_vs_bot"], bot_steps: ["1", "2", "3"] },
+  { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match", matchups: ["def_vs_bot"], bot_steps: ["1", "2"] },
 ];
 
 const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null, left_of_round_s: null });
 const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name, step: "", bot_run: null, left_of_round_s: null });
 
 const mine = [
-  { round: 41, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
-  { round: 40, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
+  { round: 41, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },
+  { round: 40, wargame: "board", problem: 7, problem_title: "Board wargame", kind: "round", matchup: "def_vs_bot", phase: "ended" as const, players: [bot("attack", "claude-code"), human("defence", "learner-one")] },
 ];
 
 const joinable = [
-  { round: 42, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
+  { round: 42, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "created" as const, players: [human("attack", "learner-three"), human("defence", null)] },
 ];
 
 export const fixtures = [
+  reply("get", "/api/wargames/", [{ id: "board", title: "Community board" }, { id: "corp", title: "Corp" }]),
   reply("get", "/api/problems/", problems),
   reply("get", "/api/problems/", [], { variant: "empty-home" }),
   reply("get", "/api/rounds/", (asked) => {

@@ -273,11 +273,15 @@ def account_disabled(username: str) -> Answer:
     return ask("staff_user_disable", operator(), username=username)
 
 
+def round_asked(played: Played) -> dict:
+    asked = {"matchup": played.matchup, "players": players_for(played.matchup, played.humans)}
+    if played.matchup == "pvp":
+        return asked
+    return {"problem": problem_of(played.setup or acceptance_setup(played.wargame)), **asked}
+
+
 def next_round(played: Played) -> None:
-    setup = played.setup or acceptance_setup(played.wargame)
-    made = done("round_create", operator(), {
-        "problem": problem_of(setup), "matchup": played.matchup, "players": players_for(played.matchup, played.humans),
-    }, allocation_id=played.allocation)
+    made = done("round_create", operator(), round_asked(played), allocation_id=played.allocation)
     done("round_start", operator(), round_id=made["round"])
     tokens = made.get("bot_tokens") or {}
     played.round = made["round"]

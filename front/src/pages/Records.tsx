@@ -8,13 +8,14 @@ import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Badge, Button, ErrorNotice, Hero, Loading, PageBody, Section, Stack, Table, type Column } from "../ui";
 import { DebriefReport, stepsLine } from "./Debrief";
+import { wargameName } from "./wargameText";
 
 type RecordLine = Schemas["RecordLine"];
 type DebriefShown = Schemas["Debrief"];
 type ScoreShown = Schemas["Score"];
 
-function problemTitle(line: { problem_title: string | null }): string {
-  return line.problem_title ?? "—";
+function problemTitle(line: { problem_title: string | null; wargame: string | null }): string {
+  return line.problem_title ?? (line.wargame ? wargameName(line.wargame) : "—");
 }
 
 function endedAt(line: RecordLine): string {

@@ -133,6 +133,11 @@ def drop_access_refusals_of(found, refusals: list[Mapping[str, Any]]) -> None:
         Detection.objects.filter(pk__in=doubles).delete()
 
 
+def forget(round_ids: list[int]) -> int:
+    deleted, _ = Detection.objects.filter(round_id__in=list(round_ids)).delete()
+    return deleted
+
+
 def cursor_of(found) -> AlertCursor:
     held, _ = AlertCursor.objects.get_or_create(allocation=found.allocation,
                                                 defaults={"cursor": {"at": found.allocation.opened.isoformat()}})

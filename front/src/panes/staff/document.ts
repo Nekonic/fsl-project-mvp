@@ -11,7 +11,7 @@ export type PostureBody = Schemas["PostureRequest"];
 export type Matchup = Schemas["MatchupEnum"];
 export type ProblemSide = Schemas["ProblemSideEnum"];
 
-export const MATCHUPS: Matchup[] = ["pvp", "def_vs_bot", "atk_vs_bot"];
+export const MATCHUPS: Matchup[] = ["def_vs_bot", "atk_vs_bot"];
 export const SIDES: ProblemSide[] = ["attack", "defence", "both"];
 
 export interface Draft {
@@ -21,7 +21,7 @@ export interface Draft {
 }
 
 export function blankSetup(): SetupBody {
-  return { matchups: ["pvp"], probe_cases: [], objectives: [], benign_every_s: 60, time_limit_s: 1800 };
+  return { matchups: ["def_vs_bot"], probe_cases: [], objectives: [], benign_every_s: 60, time_limit_s: 1800 };
 }
 
 export function blankDraft(wargame: string): Draft {

@@ -46,7 +46,7 @@ def keep(found: Round) -> RoundRecord | None:
     try:
         with transaction.atomic():
             made = RoundRecord.objects.create(
-                round_number=found.pk, problem_id=found.problem_id,
+                round_number=found.pk, wargame_id=found.allocation.wargame_id, problem_id=found.problem_id,
                 problem_revision=(found.snapshot.get("problem") or {}).get("revision"), matchup=found.matchup,
                 attack_user=getattr(players.get("attack"), "user", None),
                 defence_user=getattr(players.get("defence"), "user", None),

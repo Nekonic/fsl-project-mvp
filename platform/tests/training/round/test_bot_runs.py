@@ -66,7 +66,7 @@ def test_the_server_treats_a_bot_seat_as_a_human_seat(started, launcher, allocat
               for rest in ("attack/state/", "attack/cases/", "defence/state/")]
     service.end_round(started, "ended_by_operator")
     attacker = make_user("human-attacker")
-    human_round = service.start_round(pvp(allocation, started.problem, attacker, make_user("human-defender")))
+    human_round = service.start_round(pvp(allocation, attacker, make_user("human-defender")))
     launcher.force_authenticate(attacker)
     as_human = [launcher.get(url(human_round, rest)) for rest in ("attack/state/", "attack/cases/", "defence/state/")]
 

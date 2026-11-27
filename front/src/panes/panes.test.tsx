@@ -78,6 +78,19 @@ describe("Brief", () => {
     expect(shown.querySelector("i")).toBeNull();
     expect(screen.getByText("Short summary")).toBeTruthy();
   });
+
+  it("names the wargame and the 1:1 matchup in a pvp round, which has no problem", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const body = url.endsWith("/rounds/45/") ? { round: 45, wargame: "board", matchup: "pvp" }
+        : { matchup: "pvp", brief: { title: "Community board", summary: "", body: "" }, objectives };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    }));
+    render(<Brief round={45} side="attack" placement="aside" />);
+    expect(await screen.findByText(t("matchup.pvp"))).toBeTruthy();
+    expect(screen.getByText(t("wargame.board"))).toBeTruthy();
+    expect(screen.queryByText("Community board")).toBeNull();
+  });
 });
 
 function cellsOf(text: string): string[] {

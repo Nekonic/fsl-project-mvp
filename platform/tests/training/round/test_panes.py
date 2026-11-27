@@ -13,7 +13,7 @@ from training.round import lifecycle as service
 
 @pytest.fixture
 def running(allocation, problem, learner, other):
-    return service.start_round(pvp(allocation, problem, other, learner))
+    return service.start_round(pvp(allocation, other, learner))
 
 
 CUSTOMER_ADDRESSES = (*fakerange.US_CUSTOMERS, *fakerange.BR_CUSTOMERS)

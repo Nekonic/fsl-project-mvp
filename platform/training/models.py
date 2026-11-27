@@ -103,7 +103,7 @@ class Allocation(models.Model):
 
 class Round(models.Model):
     allocation = models.ForeignKey(Allocation, on_delete=models.CASCADE, related_name="rounds")
-    problem = models.ForeignKey(Problem, on_delete=models.PROTECT, related_name="+")
+    problem = models.ForeignKey(Problem, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
     kind = models.CharField(max_length=8, choices=ROUND_KINDS)
     matchup = models.CharField(max_length=16, choices=MATCHUPS, blank=True, default="")
     phase = models.CharField(max_length=8, choices=PHASES, default=Phase.CREATED.value)
@@ -175,6 +175,7 @@ class BotNote(models.Model):
 
 class RoundRecord(models.Model):
     round_number = models.PositiveIntegerField(unique=True)
+    wargame = models.ForeignKey(Wargame, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     problem = models.ForeignKey(Problem, on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
     problem_revision = models.PositiveIntegerField(null=True, blank=True)
     matchup = models.CharField(max_length=16, choices=MATCHUPS)

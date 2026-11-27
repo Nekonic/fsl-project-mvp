@@ -599,7 +599,8 @@ def read_commands(found: Round) -> int:
 
 def state(found: Round) -> State:
     held = origins.rows(found)
-    problem, wargame = found.snapshot["problem"], found.snapshot["wargame"]
+    wargame = found.snapshot["wargame"]
+    problem = found.snapshot["problem"] or {"title": wargame["title"], "summary": "", "body": ""}
     return State(
         round=found.pk, matchup=found.matchup, phase=found.phase, started=found.started, ends_at=found.ends_at,
         end_reason=found.end_reason,

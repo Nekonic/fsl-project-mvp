@@ -8,6 +8,7 @@ import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Button, ErrorNotice, Hero, PageBody } from "../ui";
+import { wargameName } from "./wargameText";
 
 const ROUND_EVENTS = ["round.ended"];
 
@@ -31,13 +32,14 @@ export function Result({ params }: PageProps) {
   const { round: shown, problem, allocation, error } = useResultRound(round);
   const ended = shown?.phase === "ended";
   const span = shown?.started && shown.ended ? `${clock(shown.started)}–${clock(shown.ended)}` : "";
-  const lead = [problem?.title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
+  const title = problem?.title ?? (shown && shown.problem === null ? wargameName(shown.wargame) : undefined);
+  const lead = [title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
   const nextRound = allocation && !allocation.closed ? <Button tone="primary" href={to.allocation(allocation.allocation)}>{t("result.next_round")}</Button> : null;
 
   return (
     <AppPage
       title={t("page.result")}
-      crumbs={[...(problem ? [{ label: problem.title }] : []), { label: t("result.crumb") }]}
+      crumbs={[...(title ? [{ label: title }] : []), { label: t("result.crumb") }]}
     >
       {ended && (
         <Hero

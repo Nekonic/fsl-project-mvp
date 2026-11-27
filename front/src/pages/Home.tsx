@@ -10,9 +10,11 @@ import {
   Badge, Badges, Button, Card, ErrorNotice, Group, GroupHead, Hero, ListRow, Loading, PageBody, Section, Stack, Table, TargetHead, Text,
   Tile, Tiles, phaseTone, roundTileLook, type Column,
 } from "../ui";
+import { botRoundProblems, roundTitle } from "./roundText";
 import { wargameHost, wargameLead, wargameName } from "./wargameText";
 
 type Problem = Schemas["LearnerProblemSummary"];
+type Wargame = Schemas["LearnerWargame"];
 type RoundLine = Schemas["RoundLine"];
 type Side = Schemas["PlayerSideEnum"];
 
@@ -22,13 +24,12 @@ interface Catalogue {
   wargames: Array<{ wargame: string; rounds: Problem[] }>;
 }
 
-function catalogueOf(problems: Problem[] | undefined): Catalogue {
-  const order: string[] = [];
-  for (const problem of problems ?? []) if (!order.includes(problem.wargame)) order.push(problem.wargame);
+function catalogueOf(wargames: Wargame[] | undefined, problems: Problem[] | undefined): Catalogue {
+  const rounds = botRoundProblems(problems ?? []);
+  const order = (wargames ?? []).map((wargame) => wargame.id);
+  for (const problem of rounds) if (!order.includes(problem.wargame)) order.push(problem.wargame);
   return {
-    wargames: order.map((wargame) => {
-      return { wargame, rounds: (problems ?? []).filter((problem) => problem.wargame === wargame) };
-    }),
+    wargames: order.map((wargame) => ({ wargame, rounds: rounds.filter((problem) => problem.wargame === wargame) })),
   };
 }
 
@@ -49,7 +50,7 @@ function MyPlayers({ rounds }: { rounds: RoundLine[] }) {
         const first = sides[0] ?? "defence";
         return (
           <ListRow key={`r${line.round}`} id={t("round.name", { round: line.round })} href={to.player(line.round, first)}
-            main={<><Text tone="heading">{line.problem_title}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
+            main={<><Text tone="heading">{roundTitle(line)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={<>
               <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge>
               {sides.map((side) => (
@@ -74,7 +75,7 @@ function Joinable({ rounds }: { rounds: RoundLine[] }) {
       <Card list>
         {rounds.map((line) => (
           <ListRow key={line.round} id={t("round.name", { round: line.round })}
-            main={<><Text tone="heading">{line.problem_title}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
+            main={<><Text tone="heading">{roundTitle(line)}</Text><Text tone="muted" small>{tFor("matchup", line.matchup)}</Text></>}
             side={openSides(line).map((side) => (
               <Badges key={side}>
                 <Badge tone="warn">{t("home.player_open", { side: sideLabel(side) })}</Badge>
@@ -107,7 +108,6 @@ function ProblemTiles({ catalogue }: { catalogue: Catalogue }) {
     <Stack gap="lg">
       <ErrorNotice error={openError} />
       {catalogue.wargames
-        .filter((group) => group.rounds.length)
         .map((group) => (
           <Group key={group.wargame}>
             <TargetHead eyebrow={t("home.target")} title={wargameName(group.wargame)} text={wargameLead(group.wargame) || undefined}
@@ -115,6 +115,9 @@ function ProblemTiles({ catalogue }: { catalogue: Catalogue }) {
             <Group>
               <GroupHead title={t("kind.round")} sub={t("home.rounds_count", { n: group.rounds.length })} />
               <Tiles>
+                <Tile icon={roundTileLook.icon} tone={roundTileLook.tone} label={t("matchup.pvp")} title={t("home.pvp_title")} text={t("home.pvp_lead")}
+                  action={<Button tone="primary" small busy={opening === group.wargame} disabled={opening !== null && opening !== group.wargame}
+                    onClick={() => void openRange(group.wargame)}>{t("home.open_range")}</Button>} />
                 {group.rounds.map((problem) => (
                   <Tile key={problem.id} icon={roundTileLook.icon} tone={roundTileLook.tone} label={t("kind.round")} title={problem.title} text={problem.summary}
                     foot={<Badge>{sideLabel(problem.side)}</Badge>}
@@ -154,19 +157,20 @@ function Past({ lines }: { lines: PastLine[] }) {
 
 export function Home(_props: PageProps) {
   const problems = useResource("/api/problems/", {});
+  const wargames = useResource("/api/wargames/", {});
   const mineRounds = useResource("/api/rounds/", { query: { mine: true } });
   const joinable = useResource("/api/rounds/", { query: { state: "joinable" } });
 
-  const catalogue = useMemo(() => catalogueOf(problems.data), [problems.data]);
+  const catalogue = useMemo(() => catalogueOf(wargames.data, problems.data), [wargames.data, problems.data]);
   const roundsMine = mineRounds.data ?? [];
   const roundsOpen = roundsMine.filter((line) => line.phase !== "ended");
   const mineIds = new Set(roundsMine.map((line) => line.round));
   const joinableShown = (joinable.data ?? []).filter((line) => !mineIds.has(line.round) && openSides(line).length > 0);
   const past: PastLine[] = roundsMine.filter((line) => line.phase === "ended").map((line) => ({
-    key: `r${line.round}`, name: t("round.name", { round: line.round }), problem: line.problem_title, href: to.result(line.round),
+    key: `r${line.round}`, name: t("round.name", { round: line.round }), problem: roundTitle(line), href: to.result(line.round),
   }));
 
-  const all = problems.data ?? [];
+  const all = botRoundProblems(problems.data ?? []);
   const stats = [
     { value: all.length, label: t("kind.round") },
     { value: catalogue.wargames.length, label: t("home.stat.wargames") },
@@ -188,9 +192,9 @@ export function Home(_props: PageProps) {
             </Section>
           )}
           <Section title={t("home.problems")} large>
-            <ErrorNotice error={problems.error} />
+            <ErrorNotice error={problems.error ?? wargames.error} />
             {problems.loading && !problems.data && <Loading>{t("common.loading")}</Loading>}
-            {problems.data && !problems.data.length && <Text tone="muted">{t("home.problems_none")}</Text>}
+            {wargames.data && !catalogue.wargames.length && <Text tone="muted">{t("home.problems_none")}</Text>}
             <ProblemTiles catalogue={catalogue} />
           </Section>
           <Section title={t("home.past")}>

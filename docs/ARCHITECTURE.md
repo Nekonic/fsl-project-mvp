@@ -13,7 +13,7 @@
 ## 용어
 
 - **워게임**: 대상 앱과 그 목표, 케이스. `board`와 `corp` 두 개. `wargames/<id>/wargame.yaml`이 정의
-- **문제**(`Problem`): 스태프가 DB에 쓰는 라운드 문제. 라운드 설정(`RoundSetup`)을 가짐
+- **문제**(`Problem`): 스태프가 DB에 쓰는 라운드 문제. 라운드 설정(`RoundSetup`)을 가짐. 봇 매치업 라운드에만 쓰고, `pvp` 라운드는 문제 없이(`Round.problem`이 비어 있음) 워게임의 목표와 케이스로 진행
 - **할당**(`Allocation`): 슬롯 스택 하나를 운영자에게 준 것. KYPO의 sandbox allocation에서 온 이름. 용도는 `round`,
   `probe`. 닫히거나 만료되면 스택을 지우고 새로 만듦
 - **라운드**(`Round`): 할당 위에서 도는 한 판. 종류는 `round`, 단계는 `created → starting → running → ended`
@@ -333,7 +333,7 @@ sequenceDiagram
 | `match` | `/api/rounds/<r>/events/?after=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/versions/<n>,ids/rules/test,ids/rules/tests/<t>,ids/terminal,waf,waf/versions,waf/versions/<n>,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. IDS 룰을 쓰는 경로는 없음. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
-| `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성. 학습자 문제 목록에 허용 대전 방식과 봇 난이도, 스태프 워게임 목록에 그 워게임의 공격 카드 |
+| `catalog`, `staff` | `/api/wargames/`, `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 학습자 워게임 목록(`pvp`를 여는 곳), 문제 읽기와 작성. 학습자 문제 목록에 허용 대전 방식과 봇 난이도, 스태프 워게임 목록에 그 워게임의 공격 카드 |
 | `match` | `/api/bot-steps/`, `/api/rounds/<r>/debrief/` | 난이도 표(로비), 끝난 라운드의 복기(진행 중이면 `409 round_running`) |
 | `records` | `/api/records/`, `/api/records/<id>/` | 자기 라운드 기록(점수, 복기). 스태프는 모두 |
 | `bots` | `/api/bot-runs/claim/`, `/api/bot-runs/<id>/{notes,finish}/` | 실행기 전용(실행기 키). 플레이어 토큰으로는 못 부름 |

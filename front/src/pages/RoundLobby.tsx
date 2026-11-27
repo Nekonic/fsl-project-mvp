@@ -14,13 +14,14 @@ import {
   Row, Select, Stack, Table, Task, Text, phaseTone, type Column,
 } from "../ui";
 import { ProblemText } from "../panes/Brief";
+import { botRoundProblems, roundTitle } from "./roundText";
 import { wargameHost, wargameName } from "./wargameText";
 
 type Allocation = Schemas["AllocationDetail"];
 type RoundLine = Schemas["RoundLine"];
 type PlayerLine = Schemas["PlayerLine"];
 type Side = Schemas["PlayerSideEnum"];
-type Matchup = Schemas["MatchupEnum"];
+type Matchup = "pvp" | Schemas["MatchupsEnum"];
 type PlayerKind = "user" | "bot" | "driven" | "open";
 type PlayerAsk = Schemas["PlayerAskRequest"];
 type StepLine = Schemas["StepLine"];
@@ -105,7 +106,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
 
   const columns: Column<RoundLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round }) },
-    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: (line) => line.problem_title },
+    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: roundTitle },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     ...SIDES.map((side): Column<RoundLine> => ({
       key: side, label: t(`col.${side}_player`),
@@ -214,9 +215,8 @@ interface CreateRoundProps {
   onCreated: () => void;
 }
 
-function matchupsOf(problem: Problem | undefined): Matchup[] {
-  const allowed = MATCHUPS.filter((one) => problem?.matchups.includes(one));
-  return allowed.length ? allowed : MATCHUPS;
+function matchupsOf(problems: Problem[]): Matchup[] {
+  return MATCHUPS.filter((one) => one === "pvp" || problems.some((problem) => problem.matchups.includes(one)));
 }
 
 function stepsOf(problem: Problem | undefined, steps: StepLine[]): StepLine[] {
@@ -238,7 +238,7 @@ function ProblemBody({ problem }: { problem: string }) {
 
 function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProps) {
   const staff = Boolean(useSession().me?.is_staff);
-  const fitting = problems.filter((problem) => problem.wargame === allocation.wargame);
+  const fitting = botRoundProblems(problems).filter((problem) => problem.wargame === allocation.wargame);
   const [problem, setProblem] = useState("");
   const [picked, setMatchup] = useState<Matchup>("pvp");
   const [players, setPlayers] = useState<Record<Side, PlayerChoice>>({
@@ -249,10 +249,12 @@ function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProp
   const [copied, setCopied] = useState("");
   const create = useAction("post", "/api/allocations/{allocation_id}/rounds/");
 
-  const chosen = problem || String(fitting[0]?.id ?? "");
-  const chosenProblem = fitting.find((one) => String(one.id) === chosen);
-  const allowed = matchupsOf(chosenProblem);
-  const matchup = allowed.includes(picked) ? picked : (allowed[0] as Matchup);
+  const allowed = matchupsOf(fitting);
+  const matchup = allowed.includes(picked) ? picked : "pvp";
+  const pvp = matchup === "pvp";
+  const forMatchup = pvp ? [] : fitting.filter((one) => one.matchups.includes(matchup));
+  const chosen = pvp ? "" : (forMatchup.some((one) => String(one.id) === problem) ? problem : String(forMatchup[0]?.id ?? ""));
+  const chosenProblem = forMatchup.find((one) => String(one.id) === chosen);
   const offered = stepsOf(chosenProblem, steps);
   const seatOf = (side: Side): PlayerChoice => {
     const choice = players[side];
@@ -274,13 +276,13 @@ function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProp
   };
   const seats = { attack: seatOf("attack"), defence: seatOf("defence") };
   const stepless = SIDES.some((side) => seats[side].kind === "bot" && !seats[side].step);
-  const blocked = closed || !allocation.ready || unended || !chosen || stepless;
+  const blocked = closed || !allocation.ready || unended || (!pvp && !chosen) || stepless;
 
   const submit = async () => {
     if (blocked) return;
     const made = await create.run({
       params: { allocation_id: allocation.allocation },
-      body: { problem: Number(chosen), matchup, players: { attack: askOf(seats.attack), defence: askOf(seats.defence) } },
+      body: { ...(pvp ? {} : { problem: Number(chosen) }), matchup, players: { attack: askOf(seats.attack), defence: askOf(seats.defence) } },
     });
     if (!made) return;
     setTokens(Object.entries(made.bot_tokens).map(([side, token]) => ({
@@ -298,7 +300,7 @@ function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProp
     }
   };
 
-  const reason = closed ? t("lobby.closed_notice") : !allocation.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !fitting.length ? t("lobby.no_match_problem") : stepless ? t("lobby.step_none") : "";
+  const reason = closed ? t("lobby.closed_notice") : !allocation.ready ? t("lobby.not_ready") : unended ? t("error.round_open") : !pvp && !forMatchup.length ? t("lobby.no_match_problem") : stepless ? t("lobby.step_none") : "";
 
   return (
     <Task title={t("lobby.create")}>
@@ -313,17 +315,24 @@ function CreateRound({ allocation, problems, steps, onCreated }: CreateRoundProp
               </Row>
             </Notice>
           ))}
-          <Field label={t("col.problem")} error={errors.problem}>
-            <Select value={chosen} onValue={setProblem} disabled={!fitting.length}
-              options={fitting.map((one) => ({ value: String(one.id), label: one.title }))} />
-          </Field>
-          <ProblemBody problem={chosen} />
           <Stack gap="sm">
             <Label>{t("col.matchup")}</Label>
             <Choices name="matchup" value={matchup} onValue={(next) => pickMatchup(next as Matchup)}
               options={allowed.map((one) => ({ value: one, label: tFor("matchup", one) }))} />
             {errors.matchup && <Text tone="danger" small>{errors.matchup}</Text>}
           </Stack>
+          {pvp
+            ? <Text tone="muted" small>{t("lobby.pvp_lead", { wargame: wargameName(allocation.wargame) })}</Text>
+            : (
+              <>
+                <Field label={t("col.problem")} error={errors.problem}>
+                  <Select value={chosen} onValue={setProblem} disabled={!forMatchup.length}
+                    options={forMatchup.map((one) => ({ value: String(one.id), label: one.title }))} />
+                </Field>
+                <ProblemBody problem={chosen} />
+              </>
+            )}
+          {pvp && errors.problem && <Text tone="danger" small>{errors.problem}</Text>}
           <Columns shape="two">
             {SIDES.map((side) => (
               <PlayerPick key={side} side={side} botSide={PLAYERS_FOR[matchup][side] === "bot"} staff={staff} steps={offered}

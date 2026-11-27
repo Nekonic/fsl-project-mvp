@@ -47,9 +47,14 @@ def url(found, rest: str = "") -> str:
     return f"/api/rounds/{found.pk}/{rest}"
 
 
-def pvp(allocation, problem, attacker, defender):
-    return service.create_round(allocation, problem.pk, "pvp",
+def pvp(allocation, attacker, defender):
+    return service.create_round(allocation, None, "pvp",
                                 {"attack": {"username": attacker.username}, "defence": {"username": defender.username}}).round
+
+
+def driven(allocation, problem, defender):
+    return service.create_round(allocation, problem.pk, "def_vs_bot",
+                                {"attack": {"bot": {"name": "driven"}}, "defence": {"username": defender.username}}).round
 
 
 @pytest.fixture
