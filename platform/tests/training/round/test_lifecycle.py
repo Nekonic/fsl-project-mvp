@@ -150,16 +150,6 @@ def test_a_round_the_problem_or_matchup_does_not_allow_is_refused(as_operator, a
             status, code, path=path)
 
 
-def test_bot_vs_bot_is_created_only_by_a_baseline(as_staff, allocation, learner):
-    both = content.save_document(factories.round_problem({"side": "both"}, matchups=["pvp", "def_vs_bot", "atk_vs_bot"],
-                                                         objectives=["board-auth-user-admin"]))
-
-    refused(as_staff.post(f"/api/allocations/{allocation.pk}/rounds/", {
-        "problem": both.pk, "matchup": "bot_vs_bot",
-        "players": {"attack": {"bot": {"name": "one"}}, "defence": {"bot": {"name": "two"}}}}, format="json"),
-        400, "matchup_not_allowed", path="matchup")
-
-
 def test_an_inactive_account_cannot_be_a_player(as_operator, allocation, problem, learner):
     learner.is_active = False
     learner.save(update_fields=["is_active"])

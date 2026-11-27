@@ -13,10 +13,9 @@ from django.db.models import F, ProtectedError
 
 from cr import errors
 from domain.problems import validate_problem
-from domain.round_rules import bot_sides, human_side
 from sandbox.crs import editable, refusals
 from training.content import bots, catalog
-from training.models import BotBaseline, Posture, ProbeSet, Problem, RoundSetup, Wargame
+from training.models import Posture, ProbeSet, Problem, RoundSetup, Wargame
 
 DOCUMENT_KEYS = ("problem", "round", "start_posture")
 PROBLEM_DEFAULTS = {"summary": "", "body": "", "published": False}
@@ -203,7 +202,6 @@ def save_document(doc: Mapping, base_revision: object = None, *, problem_id: int
     doc = {key: value for key, value in doc.items() if key != "base_revision"} if isinstance(doc, Mapping) else doc
     expected = revision_given(base_revision) if problem_id is not None else None
     validated(doc)
-    refuse_publish_without_baselines(doc, problem_id)
     with transaction.atomic():
         if problem_id is None:
             found = Problem(author=author)
@@ -216,30 +214,6 @@ def save_document(doc: Mapping, base_revision: object = None, *, problem_id: int
                 raise errors.Conflict(code="stale_revision", params={"current_revision": found.revision})
         written(found, doc)
     return found
-
-
-def baselines_wanted(setup: Mapping | None) -> list[tuple[str, str]]:
-    if not setup:
-        return []
-    sides = sorted({side for matchup in setup.get("matchups") or [] if bot_sides(matchup)
-                    if (side := human_side(matchup))})
-    return [(side, step) for side in sides for step in setup.get("bot_steps") or []]
-
-
-def missing_baselines(problem_id: int | None, setup: Mapping | None) -> list[tuple[str, str]]:
-    wanted = baselines_wanted(setup)
-    if problem_id is None:
-        return wanted
-    current = set(BotBaseline.objects.filter(problem_id=problem_id, status="current")
-                  .values_list("human_side", "step"))
-    return [pair for pair in wanted if pair not in current]
-
-
-def refuse_publish_without_baselines(doc: Mapping, problem_id: int | None) -> None:
-    if not doc["problem"].get("published"):
-        return
-    if missing_baselines(problem_id, doc.get("round")):
-        raise errors.Conflict(code="baseline_missing", path="problem.published")
 
 
 def import_document(doc: Mapping, author=None) -> Problem:

@@ -7,8 +7,7 @@ import { usePlace } from "../router";
 import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
-import { Button, ErrorNotice, Hero, Notice, PageBody } from "../ui";
-import { standingText } from "./Records";
+import { Button, ErrorNotice, Hero, PageBody } from "../ui";
 
 const ROUND_EVENTS = ["round.ended"];
 
@@ -22,19 +21,14 @@ function useResultRound(round: number) {
   const problem = useResource("/api/problems/{problem_id}/", problemId ? { params: { problem_id: problemId } } : null);
   const allocationId = shown.data?.allocation;
   const allocation = useResource("/api/allocations/{allocation_id}/", allocationId ? { params: { allocation_id: allocationId } } : null);
-  const ended = shown.data?.phase === "ended";
-  const records = useResource("/api/records/", ended && problemId ? { query: { problem: problemId } } : null);
-  const record = (records.data ?? []).find((line) => line.round_number === round);
-  return { round: shown.data, problem: problem.data, allocation: allocation.data, record, error: shown.error };
+  return { round: shown.data, problem: problem.data, allocation: allocation.data, error: shown.error };
 }
 
 export function Result({ params }: PageProps) {
   const round = Number(params.round);
   const place = usePlace();
   const side = sideFrom(place.search.get("side"));
-  const { round: shown, problem, allocation, record, error } = useResultRound(round);
-  const botRound = shown?.players.some((player) => player.client === "bot" && player.step) ?? false;
-  const standing = standingText(record?.standing);
+  const { round: shown, problem, allocation, error } = useResultRound(round);
   const ended = shown?.phase === "ended";
   const span = shown?.started && shown.ended ? `${clock(shown.started)}–${clock(shown.ended)}` : "";
   const lead = [problem?.title, span, shown?.end_reason ? tFor("end_reason", shown.end_reason) : ""].filter(Boolean).join(" · ");
@@ -59,7 +53,6 @@ export function Result({ params }: PageProps) {
       )}
       <PageBody>
         {error && <ErrorNotice error={error} />}
-        {ended && botRound && record && <Notice tone="info">{standing || t("result.standing_none")}</Notice>}
         <Score round={round} side={side} placement="main" />
       </PageBody>
     </AppPage>

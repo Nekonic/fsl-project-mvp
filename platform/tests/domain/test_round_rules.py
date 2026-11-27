@@ -52,6 +52,5 @@ def test_only_a_running_round_ends(phase):
 
 
 
-def test_a_both_sides_problem_does_not_take_the_bot_vs_bot_matchup():
-    assert Matchup.BOT_VS_BOT not in ALLOWED_MATCHUPS[Side.BOTH]
+def test_a_both_sides_problem_takes_pvp_and_both_matchups_against_a_bot():
     assert ALLOWED_MATCHUPS[Side.BOTH] == {Matchup.PVP, Matchup.DEF_VS_BOT, Matchup.ATK_VS_BOT}

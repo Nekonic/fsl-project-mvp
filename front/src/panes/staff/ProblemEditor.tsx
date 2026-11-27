@@ -5,7 +5,6 @@ import { errorLine, errorText, t, type ShownError } from "../../strings";
 import { Button, ErrorList, ErrorNotice, Field, FormGrid, Input, Loading, Select, Stack, Switch, Text, TextArea, type Option, Chips, EditorCard, EditorGroup, EditorHead, EditorSection, EditorStrip, PublishRow } from "../../ui";
 import { objectiveNamesOf, usePostures, useWargames, wargameLabel } from "./catalog";
 import { asShownErrors, blankDraft, built, downloadJson, draftOf, postureInline, SIDES, textUnder, type Draft } from "./document";
-import { BaselinePanel } from "./BaselinePanel";
 import { RoundSetupEditor } from "./RoundSetupEditor";
 
 export interface ProblemEditorProps {
@@ -181,7 +180,6 @@ export function ProblemEditor({ problemId, onSaved, onDeleted }: ProblemEditorPr
         <EditorSection>
           <RoundSetupEditor setup={draft.round} onSetup={(round) => change({ round })} errors={errors} postures={postureOptions}
             steps={steps.data ?? []} cards={chosenWargame?.cards ?? []} objectiveNames={objectiveNamesOf(chosenWargame)} />
-          <BaselinePanel problemId={problemId} saved={stored.data?.round} />
           {publish}
         </EditorSection>
       </EditorCard>

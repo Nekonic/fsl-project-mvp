@@ -63,7 +63,7 @@
 | L5 | `scoring/*` |
 | L6 | `training/round/access.py`, `training/content/catalog.py`, `training/content/problems.py`, `training/content/bots.py` |
 | L7 양쪽 | `training/attack/actions.py`, `training/attack/origins.py`, `training/defence/*` |
-| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py`, `training/round/baseline.py` |
+| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py` |
 | HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
 주요 규칙(번호는 테스트 이름의 번호):
@@ -114,7 +114,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                strings.py   strings/server.json 읽기
   domain/      types.py  traffic.py(고객 배분, limit_req 하한)  verdicts.py(룰 테스트 판정표)
                problems.py(문제 검증)  round_rules.py(매치업, 단계, 종료 조건)
-               bots.py(난이도·공격 카드, 카드 추첨)  baseline.py(백분위, 프로필 키)
+               bots.py(난이도·공격 카드, 카드 추첨)
                scoring/  correlate.py  metrics.py(판정 시점 decided 포함)  corroborate.py  objectives.py
   users/       accounts.py(로그인·가입·승인)  permissions.py(SessionAuthentication, CsrfChecked, IsStaff)
                players.py(플레이어 토큰 해시·발급·회수)  blocks.py(로그인 차단, SignInBlock)
@@ -155,9 +155,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                views_catch_up.py  CatchingUpView: 요청마다 할당 만료 확인과 catch_up
                site.py(사이트 패널 프록시)  retention.py  views.py(라운드, 할당, 스태프 range API)
                bots.py        봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
-               records.py     라운드 기록(점수·복기 고정, 90일 보관), 기준 분포 대비 백분위
+               records.py     라운드 기록(점수·복기 고정, 90일 보관)
                debrief.py     끝난 라운드의 복기: 공격 봇 카드, 봇 의도, 두 갈래 타임라인
-               baseline.py    봇 대 봇 기준 분포: 판 열기·끝내기·판정·기록, 20판 채우기, stale 표시
     traffic/   customers.py   정상 케이스와 고객 트래픽, 라운드마다 새로 만드는 고객 비밀번호
     attack/    actions.py     공격 API의 모든 동작, 고객 전송, 명령 기록, 공격 쪽 터미널
                origins.py     출발지 풀, 오류 로그로 소진, limit_req 하한
@@ -197,9 +196,8 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                Objectives  Origins  Loot  AttackCases  RuleVersions  Score  Verdicts
                registry.ts  패널 id → 컴포넌트 표
                staff/  문제·posture 편집기, 가져오기. RoundSetupEditor(봇 난이도, 공격 봇 카드 체크)
-                       BaselinePanel(기준 분포 버튼과 진행 표)
   src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby(대전 방식, 봇 쪽 난이도)
-               RoundAttack  RoundDefence  Result(기준 분포 대비, 복기 링크)  Debrief(복기: 봇, 카드, 의도, 타임라인, 점수)
+               RoundAttack  RoundDefence  Result(복기 링크)  Debrief(복기: 봇, 카드, 의도, 타임라인, 점수)
                Records(내 기록 목록과 기록 한 건)  Access(VPN 프로필, 워게임별 공격 대상 주소, kali SSH 설정)
                staff/(Problems  Postures  Users  Range)
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
@@ -337,8 +335,7 @@ sequenceDiagram
 | `defence` | `/api/rounds/<r>/defence/{state,alerts,traffic,probes,ids/rules,ids/rules/versions,ids/rules/versions/<n>,ids/rules/test,ids/rules/tests/<t>,ids/terminal,waf,waf/versions,waf/versions/<n>,waf/check,waf/test,waf/tests/<t>,waf/apply,terminal,kibana}/` | 방어 API. IDS 룰을 쓰는 경로는 없음. `alerts`, `traffic`은 `telemetry/views.py`, 나머지는 `training/defence` |
 | `catalog`, `staff` | `/api/problems/`, `/api/staff/problems/…`, `/api/staff/postures/…`, `/api/staff/wargames/` | 문제 읽기와 작성. 학습자 문제 목록에 허용 대전 방식과 봇 난이도, 스태프 워게임 목록에 그 워게임의 공격 카드 |
 | `match` | `/api/bot-steps/`, `/api/rounds/<r>/debrief/` | 난이도 표(로비), 끝난 라운드의 복기(진행 중이면 `409 round_running`) |
-| `records` | `/api/records/`, `/api/records/<id>/` | 자기 라운드 기록(점수, 복기, 기준 분포 대비 백분위). 스태프는 모두 |
-| `staff` | `/api/problems/<id>/baselines/` (GET, POST) | 기준 분포 진행과 시작. 문제 편집 화면의 버튼이 부름 |
+| `records` | `/api/records/`, `/api/records/<id>/` | 자기 라운드 기록(점수, 복기). 스태프는 모두 |
 | `bots` | `/api/bot-runs/claim/`, `/api/bot-runs/<id>/{notes,finish}/` | 실행기 전용(실행기 키). 플레이어 토큰으로는 못 부름 |
 
 권한:

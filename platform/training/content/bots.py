@@ -24,11 +24,10 @@ def loaded(path: Path) -> Any:
 
 
 @cache
-def step_catalog() -> tuple[tuple[Step, ...], dict[str, str]]:
+def step_catalog() -> tuple[Step, ...]:
     doc = loaded(STEPS)
     try:
-        found = bots.steps_from(doc)
-        return found, bots.stand_ins_from(doc, found)
+        return bots.steps_from(doc)
     except (KeyError, TypeError, ValueError) as broken:
         raise BotCatalogBroken(f"{STEPS} is malformed: {broken!r}") from broken
 
@@ -43,7 +42,7 @@ def card_catalog() -> tuple[tuple[Card, ...], str]:
 
 
 def steps() -> tuple[Step, ...]:
-    return step_catalog()[0]
+    return step_catalog()
 
 
 def step_ids() -> frozenset[str]:
@@ -55,10 +54,6 @@ def step(step_id: str) -> Step:
     if found is None:
         raise Invalid(code="unknown_step", path="step")
     return found
-
-
-def stand_in(side: str) -> str:
-    return step_catalog()[1][side]
 
 
 def play(step_id: str, side: str) -> Play:

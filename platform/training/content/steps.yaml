@@ -2,9 +2,6 @@
 # Pace and allowance are held by the launcher's relay, never by the server.
 # min_gap_s, budget_usd and max_turns are not ruled and not measured; tune them after rounds are played.
 # watch_s: how often the launcher feeds the defence bot what is new, window_s / per_window (DECISIONS 2026-11-25).
-stand_in:
-  attack: "2"
-  defence: "2"
 steps:
   - id: "1"
     attack:

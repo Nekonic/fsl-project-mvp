@@ -1,4 +1,3 @@
-import type { components } from "../../src/api/schema";
 import { minutesFromNow, refuse, reply } from "../fixture";
 import { score } from "./result";
 
@@ -37,30 +36,19 @@ const debrief = {
   timeline, score,
 };
 
-const standing = { baseline: 3, step: "2", n: 20, top_percent: 35 };
-
-const recordLine = (record: number, round: number, withStanding: boolean) => ({
+const recordLine = (record: number, round: number) => ({
   record, round_number: round, problem: 7, problem_title: "Board wargame", matchup: "def_vs_bot", steps: { attack: "2" }, started: minutesFromNow(-90 - record),
-  ended: minutesFromNow(-60 - record), end_reason: "time_limit", incomplete: false, baseline: null, standing: withStanding ? standing : null,
+  ended: minutesFromNow(-60 - record), end_reason: "time_limit", incomplete: false,
 });
-
-const baselines: Array<components["schemas"]["BaselineLine"]> = [
-  { baseline: 3, human_side: "defence" as const, step: "1", status: "current" as const, profile_key: "a1b2c3", counted: 20, wanted: 20, attempted: 22, attempts_max: 30, exits: { success: 20, crashed: 2 }, spread: { n: 20, low: 0, median: 1, high: 3 } },
-  { baseline: 4, human_side: "defence" as const, step: "2", status: "running" as const, profile_key: "d4e5f6", counted: 7, wanted: 20, attempted: 8, attempts_max: 30, exits: { success: 7 }, spread: { n: 7, low: 0, median: 2, high: 3 } },
-];
 
 export const fixtures = [
   reply("get", "/api/bot-steps/", steps),
   reply("get", "/api/rounds/{round_id}/debrief/", (asked) => ({ ...debrief, round: Number(asked.params.round_id) })),
   reply("get", "/api/rounds/{round_id}/debrief/", (asked) => ({ ...debrief, round: Number(asked.params.round_id), pending: true }), { variant: "debrief-pending" }),
   refuse("get", "/api/rounds/{round_id}/debrief/", 409, [{ path: "", code: "round_running" }], { variant: "round-running" }),
-  reply("get", "/api/records/", [recordLine(12, 40, true), recordLine(11, 38, false)]),
+  reply("get", "/api/records/", [recordLine(12, 40), recordLine(11, 38)]),
   reply("get", "/api/records/", [], { variant: "records-empty" }),
   reply("get", "/api/records/{record_id}/", (asked) => ({
-    ...recordLine(Number(asked.params.record_id), 40, true), card: "A3", score, debrief, bot: {},
+    ...recordLine(Number(asked.params.record_id), 40), card: "A3", score, debrief, bot: {},
   })),
-  reply("get", "/api/problems/{problem_id}/baselines/", baselines),
-  reply("post", "/api/problems/{problem_id}/baselines/", (asked) => ({
-    ...(baselines[1] as components["schemas"]["BaselineLine"]), baseline: 5, human_side: asked.body?.human_side ?? "defence", step: asked.body?.step ?? "2", counted: 0, attempted: 0,
-  }), { status: 201 }),
 ];

@@ -94,7 +94,7 @@ class Conflict(DomainError):
         "conflict", "round_not_started", "round_closed", "round_running", "origins_spent", "stale_version",
         "stale_revision", "test_busy", "already_playing", "player_taken", "in_use",
         "own_account", "loot_not_taken", "allocation_closed", "players_open", "objective_fallen", "round_started",
-        "probe_running", "round_open", "range_not_cloud", "not_tested", "baseline_running", "baseline_missing",
+        "probe_running", "round_open", "range_not_cloud", "not_tested",
         "vpn_ports_full",
     })
 

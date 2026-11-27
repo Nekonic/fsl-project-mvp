@@ -87,10 +87,3 @@ def test_values_of_the_wrong_type_are_errors_not_crashes():
 
     assert errors(doc) == [("problem.wargame", "unknown_wargame"), ("round.matchups", "required"),
                            ("round.objectives", "not_a_text_list")]
-
-
-def test_problem_validation_refuses_bot_vs_bot_on_every_side():
-    for side in ("attack", "defence", "both"):
-        doc = changed(ROUND, lambda d: (d["problem"].update(side=side), d["round"].update(matchups=["bot_vs_bot"])))
-
-        assert errors(doc) == [("round.matchups[0]", "matchup_not_allowed")]

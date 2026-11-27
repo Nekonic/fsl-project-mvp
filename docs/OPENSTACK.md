@@ -1236,7 +1236,7 @@ the user's own login, and only the accounts in `CR_BOT_ROUND_USERS` can open a
 round with a launched bot (DECISIONS 2026-11-24). Those names go into
 `/opt/cr/.env` by hand as `CR_BOT_ROUND_USERS=<name>,...`, beside
 `CR_BOT_RUNS_MAX` when more than two bot runs should play at once (a
-`def_vs_bot` round takes one run, a baseline round two), then `docker compose
+bot round takes one run), then `docker compose
 up -d platform bots`; a rebuilt VM's `.env` has neither. **(this cloud)** On
 2026-11-25: `CR_BOT_ROUND_USERS=admin`, `CR_BOT_RUNS_MAX=5`, the token from the
 user's Claude Code login on cr-dev.

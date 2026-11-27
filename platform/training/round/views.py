@@ -11,7 +11,6 @@ from sandbox import service as sandbox
 from training.models import RoundRecord
 from training.round import access as auth
 from training.round import allocation as allocations
-from training.round import baseline as baselines
 from training.round import bots as bot_runs
 from training.round import debrief as debriefs
 from training.round import lifecycle as service
@@ -293,7 +292,6 @@ class BotRunClaim(LauncherView):
                    operation_id="bot_run_claim")
     def post(self, request):
         asked = given(serializers.ClaimAsk, request.data)
-        baselines.advance()
         claimed = bot_runs.claim(asked["restarted"], asked["launcher"])
         if claimed is None:
             return Response(status=status.HTTP_204_NO_CONTENT)
@@ -318,26 +316,7 @@ class BotRunFinish(LauncherView):
         found = run.player.round
         found.refresh_from_db()
         records.keep_when_due(found)
-        baselines.advance()
         return Response(serializers.RunShown(run).data)
-
-
-class Baselines(MatchView):
-    permission_classes = [accounts.IsStaff]
-
-    @extend_schema(tags=STAFF_TAGS, responses=serializers.BaselineLine(many=True), operation_id="baseline_read")
-    def get(self, request, problem_id: int):
-        return Response(serializers.BaselineLine([baselines.shown(line) for line in baselines.lines(problem_id)],
-                                                 many=True).data)
-
-    @extend_schema(tags=STAFF_TAGS, request=serializers.BaselineAsk, responses={201: serializers.BaselineLine},
-                   operation_id="baseline_create")
-    def post(self, request, problem_id: int):
-        asked = given(serializers.BaselineAsk, request.data)
-        made = baselines.create(problem_id, asked["human_side"], asked["step"], asked["rounds"], request.user)
-        baselines.advance()
-        made.refresh_from_db()
-        return Response(serializers.BaselineLine(baselines.shown(baselines.line_of(made))).data, status=status.HTTP_201_CREATED)
 
 
 class StaffRange(MatchView):

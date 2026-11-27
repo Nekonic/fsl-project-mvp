@@ -86,30 +86,6 @@ CLIENTS = [(client, client) for client in (HUMAN, BOT)]
 REASONS = [(reason, reason) for reason in END_REASONS]
 
 
-BASELINE_STATES = [(state, state) for state in ("running", "current", "stale", "failed")]
-
-
-class BotBaseline(models.Model):
-    problem = models.ForeignKey(Problem, on_delete=models.PROTECT, related_name="+")
-    problem_revision = models.PositiveIntegerField()
-    human_side = models.CharField(max_length=8, choices=PLAYER_SIDES)
-    step = models.CharField(max_length=16)
-    profile_key = models.CharField(max_length=64, blank=True, default="")
-    rounds_wanted = models.PositiveIntegerField(default=20)
-    attempts_max = models.PositiveIntegerField()
-    attempts = models.PositiveIntegerField(default=0)
-    samples = models.JSONField(default=list)
-    exits = models.JSONField(default=dict)
-    launcher = models.JSONField(default=dict)
-    status = models.CharField(max_length=8, choices=BASELINE_STATES, default="running")
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-                                   related_name="+")
-    created = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["id"]
-
-
 class Allocation(models.Model):
     wargame = models.ForeignKey(Wargame, on_delete=models.PROTECT, related_name="+")
     purpose = models.CharField(max_length=8, choices=PURPOSES)
@@ -143,8 +119,6 @@ class Round(models.Model):
     read_at = models.DateTimeField(null=True, blank=True)
     judged_at = models.DateTimeField(null=True, blank=True)
     unavailable_reads = models.JSONField(default=dict)
-    baseline_of = models.ForeignKey(BotBaseline, on_delete=models.SET_NULL, null=True, blank=True,
-                                    related_name="rounds")
 
     class Meta:
         ordering = ["id"]
@@ -210,15 +184,12 @@ class RoundRecord(models.Model):
                                      related_name="+")
     steps = models.JSONField(default=dict)
     card = models.CharField(max_length=16, blank=True, default="")
-    profile_key = models.CharField(max_length=64, blank=True, default="")
     started = models.DateTimeField(null=True, blank=True)
     ended = models.DateTimeField(null=True, blank=True)
     end_reason = models.CharField(max_length=24, choices=REASONS, blank=True, default="")
     score = models.JSONField(null=True, blank=True)
     debrief = models.JSONField(default=dict)
     bot = models.JSONField(default=dict)
-    baseline = models.ForeignKey(BotBaseline, on_delete=models.SET_NULL, null=True, blank=True, related_name="records")
-    counts_for_baseline = models.BooleanField(default=False)
     incomplete = models.BooleanField(default=False)
     kept = models.DateTimeField(auto_now_add=True)
 

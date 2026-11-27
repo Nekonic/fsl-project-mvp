@@ -5,7 +5,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from tests.training.round.conftest import bot_round
-from training.models import BotBaseline, Round, RoundRecord
+from training.models import Round, RoundRecord
 from training.round import allocation as allocations
 from training.round import lifecycle as service
 from training.round import records, retention
@@ -46,18 +46,12 @@ def test_a_record_is_written_once_judged_and_the_runs_finished_and_survives_prun
     assert as_learner.get(f"/api/records/{kept.pk}/").status_code == 403
 
 
-def test_records_older_than_90_days_are_pruned_and_a_current_baselines_percentile_survives(bot_problem, learner):
-    held = BotBaseline.objects.create(problem=bot_problem, problem_revision=1, human_side="defence", step="1",
-                                      profile_key="k", attempts_max=30, samples=[0.0, 1.0, 2.0, 3.0],
-                                      status="current")
+def test_records_older_than_90_days_are_pruned(learner):
     score = {"objectives": {"weighted": 1.0}}
-    RoundRecord.objects.create(round_number=1, matchup="bot_vs_bot", profile_key="k", baseline=held, score=score,
-                               counts_for_baseline=True)
-    mine = RoundRecord.objects.create(round_number=2, matchup="def_vs_bot", profile_key="k", score=score,
-                                      defence_user=learner)
+    RoundRecord.objects.create(round_number=1, matchup="def_vs_bot", score=score, defence_user=learner)
+    RoundRecord.objects.create(round_number=2, matchup="def_vs_bot", score=score, defence_user=learner)
     RoundRecord.objects.filter(round_number=1).update(kept=timezone.now() - timedelta(days=91))
 
     assert records.prune() == 1
 
     assert list(RoundRecord.objects.values_list("round_number", flat=True)) == [2]
-    assert records.standing_of(mine) == {"baseline": held.pk, "step": "1", "n": 4, "top_percent": 37.5}

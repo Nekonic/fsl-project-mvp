@@ -133,6 +133,5 @@ SPECTACULAR_SETTINGS = {
                             "VerdictEnum": "training.defence.serializers.VERDICTS",
                             "MatchupEnum": "training.models.MATCHUPS",
                             "PlayerSideEnum": "training.models.PLAYER_SIDES", "RoundPhaseEnum": "training.models.PHASES",
-                            "BotRunStatusEnum": "training.models.RUN_STATES",
-                            "BaselineStatusEnum": "training.models.BASELINE_STATES"},
+                            "BotRunStatusEnum": "training.models.RUN_STATES"},
 }

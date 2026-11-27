@@ -78,7 +78,6 @@ round_urls = [
     path("bot-runs/claim/", rounds.BotRunClaim.as_view()),
     path("bot-runs/<int:run_id>/notes/", rounds.BotRunNotes.as_view()),
     path("bot-runs/<int:run_id>/finish/", rounds.BotRunFinish.as_view()),
-    path("problems/<int:problem_id>/baselines/", rounds.Baselines.as_view()),
     path(f"{ROUND}attack/forfeit/", rounds.AttackForfeit.as_view()),
     path(f"{ROUND}defence/forfeit/", rounds.DefenceForfeit.as_view()),
     path("staff/range/", rounds.StaffRange.as_view()),
