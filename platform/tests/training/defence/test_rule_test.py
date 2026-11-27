@@ -56,9 +56,19 @@ def test_the_ids_test_runs_on_the_sensor_node_in_a_scratch_and_never_touches_the
     node = cyber_range.nodes["sensor"].texts()
     assert any("docker run --rm" in text and f"/var/lib/cr-ruletest/test-{made}" in text for text in node)
     assert not any("-l /var/log/suricata" in text for text in node)
-    assert node[-1].startswith(f"rm -rf /var/lib/cr-ruletest/test-{made}-pcaps")
+    assert node[-1] == f"rm -rf /var/lib/cr-ruletest/test-{made}"
     assert cyber_range.sensors["sensor"].rules == BASELINE
     assert not any("reload-rules" in text for text in cyber_range.sensors["sensor"].texts())
+
+
+def test_the_probe_pcaps_go_to_the_sensor_node_once_and_every_case_replays_in_one_container(as_defender, board_round,
+                                                                                          cyber_range):
+    for _ in range(2):
+        as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE}, format="json")
+
+    node = cyber_range.nodes["sensor"].texts()
+    assert len([text for text in node if "tar -x" in text]) == 1
+    assert len([text for text in node if "docker run --rm" in text]) == 2
 
 
 def test_benign_cases_are_always_probed_even_when_the_caller_names_only_attacks(as_defender, board_round):

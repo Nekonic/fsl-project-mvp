@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import io
 import json
 import secrets
+import tarfile
 import threading
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -25,6 +27,8 @@ CHECK_SCRATCH_ID = 999999
 REFUSED_STATUSES = (400, 403)
 DEFENCE = "defence"
 IDS_FILE = "local.rules"
+STAGED = "staged"
+STAGING_TIMEOUT = 300.0
 
 _LOCKS: dict[tuple[int, str], threading.Lock] = {}
 _GUARD = threading.Lock()
@@ -145,27 +149,34 @@ def files_of(engine: str, given: Any, wired: Wired) -> dict[str, str]:
     return crs.read(wired.gateway, wired.waf) | {path: text for path, text in given.items() if path in wired.waf.files}
 
 
-def staged_pcaps(node: Runner, folder: str, recordings: Sequence[Recording]) -> dict[str, str]:
-    staged = {}
-    for recording in recordings:
-        path = f"{folder}/{recording.case}.pcap"
-        ran = node(["sh", "-c", f"mkdir -p {folder} && base64 -d > {path}"],
-                   stdin=base64.b64encode(recording.pcap.read_bytes()).decode())
+def pcap_bundle(recordings: Sequence[Recording]) -> bytes:
+    bundle = io.BytesIO()
+    with tarfile.open(fileobj=bundle, mode="w") as archive:
+        for recording in sorted(recordings, key=lambda one: one.case):
+            info = archive.gettarinfo(str(recording.pcap), arcname=f"{recording.case}.pcap")
+            info.mtime = 0
+            with recording.pcap.open("rb") as held:
+                archive.addfile(info, held)
+    return bundle.getvalue()
+
+
+def staged_pcaps(node: Runner, scratch: str, recordings: Sequence[Recording]) -> dict[str, str]:
+    bundle = pcap_bundle(recordings)
+    folder = f"{scratch}/pcaps-{hashlib.sha256(bundle).hexdigest()[:16]}"
+    if not node(["test", "-f", f"{folder}/{STAGED}"]).ok:
+        ran = node(["sh", "-c", f"rm -rf {folder} && mkdir -p {folder} && base64 -d | tar -x -C {folder} "
+                                f"&& touch {folder}/{STAGED}"],
+                   stdin=base64.b64encode(bundle).decode(), timeout=STAGING_TIMEOUT)
         if not ran.ok:
             raise errors.Unavailable(code="sensor_unavailable")
-        staged[recording.case] = path
-    return staged
+    return {recording.case: f"{folder}/{recording.case}.pcap" for recording in recordings}
 
 
 def ids_alerts(text: str, sensor: Sensor, recordings: Sequence[Recording], test_id: int) -> list[DetectionRecord]:
     if not recordings:
         return []
-    folder = f"{sensor.config.scratch}/test-{test_id}-pcaps"
-    try:
-        found = suricata.offline_test(text, sensor.node, sensor.config,
-                                      staged_pcaps(sensor.node, folder, recordings), f"test-{test_id}")
-    finally:
-        sensor.node(["rm", "-rf", folder])
+    found = suricata.offline_test(text, sensor.node, sensor.config,
+                                  staged_pcaps(sensor.node, sensor.config.scratch, recordings), f"test-{test_id}")
     marker = {recording.case: recording.marker for recording in recordings}
     return [DetectionRecord(detection_id=f"{case}:{at}", timestamp=verdicts.RECORDING_TIME, src_ip=None,
                             marker=marker[case], engine=ENGINE_IDS, rule=alert["rule"], signature=alert["signature"])

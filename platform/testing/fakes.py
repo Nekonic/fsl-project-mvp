@@ -195,6 +195,7 @@ class SensorNode(Recorded):
     candidate: str = ""
     during: Callable[[], None] | None = None
     sensor: Sensor | None = None
+    staged: set[str] = field(default_factory=set)
 
     def __call__(self, argv, stdin=None, timeout=60.0) -> Ran:
         one = self.note(argv, stdin, timeout)
@@ -205,14 +206,23 @@ class SensorNode(Recorded):
         if "candidate.rules" in one.text and stdin is not None:
             self.candidate = stdin
             return OK
-        replayed = re.search(r"-r /pcaps/([A-Za-z0-9_-]+)\.pcap", one.text)
+        if argv[:2] == ["test", "-f"]:
+            return OK if argv[2] in self.staged else Ran(1, "")
+        unpacked = re.search(r"tar -x -C (\S+) && touch (\S+)", one.text)
+        if unpacked:
+            self.staged.add(unpacked[2])
+            return OK
+        replayed = re.search(r"sh /scratch/replay\.sh ((?:[A-Za-z0-9_.-]+ ?)+)", one.text)
         if replayed:
             if self.during is not None:
                 self.during()
             sids = set(SID.findall(self.candidate))
-            alerts = [{"event_type": "alert", "alert": {"signature_id": int(sid), "signature": signature}}
-                      for sid, signature in self.fires.get(replayed[1], {}).items() if sid in sids]
-            return Ran(0, "\n".join(json.dumps(alert) for alert in alerts))
+            lines = []
+            for case in replayed[1].split()[::2]:
+                lines.append(f"{suricata.CASE_HEAD}{case}")
+                lines += [json.dumps({"event_type": "alert", "alert": {"signature_id": int(sid), "signature": signature}})
+                          for sid, signature in self.fires.get(case, {}).items() if sid in sids]
+            return Ran(0, "\n".join(lines))
         return OK
 
 

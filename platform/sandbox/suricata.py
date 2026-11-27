@@ -21,6 +21,10 @@ AT_LINE = re.compile(r"\bat line (\d+)\b")
 ERROR_LINE = re.compile(r"(?:^|\s)(?:E:|<Error>|\[ERRCODE:|Error:)|error parsing signature", re.IGNORECASE)
 RUN_ID = re.compile(r"[A-Za-z0-9_-]+")
 OFFLINE_TIMEOUT = 300.0
+MOST_REPLAYS = 4
+PCAP_NAME = re.compile(r"[A-Za-z0-9_-]+\.pcap")
+CASE_HEAD = "==> "
+ALERT_LINE = '"event_type":"alert"'
 LOGGING_OFF = re.compile(r"[(;]\s*config\s*:\s*logging\b", re.IGNORECASE)
 PERMIT = 'umask 077; mkdir -p "$(dirname "$1")"; printf "%s\\n" "$2" >> "$1"'
 FORGET = 'umask 077; mkdir -p "$(dirname "$1")"; : > "$1"'
@@ -173,37 +177,65 @@ def scratch_of(config: SensorConfig, run_id: str) -> str:
     return str(scratch)
 
 
-def offline_argv(config: SensorConfig, scratch: str, case: str, pcap: str) -> list[str]:
-    folder = str(PurePosixPath(pcap).parent)
+def replay_script(config: SensorConfig) -> str:
+    replay_one = (f'mkdir -p "/scratch/$0" && exec suricata -c {shlex.quote(config.settings_file)} --runmode single '
+                  f'-k none -r "/pcaps/$1" -S /scratch/candidate.rules -l "/scratch/$0" >/dev/null 2>&1')
+    return (f'most=$(nproc); [ "$most" -gt {MOST_REPLAYS} ] && most={MOST_REPLAYS}; '
+            f'printf "%s\\n" "$@" | xargs -P "$most" -n 2 sh -c {shlex.quote(replay_one)}')
+
+
+def offline_argv(config: SensorConfig, scratch: str, folder: str, pcaps: Mapping[str, str]) -> list[str]:
     return ["docker", "run", "--rm", "--pull", "never", "--network", "none",
             "-v", f"{config.settings_file}:{config.settings_file}:ro",
             "-v", f"{folder}:/pcaps:ro", "-v", f"{scratch}:/scratch",
-            config.image, "-c", config.settings_file, "--runmode", "single", "-k", "none",
-            "-r", f"/pcaps/{PurePosixPath(pcap).name}", "-S", "/scratch/candidate.rules",
-            "-l", f"/scratch/{case}"]
+            config.image, "sh", "/scratch/replay.sh",
+            *[word for case, pcap in sorted(pcaps.items()) for word in (case, PurePosixPath(pcap).name)]]
+
+
+def pcap_folder(pcaps: Mapping[str, str]) -> str:
+    for case, pcap in pcaps.items():
+        if not RUN_ID.fullmatch(case):
+            raise ValueError(f"a case id is letters, digits, dashes and underscores, got {case!r}")
+        if not PCAP_NAME.fullmatch(PurePosixPath(pcap).name):
+            raise ValueError(f"a pcap is a plainly named .pcap file, got {pcap!r}")
+    folders = {str(PurePosixPath(pcap).parent) for pcap in pcaps.values()}
+    if len(folders) != 1:
+        raise ValueError(f"the pcaps of one test lie in one folder, got {sorted(folders)}")
+    return folders.pop()
+
+
+def replayed_alerts(output: str, cases: Mapping[str, str]) -> dict[str, list[dict]]:
+    lines: dict[str, list[str]] = {case: [] for case in cases}
+    case = None
+    for line in output.splitlines():
+        if line.startswith(CASE_HEAD):
+            case = line[len(CASE_HEAD):].strip()
+        elif case in lines:
+            lines[case].append(line)
+    return {case: alerts_in("\n".join(held)) for case, held in sorted(lines.items())}
 
 
 def offline_test(text: str, node, config: SensorConfig, pcaps: Mapping[str, str], run_id: str) -> dict[str, list[dict]]:
     scratch = scratch_of(config, run_id)
-    for case in pcaps:
-        if not RUN_ID.fullmatch(case):
-            raise ValueError(f"a case id is letters, digits, dashes and underscores, got {case!r}")
-    ready = node(["sh", "-c", f"rm -rf {scratch} && mkdir -p {scratch} && cat > {scratch}/candidate.rules"],
+    if not pcaps:
+        return {}
+    folder = pcap_folder(pcaps)
+    ready = node(["sh", "-c", f'rm -rf {scratch} && mkdir -p {scratch} && cat > {scratch}/candidate.rules '
+                              f'&& printf "%s" "$1" > {scratch}/replay.sh', "sh", replay_script(config)],
                  stdin=text)
     if not ready.ok:
         raise RulesUnreadable(f"{config.name} could not take the candidate rules: {ready.output.strip()[:300]}")
-    found: dict[str, list[dict]] = {}
+    cases = " ".join(sorted(pcaps))
     try:
-        for case, pcap in sorted(pcaps.items()):
-            ran = node(["sh", "-c", f"mkdir -p {scratch}/{case} && {shlex.join(offline_argv(config, scratch, case, pcap))}"
-                                    f" >/dev/null 2>&1; cat {scratch}/{case}/eve.json 2>/dev/null; true"],
-                       timeout=OFFLINE_TIMEOUT)
-            if not ran.ok:
-                raise RulesUnreadable(f"{config.name} could not replay {case}: {ran.output.strip()[:300]}")
-            found[case] = alerts_in(ran.output)
+        ran = node(["sh", "-c", f"{shlex.join(offline_argv(config, scratch, folder, pcaps))} >/dev/null 2>&1; "
+                                f"for case in {cases}; do echo \"{CASE_HEAD}$case\"; "
+                                f"grep -F {shlex.quote(ALERT_LINE)} {scratch}/$case/eve.json 2>/dev/null; done; true"],
+                   timeout=OFFLINE_TIMEOUT)
+        if not ran.ok:
+            raise RulesUnreadable(f"{config.name} could not replay the pcaps: {ran.output.strip()[:300]}")
+        return replayed_alerts(ran.output, pcaps)
     finally:
         node(["rm", "-rf", scratch])
-    return found
 
 
 def alerts_in(eve: str) -> list[dict]:

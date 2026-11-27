@@ -175,10 +175,12 @@ def test_seeding_writes_the_baseline_and_needs_the_sensor_to_confirm():
         suricata.seed(AFTER, Sensor(reload_answer=Ran(0, BUSY)), SENSOR)
 
 
-def test_the_offline_test_replays_each_pcap_in_the_pinned_image_into_a_scratch_outside_the_live_logs():
+def test_the_offline_test_replays_every_pcap_in_one_container_of_the_pinned_image_outside_the_live_logs():
     alert = {"alert": {"signature_id": 9000911, "signature": "after"},
              "http": {"request_headers": [{"name": "X-Request-ID", "value": "board-sqli-union"}]}}
-    node = FakeRunner().answer("board-sqli-union.pcap", eve(alert)).answer("board-normal-search.pcap", "")
+    replayed = "\n".join([f"{suricata.CASE_HEAD}board-normal-search", f"{suricata.CASE_HEAD}board-sqli-union",
+                          eve(alert)])
+    node = FakeRunner().answer("docker run", replayed)
 
     found = suricata.offline_test(AFTER, node, SENSOR, {
         "board-sqli-union": "/var/lib/cr-probes/board/board-sqli-union.pcap",
@@ -188,14 +190,14 @@ def test_the_offline_test_replays_each_pcap_in_the_pinned_image_into_a_scratch_o
     assert found == {"board-sqli-union": [{"rule": "9000911", "signature": "after", "marker": "board-sqli-union"}],
                      "board-normal-search": []}
     [laid_out] = node.matching("candidate.rules")[:1]
-    assert laid_out.stdin == AFTER
-    replays = node.matching("docker run")
-    assert len(replays) == 2
-    for replay in replays:
-        assert SENSOR.image in replay.text and "--network none" in replay.text
-        assert "/var/log/suricata" not in replay.text.replace("-c /etc/suricata/suricata.yaml", ""), (
-            "the replay must never write where rsyslog ships the live eve.json from")
-        assert "-l /scratch/" in replay.text and "-v /var/lib/cr-ruletest/test-7:/scratch" in replay.text
+    assert laid_out.stdin == AFTER and "-r \"/pcaps/$1\"" in laid_out.argv[-1]
+    [replay] = node.matching("docker run")
+    assert SENSOR.image in replay.text and "--network none" in replay.text
+    assert "/var/log/suricata" not in replay.text.replace("-c /etc/suricata/suricata.yaml", ""), (
+        "the replay must never write where rsyslog ships the live eve.json from")
+    assert ("-v /var/lib/cr-probes/board:/pcaps:ro -v /var/lib/cr-ruletest/test-7:/scratch" in replay.text
+            and "sh /scratch/replay.sh board-normal-search board-normal-search.pcap "
+                "board-sqli-union board-sqli-union.pcap" in replay.text)
     assert node.sent[-1].argv == ["rm", "-rf", "/var/lib/cr-ruletest/test-7"]
     assert not any(SENSOR.rules in one.text for one in node.sent), "the live rule file is never touched"
     assert not any("reload-rules" in one.text for one in node.sent), "the live sensor is never reloaded"
