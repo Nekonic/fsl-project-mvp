@@ -1,7 +1,7 @@
 import type { ComponentChild } from "preact";
 import { useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
-import { count } from "../format";
+import { caseLabel, count } from "../format";
 import { to } from "../links";
 import { t, tFor } from "../strings";
 import {
@@ -111,6 +111,7 @@ function DetectionTotals({ score }: { score: ScoreShown }) {
 
 export interface CaseGroup {
   case: string;
+  title: string;
   attack: boolean;
   firings: number;
   verdicts: Array<{ verdict: Verdict; firings: number }>;
@@ -125,6 +126,7 @@ export function caseGroups(lines: CaseLine[]): CaseGroup[] {
     const detected = held.filter((line) => line.verdict === "tp" && line.corroborated !== null);
     return {
       case: name,
+      title: caseLabel({ case: name, title: held.map((line) => (line as { title?: string | null }).title).find(Boolean) }),
       attack: held.some(isAttackCase),
       firings: held.length,
       verdicts: VERDICT_ORDER.map((verdict) => ({ verdict, firings: held.filter((line) => line.verdict === verdict).length }))
@@ -156,7 +158,7 @@ function CorroboratedCell({ group }: { group: CaseGroup }) {
 
 function CaseOutcomes({ score }: { score: ScoreShown }) {
   const columns: Column<CaseGroup>[] = [
-    { key: "case", label: t("col.case"), kind: "key", cell: (group) => group.case },
+    { key: "case", label: t("col.case"), kind: "key", cell: (group) => group.title },
     { key: "kind", label: t("col.case_kind"), kind: "nowrap", cell: (group) => t(group.attack ? "case_kind.attack" : "case_kind.benign") },
     { key: "firings", label: t("result.firings"), kind: "num", cell: (group) => count(group.firings) },
     { key: "verdict", label: t("col.verdict"), kind: "nowrap", cell: (group) => <VerdictCell group={group} /> },
@@ -178,7 +180,10 @@ function FreeActions({ score }: { score: ScoreShown }) {
   ];
   return (
     <Task title={t("result.free_title")}>
-      <Table columns={columns} rows={score.free_actions.by_origin} rowKey={(origin) => origin.ip} empty={t("result.no_free_actions")} />
+      <Stack gap="sm">
+        <Text tone="muted" small>{t("result.free_lead")}</Text>
+        <Table columns={columns} rows={score.free_actions.by_origin} rowKey={(origin) => origin.ip} empty={t("result.no_free_actions")} />
+      </Stack>
     </Task>
   );
 }

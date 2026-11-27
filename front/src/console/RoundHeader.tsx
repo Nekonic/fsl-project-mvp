@@ -6,6 +6,7 @@ import type { Side } from "../panes/types";
 import type { Schemas } from "../api/client";
 import { t, tFor } from "../strings";
 import { Badge, Banner, Button, ErrorNotice, RoundBar } from "../ui";
+import { botRunText } from "../botRun";
 import { clock } from "../format";
 
 const FORFEIT_PATH = {
@@ -39,7 +40,7 @@ const SIDE_ORDER: Side[] = ["attack", "defence"];
 function playerWho(player: PlayerLine): string {
   if (player.client === "bot") {
     const who = t("round.player_bot", { name: player.step ? tFor("bot_step", player.step) : player.bot_name });
-    return player.bot_run ? `${who} · ${tFor("bot_run", player.bot_run)}` : who;
+    return player.bot_run ? `${who} · ${botRunText(player)}` : who;
   }
   return player.username ?? t("round.player_open");
 }

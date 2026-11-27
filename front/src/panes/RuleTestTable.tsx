@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError, type Schemas } from "../api/client";
+import { caseLabel } from "../format";
 import { t, tFor, type StringKey } from "../strings";
 import { Badge, Badges, Button, ErrorNotice, Notice, PaneSection, Stack, Stat, Stats, Table, Text, type BadgeTone, type Column } from "../ui";
 
@@ -40,7 +41,7 @@ function CaseKind({ row }: { row: CaseVerdict }) {
 }
 
 function Corroboration({ row }: { row: CaseVerdict }) {
-  if (row.corroborated === null) return <Text tone="faint">—</Text>;
+  if (row.corroborated === null || !row.alerts.length) return <Text tone="faint">—</Text>;
   return row.corroborated
     ? <Text tone="ok">{t("corroborated.yes")}</Text>
     : <Text tone="warn">{t("corroborated.no")}</Text>;
@@ -78,7 +79,7 @@ function CaseAlerts({ row }: { row: CaseVerdict }) {
 }
 
 const CASE_COLUMNS: Column<CaseVerdict>[] = [
-  { key: "case", label: t("col.case"), kind: "key", cell: (row) => row.case },
+  { key: "case", label: t("col.case"), kind: "key", cell: (row) => caseLabel(row) },
   { key: "kind", label: t("col.case_kind"), kind: "nowrap", cell: (row) => <CaseKind row={row} /> },
   {
     key: "verdict", label: t("col.verdict"),
@@ -104,7 +105,7 @@ function AgainstApplied({ changes }: { changes: RuleTestResult["against_applied"
       {changes.map((change) => (
         <Notice key={change.case}>
           <Text tone="muted">{t("rule_test.against_applied")}</Text>{" "}
-          <Text mono tone="heading">{change.case}</Text>{" "}
+          <Text tone="heading">{caseLabel(change)}</Text>{" "}
           <VerdictBadge verdict={change.was} /> <Text tone="faint">→</Text> <VerdictBadge verdict={change.now} />
         </Notice>
       ))}
@@ -117,7 +118,7 @@ function Untested({ untested }: { untested: RuleTestResult["untested"] }) {
   return (
     <PaneSection title={t("rule_test.untested")} meta={t("rule_test.count", { count: untested.length })}>
       {untested.map((one) => (
-        <span key={one.case}><Text mono tone="heading">{one.case}</Text> <Text tone="muted">{tFor("rule_test.untested", one.reason)}</Text></span>
+        <span key={one.case}><Text tone="heading">{caseLabel(one)}</Text> <Text tone="muted">{tFor("rule_test.untested", one.reason)}</Text></span>
       ))}
     </PaneSection>
   );

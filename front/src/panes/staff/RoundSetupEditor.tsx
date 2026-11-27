@@ -10,6 +10,12 @@ export interface RoundSetupEditorProps {
   postures: Option[];
   steps: Schemas["StepLine"][];
   cards: Schemas["CardLine"][];
+  objectiveNames?: Record<string, string>;
+}
+
+export function objectiveLabel(names: Record<string, string>, key: string): string {
+  const name = names[key];
+  return name ? `${name} · ${key}` : key;
 }
 
 function toggled(list: string[], item: string, on: boolean): string[] {
@@ -26,7 +32,7 @@ function lineNote(errors: ShownError[], path: string): string | undefined {
   return found.length ? found.map(errorLine).join(" ") : undefined;
 }
 
-export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, cards }: RoundSetupEditorProps) {
+export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, cards, objectiveNames = {} }: RoundSetupEditorProps) {
   const change = (patch: Partial<SetupBody>) => onSetup({ ...setup, ...patch });
   const cases = setup.probe_cases ?? [];
   const objectives = setup.objectives ?? [];
@@ -82,7 +88,7 @@ export function RoundSetupEditor({ setup, onSetup, errors, postures, steps, card
         </EditorGroup>
         <EditorGroup label={t("staff.round.objectives")}>
           <LineList
-            lines={objectives.map((key, index) => ({ text: key, bad: Boolean(lineNote(errors, `round.objectives[${index}]`)), note: lineNote(errors, `round.objectives[${index}]`) }))}
+            lines={objectives.map((key, index) => ({ text: objectiveLabel(objectiveNames, key), bad: Boolean(lineNote(errors, `round.objectives[${index}]`)), note: lineNote(errors, `round.objectives[${index}]`) }))}
             removeLabel={t("staff.remove")} onRemove={(index) => change({ objectives: objectives.filter((_, which) => which !== index) })}
             addLabel={t("staff.round.objective_add")} placeholder={t("staff.round.objective_placeholder")}
             onAdd={(key) => change({ objectives: [...objectives, key] })} />

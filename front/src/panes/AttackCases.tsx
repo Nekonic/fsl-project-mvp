@@ -1,6 +1,6 @@
 import { useAction, useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
-import { count } from "../format";
+import { caseLabel, count } from "../format";
 import { t } from "../strings";
 import { AsideCard, Badge, Button, ErrorNotice, Loading, Pane, RowLine, Text } from "../ui";
 import { attackWritesOpen, useAttackState } from "./Origins";
@@ -23,7 +23,7 @@ function CaseRow({ entry, round, open, refused }: { entry: CaseEntry; round: num
     <>
       <RowLine>
         <span>
-          <Text mono tiny tone="heading" title={entry.title}>{entry.case}</Text>
+          <Text tiny tone="heading" title={entry.case}>{caseLabel(entry)}</Text>
           {fire.data && <> <FiredBadge fired={fire.data} refused={refused} /></>}
         </span>
         {entry.kind === "tool" && <Badge>{t("cases.kind.tool")}</Badge>}

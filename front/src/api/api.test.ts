@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, call, waitUntil } from "./client";
+import { ApiError, call, REQUEST_TIMEOUT_MS, RULE_TEST_TIMEOUT_MS, waitUntil } from "./client";
 import { follow, FOLLOW_EVERY_MS, holdAllocation, HEARTBEAT_EVERY_MS } from "./follow";
 
 interface Answered {
@@ -114,6 +114,22 @@ describe("client", () => {
     const failed = await call("post", "/api/rounds/{round_id}/attack/origins/next/", { params: { round_id: 4 } }).catch((error: unknown) => error);
     expect(failed).toBeInstanceOf(ApiError);
     expect((failed as ApiError).code).toBe("origins_spent");
+  });
+
+  it("gives up on an ordinary call at the request timeout but lets a rule test run longer", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    vi.stubGlobal("fetch", vi.fn((_: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+    })));
+    const ordinary = call("get", "/api/rounds/{round_id}/score/", { params: { round_id: 1 } }).catch((error: unknown) => error);
+    const ruleTest = call("post", "/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: 1 }, body: { text: "" }, timeoutMs: RULE_TEST_TIMEOUT_MS }).catch((error: unknown) => error);
+    let settled = false;
+    void ruleTest.then(() => { settled = true; });
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1);
+    expect(((await ordinary) as ApiError).code).toBe("timeout");
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(RULE_TEST_TIMEOUT_MS);
+    expect(((await ruleTest) as ApiError).code).toBe("timeout");
   });
 
   it("stops waiting when the wait is aborted between reads", async () => {

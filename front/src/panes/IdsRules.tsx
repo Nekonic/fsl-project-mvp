@@ -1,5 +1,5 @@
 import { useState } from "preact/hooks";
-import { api } from "../api/client";
+import { api, RULE_TEST_TIMEOUT_MS } from "../api/client";
 import { useResource } from "../api/hooks";
 import { clock } from "../format";
 import { t, tFor } from "../strings";
@@ -31,7 +31,7 @@ export function IdsRules({ round }: PaneProps) {
 
   const test = () => bench.test({
     test: async () => {
-      const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live } });
+      const said = await api.post("/api/rounds/{round_id}/defence/ids/rules/test/", { params: { round_id: round }, body: { text: live }, timeoutMs: RULE_TEST_TIMEOUT_MS });
       if (said.ok) rememberTest(round, "ids", live, said.test);
       return said;
     },

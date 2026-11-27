@@ -31,3 +31,8 @@ export function grouped<Item>(items: Item[], wargameOf: (item: Item) => string, 
   });
   return ids.map((wargame) => ({ wargame, items: items.filter((item) => wargameOf(item) === wargame) }));
 }
+
+export function objectiveNamesOf(wargame: Wargame | undefined): Record<string, string> {
+  const listed = (wargame as { objectives?: Array<{ key: string; name: string }> } | undefined)?.objectives ?? [];
+  return Object.fromEntries(listed.map((objective) => [objective.key, objective.name]));
+}

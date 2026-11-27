@@ -10,8 +10,9 @@ import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
 import { rememberTest, RuleTestTable } from "./RuleTestTable";
 import { ScoreReport } from "./Score";
-import { wargameLabel } from "./staff/catalog";
-import { VERDICT_NOTICE_MS, VerdictNotices } from "./Verdicts";
+import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
+import { objectiveLabel } from "./staff/RoundSetupEditor";
+import { judgedCase, VERDICT_NOTICE_MS, VerdictNotices } from "./Verdicts";
 import { Waf } from "./Waf";
 
 const objectives = [
@@ -37,6 +38,13 @@ describe("Objectives", () => {
     expect(screen.getAllByText(t("objective.lost")).length).toBe(1);
     expect(screen.getByText(t("objective.unseen"))).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/\b(TP|FP|FN|TN)\b/);
+  });
+
+  it("shows the Korean name of each objective without its key", async () => {
+    vi.stubGlobal("fetch", answering({ objectives }));
+    render(<Objectives round={43} side="defence" placement="main" />);
+    await waitFor(() => expect(screen.getByText("Objective A")).toBeTruthy());
+    expect(document.body.textContent).not.toContain("objective-a");
   });
 
   it("reads the objectives again when another pane says they changed", async () => {
@@ -105,7 +113,24 @@ describe("ScoreReport", () => {
     expect(screen.getByText(["tp", "fn", "fp", "tn"].map((verdict, index) => `${tFor("verdict", verdict)} ${[0, 0, 1, 11][index]}`).join(" · "))).toBeTruthy();
   });
 
-  it("counts the free actions per origin and shows no explanatory note", () => {
+  it("names a case by its title and keeps the id when no title came", () => {
+    const perCase = [
+      { case: "board-sqli-search", title: "Search SQLi", verdict: "tp" as const, alerts: 1, corroborated: true },
+      { case: "board-normal-search", verdict: "tn" as const, alerts: 0, corroborated: null },
+    ];
+    render(<ScoreReport score={{ ...score, outcomes: { ...score.outcomes, per_case: perCase } }} />);
+    expect(cellsOf("Search SQLi")[0]).toBe("Search SQLi");
+    expect(screen.queryByText("board-sqli-search")).toBeNull();
+    expect(cellsOf("board-normal-search")[0]).toBe("board-normal-search");
+  });
+
+  it("titles the free actions as requests outside any case and says they are not the origin's whole traffic", () => {
+    render(<ScoreReport score={score} />);
+    expect(screen.getByText(t("result.free_title"))).toBeTruthy();
+    expect(screen.getByText(t("result.free_lead"))).toBeTruthy();
+  });
+
+  it("counts the free actions per origin", () => {
     render(<ScoreReport score={score} />);
     expect(screen.getByRole("columnheader", { name: t("result.actions") })).toBeTruthy();
     expect(cellsOf("5.188.10.10")[1]).toBe("998");
@@ -212,6 +237,47 @@ describe("Waf", () => {
     expect(apply.disabled).toBe(!passed);
   });
 
+  it("keeps unapplied edits per round across a reload and drops them once the live version moved on", async () => {
+    document.cookie = "cr_csrf=token";
+    localStorage.clear();
+    wafAnswering(true);
+    const first = render(<Waf round={8} side="defence" placement="main" />);
+    fireEvent.input(await screen.findByLabelText("crs-setup.conf"), { target: { value: "deny 203.0.113.9;\n" } });
+    first.unmount();
+
+    render(<Waf round={8} side="defence" placement="main" />);
+    expect(((await screen.findByLabelText("crs-setup.conf")) as HTMLTextAreaElement).value).toBe("deny 203.0.113.9;\n");
+    cleanup();
+
+    render(<Waf round={9} side="defence" placement="main" />);
+    expect(((await screen.findByLabelText("crs-setup.conf")) as HTMLTextAreaElement).value).toBe("deny all;\n");
+    cleanup();
+
+    localStorage.setItem("cr.waf_draft.8", JSON.stringify({ base: 1, files: { [SETUP]: "deny 203.0.113.9;\n" } }));
+    render(<Waf round={8} side="defence" placement="main" />);
+    expect(((await screen.findByLabelText("crs-setup.conf")) as HTMLTextAreaElement).value).toBe("deny all;\n");
+  });
+
+  it("restores the passing test of a kept draft so it can be applied after a reload", async () => {
+    document.cookie = "cr_csrf=token";
+    localStorage.clear();
+    const draft = { [SETUP]: "deny 203.0.113.9;\n", [HTTP]: "" };
+    localStorage.setItem("cr.waf_draft.10", JSON.stringify({ base: 2, files: { [SETUP]: "deny 203.0.113.9;\n" } }));
+    rememberTest(10, "waf", JSON.stringify(Object.entries(draft).sort(([one], [other]) => one.localeCompare(other))), 11);
+    wafAnswering(true);
+    const answered = vi.mocked(fetch).getMockImplementation()!;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/waf/tests/11/")) {
+        return new Response(JSON.stringify({ test: 11, ok: true, passed: true, failed_benign: [], untested_benign: [], errors: [], cases: [], totals: { tp: 1, fn: 0, fp: 0, tn: 6 }, untested: [], against_applied: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return answered(input, init);
+    }));
+    render(<Waf round={10} side="defence" placement="main" />);
+
+    expect(await screen.findByText(t("rule_test.numbered", { test: 11 }))).toBeTruthy();
+    await waitFor(() => expect((screen.getByText(t("rules.apply")).closest("button") as HTMLButtonElement).disabled).toBe(false));
+  });
+
   it("says when the files on the WAF are not the recorded version", async () => {
     wafAnswering(false);
     render(<Waf round={7} side="defence" placement="main" />);
@@ -292,6 +358,15 @@ describe("RuleTestTable", () => {
     expect(screen.getByText(t("rule_test.alert_times", { count: 3 }))).toBeTruthy();
     expect(screen.getByText("949110")).toBeTruthy();
   });
+
+  it("leaves the signature match blank for a row that drew no alert, whatever the API says", () => {
+    render(<RuleTestTable cases={[
+      { case: "board-sqli-orderby", malicious: true, verdict: "fn", corroborated: false, recorded_run: false, alerts: [] },
+      { case: "board-normal-search", malicious: false, verdict: "tn", corroborated: null, recorded_run: false, alerts: [] },
+    ]} />);
+    expect(screen.queryByText(t("corroborated.no"))).toBeNull();
+    expect(screen.queryByText(t("corroborated.yes"))).toBeNull();
+  });
 });
 
 describe("IdsRules", () => {
@@ -322,6 +397,29 @@ describe("RoundHeader players", () => {
     ]);
     expect(facts[0]?.value).toBe(`${t("round.player_bot", { name: tFor("bot_step", "2") })} · ${tFor("bot_run", "failed")}`);
     expect(facts[1]?.value).toBe("learner-one");
+  });
+
+  it("says when the opponent bot stopped before the round ended", () => {
+    const facts = playerFacts([
+      { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "2", bot_run: "finished", stopped_early: true } as Parameters<typeof playerFacts>[0][number],
+    ]);
+    expect(facts[0]?.value).toBe(`${t("round.player_bot", { name: tFor("bot_step", "2") })} · ${tFor("bot_run", "finished")} · ${t("bot.stopped_early")}`);
+  });
+});
+
+describe("VerdictNotices case name", () => {
+  it("names the judged case by its title when the event carries one", () => {
+    const event = { id: 1, kind: "case.judged", at: "2026-11-21T10:00:00Z", player_side: null, body: { case: "board-sqli-search", title: "Search SQLi", verdict: "tp" } };
+    expect(judgedCase(event).caseName).toBe("Search SQLi");
+    expect(judgedCase({ ...event, body: { case: "board-sqli-search", verdict: "tp" } }).caseName).toBe("board-sqli-search");
+  });
+});
+
+describe("staff objective label", () => {
+  it("names a chosen objective in Korean beside its key, and by its key when the wargame does not name it", () => {
+    const names = objectiveNamesOf({ id: "board", objectives: [{ key: "board-auth-user-admin", name: "Board admin account" }] } as unknown as Parameters<typeof objectiveNamesOf>[0]);
+    expect(objectiveLabel(names, "board-auth-user-admin")).toBe("Board admin account · board-auth-user-admin");
+    expect(objectiveLabel(names, "board-unknown")).toBe("board-unknown");
   });
 });
 

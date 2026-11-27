@@ -18,3 +18,12 @@ export function day(at: string | null | undefined): string {
 export function count(value: number | null | undefined): string {
   return value === null || value === undefined ? "" : NUMBER.format(value);
 }
+
+export interface TitledCase {
+  case: string;
+  title?: string | null;
+}
+
+export function caseLabel(line: TitledCase): string {
+  return line.title || line.case;
+}

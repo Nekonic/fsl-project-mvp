@@ -1,7 +1,7 @@
 import { useEffect } from "preact/hooks";
 import { useResource } from "../api/hooks";
 import { errorText, t } from "../strings";
-import { AsideCard, AsideHead, Badge, Badges, ErrorNotice, Loading, Pane, RowLine, Stack, Text } from "../ui";
+import { AsideCard, AsideHead, Badge, Badges, ErrorNotice, Loading, Pane, RowLine, Stack } from "../ui";
 import type { PaneProps, Side } from "./types";
 
 export interface ObjectiveShown {
@@ -54,7 +54,6 @@ function ObjectiveBadges({ objective }: { objective: ObjectiveShown }) {
 function ObjectiveCard({ objective }: { objective: ObjectiveShown }) {
   return (
     <AsideCard title={objective.name} lost={objective.state === "lost"}>
-      <Text mono tiny tone="faint">{objective.key}</Text>
       <ObjectiveBadges objective={objective} />
     </AsideCard>
   );
