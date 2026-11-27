@@ -127,8 +127,10 @@ def objective_marks(score: dict) -> list[dict]:
 
 
 def compose(found: Round) -> dict[str, Any]:
-    score = lifecycle.score(found).shown()
+    score = lifecycle.shown_score(found, lifecycle.score(found))
+    titles = lifecycle.case_titles(found)
     timeline = action_rows(found, free_alerts_of(score)) + alert_rows(found) + event_rows(found) + note_rows(found)
+    timeline = [{**row, "title": titles.get(row["case"], row["case"])} if row.get("case") else row for row in timeline]
     timeline.sort(key=lambda row: row["at"] or "")
     return {
         "round": found.pk, "matchup": found.matchup, "pending": lifecycle.pending(found),

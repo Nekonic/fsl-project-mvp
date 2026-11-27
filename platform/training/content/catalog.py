@@ -31,6 +31,7 @@ class Case:
     malicious: bool
     tool_case: bool
     expect: str | None = None
+    title: str = ""
 
     @property
     def kind(self) -> str:
@@ -172,7 +173,8 @@ def read_cases(path: Path) -> tuple[Case, ...]:
     if not path.is_file():
         raise CatalogBroken(f"{path} is missing")
     cases = tuple(Case(name=case["name"], malicious=bool(case["malicious"]), tool_case=bool(case.get("tool")),
-                       expect=case.get("expect")) for case in load_cases(path))
+                       expect=case.get("expect"), title=str(case.get("title") or case["name"]))
+                  for case in load_cases(path))
     names = [case.name for case in cases]
     if len(set(names)) != len(names):
         raise CatalogBroken(f"{path} names a case twice")

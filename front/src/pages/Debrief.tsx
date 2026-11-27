@@ -25,7 +25,7 @@ export interface BotLine {
   turns: number | null;
   refusals: number;
   closing: string;
-  stopped_early?: boolean | null;
+  left_of_round_s?: number | null;
 }
 
 export interface TimelineRow {

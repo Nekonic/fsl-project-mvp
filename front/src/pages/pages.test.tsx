@@ -108,7 +108,7 @@ describe("bot stopped early", () => {
       if (url.includes("/events/")) return json({ events: [], next: 0 });
       if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
       if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return json([]);
-      const players = [{ ...bot, stopped_early: true }, { side: "defence", client: "human", username: "learner-one", bot_name: "", step: "", bot_run: null }];
+      const players = [{ ...bot, left_of_round_s: 600 }, { side: "defence", client: "human", username: "learner-one", bot_name: "", step: "", bot_run: null }];
       return json({ allocation: 64, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [{ round: 72, problem: 9, problem_title: "Problem", kind: "round", matchup: "pve", phase: "running", players }] });
     }));
     render(<RoundLobby params={{ allocation: "64" }} />);
@@ -116,7 +116,7 @@ describe("bot stopped early", () => {
   });
 
   it("says in the debrief bot line when the bot stopped before the round ended", () => {
-    const line = { side: "attack", step: "2", model: "m", status: "finished", exit: "", cost_usd: null, turns: null, refusals: 0, closing: "", stopped_early: true };
+    const line = { side: "attack", step: "2", model: "m", status: "finished", exit: "", cost_usd: null, turns: null, refusals: 0, closing: "", left_of_round_s: 600 };
     render(<DebriefReport debrief={{ pending: false, bots: [line], card: null, timeline: [], objectives: [], score: null } as unknown as Parameters<typeof DebriefReport>[0]["debrief"]} />);
     expect(screen.getByText(`${tFor("bot_run", "finished")} · ${t("bot.stopped_early")}`)).toBeTruthy();
   });

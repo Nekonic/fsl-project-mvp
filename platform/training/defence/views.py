@@ -17,8 +17,9 @@ def given(serializer, data):
     return checked.validated_data
 
 
-def test_result(made) -> dict:
-    return serializers.RuleTestResult({"test": made.pk, "passed": False, "failed_benign": [], "untested_benign": [], **made.result}).data
+def test_result(found, made) -> dict:
+    return serializers.RuleTestResult({"test": made.pk, "passed": False, "failed_benign": [], "untested_benign": [],
+                                       **service.titled_result(found, made.result)}).data
 
 
 class DefenceView(CatchingUpView):
@@ -74,13 +75,13 @@ class IdsTest(DefenceView):
     def post(self, request, round_id: int):
         asked = given(serializers.IdsTest, request.data)
         made = service.test_rules(request.round, request.player, IDS, asked["text"], asked.get("cases"))
-        return Response(test_result(made))
+        return Response(test_result(request.round, made))
 
 
 class IdsTestResult(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.RuleTestResult, operation_id="defence_ids_test_result")
     def get(self, request, round_id: int, test_id: int):
-        return Response(test_result(service.rule_test(request.round, IDS, test_id)))
+        return Response(test_result(request.round, service.rule_test(request.round, IDS, test_id)))
 
 
 class Waf(DefenceView):
@@ -103,13 +104,13 @@ class WafTest(DefenceView):
     def post(self, request, round_id: int):
         asked = given(serializers.WafTest, request.data)
         made = service.test_rules(request.round, request.player, WAF, asked["files"], asked.get("cases"))
-        return Response(test_result(made))
+        return Response(test_result(request.round, made))
 
 
 class WafTestResult(DefenceView):
     @extend_schema(tags=TAGS, responses=serializers.RuleTestResult, operation_id="defence_waf_test_result")
     def get(self, request, round_id: int, test_id: int):
-        return Response(test_result(service.rule_test(request.round, WAF, test_id)))
+        return Response(test_result(request.round, service.rule_test(request.round, WAF, test_id)))
 
 
 class WafApply(DefenceView):

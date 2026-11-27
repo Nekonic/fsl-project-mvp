@@ -5,8 +5,8 @@ export const problems = [
   { id: 8, kind: "round", wargame: "corp", side: "both", title: "Corp wargame", summary: "Placeholder summary for the corp match", matchups: ["pvp", "def_vs_bot"], bot_steps: ["1", "2"] },
 ];
 
-const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null });
-const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name, step: "", bot_run: null });
+const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null, left_of_round_s: null });
+const bot = (side: "attack" | "defence", name: string) => ({ side, client: "bot", username: null, bot_name: name, step: "", bot_run: null, left_of_round_s: null });
 
 const mine = [
   { round: 41, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "pvp", phase: "running" as const, players: [human("attack", "learner-two"), human("defence", "learner-one")] },

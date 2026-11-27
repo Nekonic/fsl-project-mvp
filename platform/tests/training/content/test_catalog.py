@@ -108,7 +108,10 @@ def test_staff_read_the_wargames_synced_from_the_catalog(source, as_staff):
                          "objective_model": "loot_verified", "case_file": "board.yaml",
                          "default_traffic": "community", "waf_files": list(WafConfig().files),
                          "cards": [{"id": card.id, "technique": card.technique, "name": card.name}
-                                   for card in bot_catalog.cards() if "board" in card.wargames]}
+                                   for card in bot_catalog.cards() if "board" in card.wargames],
+                         "objectives": [{"key": tier.key, "name": tier.name}
+                                        for tier in catalog.read(source, "board").objectives]}
+    assert listed[0]["objectives"]
 
 
 def test_a_learner_is_refused_the_wargame_list(source, as_learner):

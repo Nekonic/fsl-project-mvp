@@ -3114,6 +3114,8 @@ components:
       properties:
         case:
           type: string
+        title:
+          type: string
         verdict:
           $ref: '#/components/schemas/VerdictEnum'
         alerts:
@@ -3130,6 +3132,8 @@ components:
       type: object
       properties:
         case:
+          type: string
+        title:
           type: string
         malicious:
           type: boolean
@@ -3155,6 +3159,8 @@ components:
       type: object
       properties:
         case:
+          type: string
+        title:
           type: string
         was:
           $ref: '#/components/schemas/VerdictEnum'
@@ -3916,6 +3922,16 @@ components:
       - key
       - name
       - state
+    ObjectiveName:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      required:
+      - key
+      - name
     ObjectiveState:
       type: object
       properties:
@@ -4075,10 +4091,15 @@ components:
           oneOf:
           - $ref: '#/components/schemas/BotRunStatusEnum'
           - $ref: '#/components/schemas/NullEnum'
+        left_of_round_s:
+          type: integer
+          nullable: true
+          readOnly: true
       required:
       - bot_name
       - bot_run
       - client
+      - left_of_round_s
       - side
       - step
       - username
@@ -5301,6 +5322,8 @@ components:
       properties:
         case:
           type: string
+        title:
+          type: string
         reason:
           $ref: '#/components/schemas/UntestedCaseReasonEnum'
       required:
@@ -5639,6 +5662,11 @@ components:
           items:
             $ref: '#/components/schemas/CardLine'
           readOnly: true
+        objectives:
+          type: array
+          items:
+            $ref: '#/components/schemas/ObjectiveName'
+          readOnly: true
       required:
       - cards
       - case_file
@@ -5647,6 +5675,7 @@ components:
       - id
       - image
       - objective_model
+      - objectives
       - public_url
       - title
       - waf_files

@@ -53,6 +53,18 @@ def wargames():
     return Wargame.objects.all()
 
 
+def case_titles(wargame_id: str) -> dict[str, str]:
+    return {case.name: case.title or case.name for case in catalog.read(source(), wargame_id).cases}
+
+
+def titled(rows, titles: Mapping[str, str]) -> list[dict]:
+    return [{**row, "title": titles.get(row["case"], row["case"])} for row in rows]
+
+
+def objective_names(wargame_id: str) -> list[dict[str, str]]:
+    return [{"key": tier.key, "name": tier.name} for tier in catalog.read(source(), wargame_id).objectives]
+
+
 def waf_files() -> list[str]:
     return editable()
 

@@ -118,6 +118,7 @@ class ProbeAlert(serializers.Serializer):
 
 class CaseVerdict(serializers.Serializer):
     case = serializers.CharField()
+    title = serializers.CharField(required=False)
     malicious = serializers.BooleanField()
     verdict = serializers.ChoiceField(choices=VERDICTS)
     corroborated = serializers.BooleanField(allow_null=True)
@@ -134,11 +135,13 @@ class VerdictTotals(serializers.Serializer):
 
 class UntestedCase(serializers.Serializer):
     case = serializers.CharField()
+    title = serializers.CharField(required=False)
     reason = serializers.ChoiceField(choices=UNTESTED)
 
 
 class Change(serializers.Serializer):
     case = serializers.CharField()
+    title = serializers.CharField(required=False)
     was = serializers.ChoiceField(choices=VERDICTS)
     now = serializers.ChoiceField(choices=VERDICTS)
 

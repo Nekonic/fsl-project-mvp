@@ -47,3 +47,9 @@ def test_each_origin_is_its_own_slash_24_away_from_every_network_the_platform_ne
     assert not [
         (str(a), str(b)) for i, a in enumerate(nets) for b in nets[i + 1:] + inside if a.overlaps(b)
     ]
+
+
+def test_every_origin_names_its_country_in_korean_for_the_console():
+    import re
+
+    assert [o["label"] for o in origins() if not re.fullmatch(r"[가-힣]+", o["label"])] == []

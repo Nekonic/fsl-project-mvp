@@ -392,8 +392,8 @@ describe("IdsRules", () => {
 describe("RoundHeader players", () => {
   it("says how the opponent bot's run ended", () => {
     const facts = playerFacts([
-      { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "2", bot_run: "failed" },
-      { side: "defence", client: "human", username: "learner-one", bot_name: "", step: "", bot_run: null },
+      { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "2", bot_run: "failed", left_of_round_s: null },
+      { side: "defence", client: "human", username: "learner-one", bot_name: "", step: "", bot_run: null, left_of_round_s: null },
     ]);
     expect(facts[0]?.value).toBe(`${t("round.player_bot", { name: tFor("bot_step", "2") })} · ${tFor("bot_run", "failed")}`);
     expect(facts[1]?.value).toBe("learner-one");
@@ -401,7 +401,7 @@ describe("RoundHeader players", () => {
 
   it("says when the opponent bot stopped before the round ended", () => {
     const facts = playerFacts([
-      { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "2", bot_run: "finished", stopped_early: true } as Parameters<typeof playerFacts>[0][number],
+      { side: "attack", client: "bot", username: null, bot_name: "claude-code", step: "2", bot_run: "finished", left_of_round_s: 600 } as Parameters<typeof playerFacts>[0][number],
     ]);
     expect(facts[0]?.value).toBe(`${t("round.player_bot", { name: tFor("bot_step", "2") })} · ${tFor("bot_run", "finished")} · ${t("bot.stopped_early")}`);
   });

@@ -95,7 +95,8 @@ def test_a_waf_test_lists_tool_cases_untested_and_replays_http_probes_against_th
 
     result = answer.json()
     assert result["ok"] is True
-    assert {"case": "board-sqli-orderby-sqlmap", "reason": "tool_case"} in result["untested"]
+    assert {"case": "board-sqli-orderby-sqlmap", "reason": "tool_case"} in [
+        {"case": row["case"], "reason": row["reason"]} for row in result["untested"]]
     assert verdicts(result)["board-sqli-search"] == "tp"
     assert verdicts(result)["board-sqli-login-bypass"] == "fn"
     assert verdicts(result)["board-normal-search"] == "tn"
@@ -183,7 +184,9 @@ def test_a_test_compares_its_verdicts_with_the_applied_version_s_test(as_defende
     candidate = as_defender.post(url(board_round, "ids/rules/test/"), {"text": SEARCH_RULE + LOGIN_RULE},
                                  format="json").json()
 
-    assert candidate["against_applied"] == [{"case": "board-sqli-login-bypass", "was": "fn", "now": "tp"}]
+    assert candidate["against_applied"] == [{"case": "board-sqli-login-bypass", "title": "SQL 인젝션 로그인 우회",
+                                             "was": "fn", "now": "tp"}]
+    assert all(row["title"] and row["title"] != row["case"] for row in candidate["cases"])
 
 
 def test_the_probe_set_lists_the_round_s_cases_with_their_recordings(as_defender, board_round):

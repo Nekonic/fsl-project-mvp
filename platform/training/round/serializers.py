@@ -21,11 +21,17 @@ class PlayerLine(serializers.Serializer):
     bot_name = serializers.CharField()
     step = serializers.CharField()
     bot_run = serializers.SerializerMethodField()
+    left_of_round_s = serializers.SerializerMethodField()
 
     @extend_schema_field(serializers.ChoiceField(choices=RUN_STATES, allow_null=True))
     def get_bot_run(self, player):
         run = bot_runs.latest_run(player)
         return run.status if run else None
+
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_left_of_round_s(self, player):
+        run = bot_runs.latest_run(player)
+        return bot_runs.left_of_round(run, player.round) if run else None
 
 
 class RoundLine(serializers.Serializer):
@@ -164,6 +170,7 @@ class Objectives(serializers.Serializer):
 
 class CaseLine(serializers.Serializer):
     case = serializers.CharField()
+    title = serializers.CharField(required=False)
     verdict = serializers.ChoiceField(choices=VERDICTS)
     alerts = serializers.IntegerField()
     corroborated = serializers.BooleanField(allow_null=True)

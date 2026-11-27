@@ -2,11 +2,11 @@ import { t, tFor } from "./strings";
 
 export interface BotRunLine {
   bot_run: string | null;
-  stopped_early?: boolean | null;
+  left_of_round_s?: number | null;
 }
 
-export function withStoppedEarly(line: { stopped_early?: boolean | null }, state: string): string {
-  return line.stopped_early === true ? `${state} · ${t("bot.stopped_early")}` : state;
+export function withStoppedEarly(line: { left_of_round_s?: number | null }, state: string): string {
+  return typeof line.left_of_round_s === "number" ? `${state} · ${t("bot.stopped_early")}` : state;
 }
 
 export function botRunText(line: BotRunLine): string {

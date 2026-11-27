@@ -80,6 +80,11 @@ class Posture(serializers.Serializer):
     waf_files = serializers.DictField(child=serializers.CharField(allow_blank=True, trim_whitespace=False))
 
 
+class ObjectiveName(serializers.Serializer):
+    key = serializers.CharField()
+    name = serializers.CharField()
+
+
 class CardLine(serializers.Serializer):
     id = serializers.CharField()
     technique = serializers.CharField()
@@ -97,6 +102,11 @@ class Wargame(serializers.Serializer):
     default_traffic = serializers.CharField(allow_null=True)
     waf_files = serializers.SerializerMethodField()
     cards = serializers.SerializerMethodField()
+    objectives = serializers.SerializerMethodField()
+
+    @extend_schema_field(ObjectiveName(many=True))
+    def get_objectives(self, wargame) -> list[dict]:
+        return self.context["objective_names"](wargame.id)
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_waf_files(self, wargame) -> list[str]:

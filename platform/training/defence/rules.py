@@ -119,6 +119,12 @@ def recordings(found: Round, cases: Sequence[str] | None = None) -> list[ruletes
     return made
 
 
+def titled_result(found: Round, result: Mapping[str, Any]) -> dict:
+    titles = {case.name: case.title or case.name for case in wargame_of(found).cases}
+    return {**result, **{part: content.titled(result.get(part) or (), titles)
+                         for part in ("cases", "untested", "against_applied")}}
+
+
 def probes(found: Round) -> list[dict]:
     return [{"case": one.case, "malicious": one.malicious, "recorded": one.in_manifest, "tool_case": one.tool_case}
             for one in recordings(found)]

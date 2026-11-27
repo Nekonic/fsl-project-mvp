@@ -5,6 +5,7 @@ from tests.training.round.conftest import bot_round, pvp, url
 from training.models import BotRun, Round
 from training.round import debrief
 from training.round import lifecycle as service
+from training.round.serializers import PlayerLine
 
 KEY = "launcher-placeholder-key"
 
@@ -91,4 +92,6 @@ def test_a_run_that_stopped_while_its_round_ran_on_says_how_much_of_the_round_wa
 
     [line] = debrief.bot_lines(started)
     left = (started.ends_at - BotRun.objects.get(pk=run).finished).total_seconds()
+    [player] = PlayerLine(started.players.filter(client="bot"), many=True).data
     assert line["status"] == "finished" and line["left_of_round_s"] == int(left) > 60
+    assert player["left_of_round_s"] == line["left_of_round_s"]

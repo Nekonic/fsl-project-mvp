@@ -58,7 +58,7 @@ KINDS: dict[str, Kind] = {
     "rule.refused": Kind({"engine": TEXT, "version": NUMBER, "message": TEXT}, DEFENCE_SIDE),
     "limit.below_floor": Kind({"zone": TEXT, "rate_rpm": NUMBER, "floor_rpm": NUMBER}, DEFENCE_SIDE),
     "limit.shared_key": Kind({"zone": TEXT}, DEFENCE_SIDE),
-    "case.judged": Kind({"action": TEXT, "case": TEXT, "verdict": TEXT, "alerts": NUMBER, "corroborated": MAYBE_FLAG},
+    "case.judged": Kind({"action": TEXT, "case": TEXT, "title": MAYBE_TEXT, "verdict": TEXT, "alerts": NUMBER, "corroborated": MAYBE_FLAG},
                         DEFENCE_SIDE),
     "objective.lost": Kind({"key": TEXT, "name": TEXT}, BOTH, staff_fields={"attributed_marker": MAYBE_TEXT}),
 }

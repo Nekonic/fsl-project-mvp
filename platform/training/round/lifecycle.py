@@ -288,8 +288,10 @@ def judge_after() -> timedelta:
 def judge(found: Round, at: datetime | None = None) -> int:
     made = referee.judge(found, logged_actions(found), alert_feed.detections(found), attack.running(found),
                          at or timezone.now(), judge_after())
+    titles = case_titles(found) if made else {}
     for verdict in made:
         log.append(found.pk, "case.judged", {"action": verdict.action, "case": verdict.case,
+                                             "title": titles.get(verdict.case, verdict.case),
                                              "verdict": verdict.verdict, "alerts": verdict.alerts,
                                              "corroborated": verdict.corroborated})
     return len(made)
@@ -473,6 +475,16 @@ def logged_actions(found: Round):
 
 def score(found: Round, correlation: str | None = None) -> referee.RoundScore:
     return referee.score(found, actions(found), alert_feed.detections(found), correlation, responses(found))
+
+
+def case_titles(found: Round) -> dict[str, str]:
+    return content.case_titles(found.snapshot["wargame"]["id"])
+
+
+def shown_score(found: Round, scored: referee.RoundScore) -> dict:
+    shown = scored.shown()
+    shown["outcomes"]["per_case"] = content.titled(shown["outcomes"]["per_case"], case_titles(found))
+    return shown
 
 
 def score_for(found: Round, viewer_staff: bool, operator: bool, correlation: str | None) -> referee.RoundScore:

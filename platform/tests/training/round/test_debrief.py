@@ -56,7 +56,7 @@ def test_judged_cases_sit_at_their_firing_time_and_repeated_benign_verdicts_are_
     monkeypatch.setattr(debrief.lifecycle, "logged_actions", lambda round_: tuple(fired))
     for action, case, verdict in (("attack-1", "board-sqli-search", "tp"), ("benign-1", "board-normal-home", "tn"),
                                   ("benign-2", "board-normal-home", "tn"), ("gone", "board-sqli-union", "fn")):
-        log.append(found.pk, "case.judged", {"action": action, "case": case, "verdict": verdict, "alerts": 0,
+        log.append(found.pk, "case.judged", {"action": action, "case": case, "title": case, "verdict": verdict, "alerts": 0,
                                              "corroborated": None})
 
     rows = sorted((row["case"], row["at"], row.get("count")) for row in debrief.event_rows(found))
@@ -64,3 +64,23 @@ def test_judged_cases_sit_at_their_firing_time_and_repeated_benign_verdicts_are_
     assert rows == [("board-normal-home", (AT + timedelta(seconds=5)).isoformat(), 2),
                     ("board-sqli-search", AT.isoformat(), None),
                     ("board-sqli-union", end.isoformat(), None)]
+
+
+def test_every_case_line_the_console_shows_carries_the_case_s_korean_title(monkeypatch):
+    end = AT + timedelta(minutes=10)
+    found = rounds.opened(rounds.problem(), started=AT - timedelta(minutes=30), phase="ended", ended=end)
+    fired = (rounds.case("board-sqli-search", AT, malicious=True),)
+    monkeypatch.setattr(debrief.lifecycle, "logged_actions", lambda round_: fired)
+    monkeypatch.setattr(debrief.lifecycle, "actions", lambda round_: fired)
+    monkeypatch.setattr(debrief.attack, "running", lambda round_: set())
+    monkeypatch.setattr(debrief.attack, "origin_records", lambda round_: ())
+    monkeypatch.setattr(debrief.alert_feed, "detections", lambda round_: [])
+    title = debrief.lifecycle.case_titles(found)["board-sqli-search"]
+
+    debrief.lifecycle.judge(found, at=end + timedelta(hours=1))
+    composed = debrief.compose(found)
+
+    [judged] = [event["body"] for event in debrief.events_of(found) if event["kind"] == "case.judged"]
+    assert title != "board-sqli-search" and judged["title"] == title
+    assert [line["title"] for line in composed["score"]["outcomes"]["per_case"]] == [title]
+    assert [row["title"] for row in composed["timeline"] if row.get("case")] == [title]

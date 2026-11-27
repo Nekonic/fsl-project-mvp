@@ -94,7 +94,7 @@ def keep(found: Round) -> RoundRecord | None:
         return None
     incomplete = found.judged_at is None or not bot_runs.runs_over(found)
     players = {player.side: player for player in Player.objects.filter(round=found)}
-    score = frozen(found, "the score", lambda one: lifecycle.score(one).shown())
+    score = frozen(found, "the score", lambda one: lifecycle.shown_score(one, lifecycle.score(one)))
     key = key_for(found)
     counted = counts(found, incomplete, key) and score is not None
     try:

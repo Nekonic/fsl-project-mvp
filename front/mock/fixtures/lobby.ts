@@ -1,8 +1,8 @@
 import { minutesFromNow, refuse, reply } from "../fixture";
 
-const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null });
+const human = (side: "attack" | "defence", username: string | null) => ({ side, client: "human", username, bot_name: "", step: "", bot_run: null, left_of_round_s: null });
 const bot = (side: "attack" | "defence", name: string, step = "") => ({
-  side, client: "bot", username: null, bot_name: name, step, bot_run: step ? ("queued" as const) : null,
+  side, client: "bot", username: null, bot_name: name, step, bot_run: step ? ("queued" as const) : null, left_of_round_s: null,
 });
 
 const waiting = { round: 43, problem: 7, problem_title: "Board wargame", kind: "round", matchup: "def_vs_bot", phase: "created" as const, players: [bot("attack", "bot_step.2", "2"), human("defence", "learner-one")] };
