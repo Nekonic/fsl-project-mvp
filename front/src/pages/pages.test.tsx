@@ -1,8 +1,9 @@
-import { cleanup, render, screen } from "@testing-library/preact";
+import { cleanup, fireEvent, render, screen } from "@testing-library/preact";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HEARTBEAT_EVERY_MS } from "../api/follow";
 import { SessionContext } from "../api/hooks";
 import { t, tFor } from "../strings";
+import { Access } from "./Access";
 import { DebriefReport, rowText } from "./Debrief";
 import { safeNext } from "./Login";
 import { Result } from "./Result";
@@ -298,3 +299,40 @@ describe("result of a round the viewer only played", () => {
   });
 });
 
+
+describe("access page profile download", () => {
+  it("saves the issued profile as a conf file named after the account, only while it is shown", async () => {
+    const profile = "[Interface]\nPrivateKey = secret\n";
+    const row = { public_key: "pub", server_public_key: "srv", address: "10.200.0.2", port: 51820, endpoint: "range:51820",
+      targets: [], created: "2026-01-01T00:00:00Z", attached_round: null };
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/vpn/profile/" && init?.method === "POST") return json({ ...row, profile });
+      if (url === "/api/vpn/profile/") return json(row);
+      return json([]);
+    }));
+    const saved: { name: string; blob: Blob }[] = [];
+    let made: Blob | undefined;
+    vi.stubGlobal("URL", class extends URL {
+      static override createObjectURL(blob: Blob): string { made = blob; return "blob:profile"; }
+      static override revokeObjectURL(): undefined { return undefined; }
+    });
+    const clicks = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      if (made) saved.push({ name: this.download, blob: made });
+    });
+    render(
+      <SessionContext.Provider value={{ me: { user: "kim/a b", approved: true, is_staff: false, site_origin: "" }, loading: false, reload: () => undefined }}>
+        <Access params={{}} />
+      </SessionContext.Provider>,
+    );
+    for (let turn = 0; turn < 4; turn += 1) await settle();
+    expect(screen.queryByText(t("access.vpn.download"))).toBeNull();
+    fireEvent.click(screen.getByText(t("access.vpn.reissue")));
+    fireEvent.click(await screen.findByText(t("access.vpn.download")));
+    const [file] = saved;
+    expect(saved.map((each) => each.name)).toEqual(["cr-kimab.conf"]);
+    expect(file?.blob.type).toBe("text/plain");
+    expect(await file?.blob.text()).toBe(profile);
+    clicks.mockRestore();
+  });
+});
