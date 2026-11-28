@@ -60,7 +60,7 @@ def test_loot_is_judged_against_the_round_s_own_start_snapshot_and_not_a_round_b
 
     assert losses.submit_loot(first, {"admin": first_truth["admin"]}, at=AT).objective.key == "board-auth-user-admin"
 
-    following = Round.objects.create(allocation=first.allocation, problem=first.problem, kind=first.kind,
+    following = Round.objects.create(allocation=first.allocation, problem=first.problem,
                                      matchup=first.matchup, phase="running", snapshot=first.snapshot,
                                      started=AT + timedelta(minutes=5))
     baselines.take_baseline(following, targets.board_target(next_truth))

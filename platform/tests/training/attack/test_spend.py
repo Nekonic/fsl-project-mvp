@@ -95,7 +95,7 @@ def test_a_later_round_on_the_same_allocation_starts_with_no_origin_spent_at_the
     first = attacker.round
     first.phase, first.ended = "ended", first.started
     first.save(update_fields=["phase", "ended"])
-    later = Round.objects.create(allocation=first.allocation, problem=first.problem, kind=first.kind, matchup=first.matchup,
+    later = Round.objects.create(allocation=first.allocation, problem=first.problem, matchup=first.matchup,
                                  phase="running", snapshot=first.snapshot, started=first.started)
 
     origins.fill_pool(later)

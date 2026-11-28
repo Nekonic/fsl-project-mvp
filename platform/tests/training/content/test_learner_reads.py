@@ -26,7 +26,7 @@ def test_a_learner_reads_a_published_problem_with_only_its_matchups_and_steps_fr
 
     body = as_learner.get(f"/api/problems/{shown}/").json()
 
-    assert set(body) == {"id", "kind", "wargame", "side", "title", "summary", "body", "matchups", "bot_steps"}
+    assert set(body) == {"id", "wargame", "side", "title", "summary", "body", "matchups", "bot_steps"}
 
 
 def test_an_unpublished_problem_is_unknown_to_a_learner(stored, as_learner):
