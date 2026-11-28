@@ -11572,3 +11572,10 @@ the events it skipped. A resource no longer reads again for events that were alr
 backlog when the page opened, and panes asking for the same resource in one render share one
 read. A player who does not operate the allocation no longer asks for it on the result page:
 the round says `operated`.
+
+## 2026-11-28 — Terminal output stays as the tool prints it
+
+The reload wrappers on the WAF and IDS VMs print their refusal in English, next to nginx's and
+Suricata's own English output in the same terminal. The Korean-only rule covers the console and
+the learner map; a terminal shows what the tools print, as practitioners read it. No image rebake
+for that text.
