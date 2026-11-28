@@ -38,7 +38,7 @@
 | 단위 | Django 앱 | 맡는 일 | 모델 |
 |---|---|---|---|
 | `users/` | `users` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 | `SignInBlock` |
-| `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: 풀, Heat stack, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
+| `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: pool, Heat stack, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
 | `telemetry/` | `telemetry` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 | `Event`, `Detection`, `AlertCursor`, `AccessCursor` |
 | `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet` |
 | `scoring/` | `scoring` | 대상의 정답 데이터, baseline, 목표, 케이스 판정, 점수 | `ObjectiveLoss`, `Verdict` |
@@ -138,7 +138,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                cloud_config.py  stack_plan.py  declaration.py(+declaration.yaml)  fabric.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 쪽별 필터)  pool.py  refill.py
                runner.py  substrate.py(runner 묶음, 훈련 환경 전체·slot·할당별 범위)
-               service.py   다른 단위가 쓰는 풀, fabric, slot 호출
+               service.py   다른 단위가 쓰는 pool, fabric, slot 호출
                management/commands/  refill_slots(refill 서비스)  run_on_role
   telemetry/   Event, Detection, AlertCursor, AccessCursor
                events.py    종류별 스키마와 보는 쪽, append, after
@@ -162,7 +162,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                debrief.py     끝난 라운드의 복기: 공격 봇 카드, 봇 의도, 두 갈래 타임라인
     traffic/   customers.py   정상 케이스와 고객 트래픽, 라운드마다 새로 만드는 고객 비밀번호
     attack/    actions.py     공격 API의 모든 동작, 고객 전송, 명령 기록, 공격 쪽 터미널
-               origins.py     출발지 풀, 오류 로그로 소진, limit_req 하한
+               origins.py     출발지 pool, 오류 로그로 소진, limit_req 하한
                cases.py       케이스 요청 만들기와 발사(X-Request-ID 마커)   tools.py  도구 인자
     defence/   rules.py       IDS 룰과 WAF 파일: 읽기, 검사, 테스트, posture 적용, WAF 쓰기·reload, 버전,
                               두 터미널의 reload 기록
@@ -284,7 +284,7 @@ sequenceDiagram
   R->>R: 스냅숏 고정(봇 매치업은 문제, pvp는 워게임)
   R->>D: posture 적용(센서 전부, WAF). 없으면 slot의 지금 룰 기록
   R->>S: board 비밀번호 새로 설정, baseline 읽기
-  R->>A: 출발지 풀 채우기(에지 pool)
+  R->>A: 출발지 pool 채우기(에지 pool)
   R->>R: Kibana space, infra VM의 고객 트래픽 시작
   loop 라운드에 API 요청이 올 때(CatchingUpView, 한 번에 하나, CR_READ_EVERY_SECONDS 간격, CR_READ_IN_BACKGROUND=1이면 요청과 따로 도는 스레드에서)
     R->>D: 알림 수집, 터미널 reload 기록
@@ -333,7 +333,7 @@ sequenceDiagram
 | `staff` | `/api/staff/users/`, `/api/staff/blocks/` | 승인, 차단 |
 | `accounts` | `/api/vpn/profile/` (POST 발급, GET 조회, DELETE 폐기) | 자기 계정의 VPN 프로필. 개인 키는 발급 응답에 한 번만 |
 | `staff` | `/api/vpn/profiles/`, `/api/users/<id>/vpn/` (DELETE) | 모든 계정의 프로필, 다른 계정 프로필 폐기 |
-| `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probes 만들기(`training/round`, `training/content`) |
+| `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | pool 운영, probes 만들기(`training/round`, `training/content`) |
 | `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/{attack,defence,ids},attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
 | `match` | `/api/rounds/<r>/events/?after=&kinds=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐. `kinds`를 주면 그 종류만 돌려주고 커서는 건너뛴 이벤트 뒤로 옮김 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
@@ -574,7 +574,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 ## 훈련 환경
 
 훈련 환경은 이전 구조와 같습니다. 할당마다 Heat stack `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
-워게임별 풀에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
+워게임별 pool에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
 `docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 네 역할 이미지는 이 내용으로 다시 구웠고(`docs/OPENSTACK.md` §3.6), §3.7~§3.10 점검을
 훈련 환경에서 통과했습니다.
 

@@ -24,7 +24,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 `pvp` 라운드의 시간 제한은 `CR_PVP_TIME_LIMIT_SECONDS`(기본 900초, 15분)입니다.
 
 사람 콘솔과 봇은 같은 API를 씁니다. 공격 API(`/api/rounds/<id>/attack/`)와 방어 API(`/api/rounds/<id>/defence/`)가
-하나씩 있고, 봇은 사람과 같은 엔드포인트를 같은 권한으로 호출합니다. 터미널도 마찬가지입니다. 봇은 특정 모델에
+하나씩 있고, 봇은 사람과 같은 endpoint를 같은 권한으로 호출합니다. 터미널도 마찬가지입니다. 봇은 특정 모델에
 묶이지 않습니다. 지금은 Claude Code가 `bots/cli.py`로 봇 플레이어를 맡고, 다른 모델은 `bots/provider.py` 인터페이스로
 붙입니다([bots/README.md](bots/README.md)).
 
@@ -191,7 +191,7 @@ flowchart TB
 - slot stack은 VM 4대(kali, waf, infra, target)와 LAN 5개(internet, dmz, web-outer, web-inner, mgmt)입니다. LAN은
   stack마다 따로 만든 Neutron 네트워크이고 Neutron 라우터가 없습니다. stack끼리 네트워크가 다르므로 모든 stack이 같은
   주소를 씁니다.
-- stack은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
+- stack은 워게임별 pool에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
   준비된 stack 하나를 받고, 할당을 닫거나 하트비트 없이 만료되면 그 stack을 지우고 새로 만듭니다. 할당 하나에서 라운드를
   여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(`409 objective_fallen`). board 비밀번호는
   이제 라운드마다 새로 정하지만 이 규칙은 아직 그대로입니다.
@@ -226,7 +226,7 @@ flowchart TB
 | 단위 | 맡는 일 |
 |---|---|
 | `users/` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 |
-| `sandbox/` | 훈련 환경: 풀, Heat stack, 에지, 점프 접속, 그리고 바깥 장치를 아는 파일 전부(OpenStack, Suricata, CRS/nginx, Kibana, 공격 박스, 고객 박스) |
+| `sandbox/` | 훈련 환경: pool, Heat stack, 에지, 점프 접속, 그리고 바깥 장치를 아는 파일 전부(OpenStack, Suricata, CRS/nginx, Kibana, 공격 박스, 고객 박스) |
 | `telemetry/` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 |
 | `training/` | 문제와 워게임(`content/`), 할당과 라운드(`round/`), 고객 트래픽(`traffic/`), 공격 API(`attack/`), 방어 API(`defence/`), 비어 있는 `lessons/` |
 | `scoring/` | 대상의 정답 데이터 읽기, baseline, 목표, 판정, 점수 |
@@ -248,7 +248,7 @@ flowchart TB
 - x86_64 호스트, Kolla-Ansible 2025.1 이상
 - compute node는 KVM 권장
 - Heat 필요
-- [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP 풀, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
+- [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP pool, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
 - Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
@@ -262,7 +262,7 @@ flowchart TB
 | 훈련 환경 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 디스크가 역할 이미지의 `min_disk` 이상(지금 이미지는 모두 30 GB). 지정하지 않으면 `dba.small`(디스크 30 GB) |
 
 - 예: 플랫폼 `m1.large`(2 vCPU, 8 GB, 60 GB)
-- quota: 인스턴스 1 + 4 × stack 수, 그만큼의 vCPU와 RAM. 기본 풀(stack 4개)이면 인스턴스 17개. 보안 그룹은 stack 수와 상관없이 9개
+- quota: 인스턴스 1 + 4 × stack 수, 그만큼의 vCPU와 RAM. 기본 pool(stack 4개)이면 인스턴스 17개. 보안 그룹은 stack 수와 상관없이 9개
 - stack 하나에 드는 RAM, `dba.small`로 target의 Docker와 MySQL이 충분한지는 아직 재지 않았습니다.
 
 VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.
@@ -319,7 +319,7 @@ uv run bin/cloud up
 
 ## 동작 확인
 
-콘솔의 스태프 range 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. slot마다
+콘솔의 스태프 range 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 pool 상태를 봅니다. slot마다
 할당과 재생성 상태(`refill.state`)가 나오고, `idle`이면서 할당이 없는 slot을 새 할당이 받습니다. slot stack의 서버
 상태는 `GET /api/staff/range/pool/`에 있습니다.
 
@@ -346,8 +346,8 @@ curl -s -b cookies.txt http://ADDRESS:8000/api/staff/range/
 ## 운영
 
 ```bash
-uv run bin/cloud up              # 없는 것만 만들고 풀의 stack을 띄움
-uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 풀까지 맞춤. DB는 백업 후 복원
+uv run bin/cloud up              # 없는 것만 만들고 pool의 stack을 띄움
+uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 pool까지 맞춤. DB는 백업 후 복원
 uv run bin/cloud down            # DB 백업 후 slot stack, cr-mgmt, 플랫폼 VM 삭제
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
@@ -361,7 +361,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   그대로 붙이므로 `cr-mgmt` 주소가 바뀌지 않습니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
-- 풀 크기는 `cloud.yaml`의 `compute.pool`(워게임별 stack 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
+- pool 크기는 `cloud.yaml`의 `compute.pool`(워게임별 stack 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
   실행합니다. 플랫폼은 이 값을 Heat stack 파라미터로 받고, 할당이 없는 stack은 새 배정에 맞는
   워게임으로 다시 만듭니다.
 
