@@ -10,7 +10,7 @@ READ_EVERY_SECONDS = float(os.environ.get("CR_READ_EVERY_SECONDS") or 5)
 READ_IN_BACKGROUND = os.environ.get("CR_READ_IN_BACKGROUND", "") == "1"
 JUDGE_AFTER_SECONDS = float(os.environ.get("CR_JUDGE_AFTER_SECONDS") or 30)
 REBUILD_EVERY_SECONDS = float(os.environ.get("CR_REBUILD_EVERY_SECONDS") or 5)
-PVP_TIME_LIMIT_SECONDS = int(os.environ.get("CR_PVP_TIME_LIMIT_SECONDS") or 1800)
+PVP_TIME_LIMIT_SECONDS = int(os.environ.get("CR_PVP_TIME_LIMIT_SECONDS") or 900)
 RETAIN_RECORDS_DAYS = int(os.environ.get("CR_RETAIN_RECORDS_DAYS") or 90)
 BOT_ROUND_USERS = frozenset(name.strip() for name in os.environ.get("CR_BOT_ROUND_USERS", "").split(",") if name.strip())
 BOT_LAUNCHER_KEY = os.environ.get("CR_BOT_LAUNCHER_KEY", "")

@@ -11629,3 +11629,10 @@ The user: "어차피 TN 같은거나 이게 중요한게 아니야 결국에 공
 their probes cannot go live) and fill the logs with ordinary traffic; how many TN their passes
 add is not worth changing. The open point of 2026-11-23 ("one case, many firings") is closed
 with no change.
+
+## 2026-11-28 — A pvp round lasts 15 minutes
+
+The user: "어차피 개인이 돌리는건데 15분도 많을수도 있잖아 수업용 내가 아니라고 했는데". The
+range is played by one person at a time, not a class; the default limit of a pvp round goes
+from 30 to 15 minutes (`CR_PVP_TIME_LIMIT_SECONDS`, default 900). The demo flow from start to
+end took 4 to 5 minutes on 2026-11-28.
