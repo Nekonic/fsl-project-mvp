@@ -3,7 +3,7 @@ import { useAction, useResource, useSession } from "../api/hooks";
 import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
-import { Button, Card, CardHead, Code, ErrorNotice, KeyValue, Loading, Notice, PageBody, Section, Stack, Text } from "../ui";
+import { Button, Card, CardHead, Code, ErrorNotice, KeyValue, Loading, Notice, PageBody, Row, Section, Stack, Text } from "../ui";
 
 type Ssh = Schemas["Ssh"];
 type RoundLine = Schemas["RoundLine"];
@@ -12,6 +12,21 @@ export const KEY_FILE = "~/.ssh/cr-round";
 const JUMP_ALIAS = "range-jump";
 const BOX_ALIAS = "range-box";
 const SOCKS_PORT = 1080;
+const INTERFACE_NAME_MAX = 15;
+
+export function profileFileName(user: string | undefined): string {
+  const safe = (user ?? "").replace(/[^A-Za-z0-9_=+.-]/g, "");
+  const name = `cr-${safe || "vpn"}`.slice(0, INTERFACE_NAME_MAX);
+  return `${name}.conf`;
+}
+
+function saveText(name: string, text: string): void {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 
 export function sshConfig(ssh: Ssh): string {
   return [
@@ -40,6 +55,7 @@ function attackRound(lines: RoundLine[] | undefined, user: string | undefined): 
 }
 
 function Profile() {
+  const session = useSession();
   const shown = useResource("/api/vpn/profile/", {});
   const issue = useAction("post", "/api/vpn/profile/");
   const revoke = useAction("delete", "/api/vpn/profile/");
@@ -73,6 +89,11 @@ function Profile() {
         {missing && !issued && <Text>{t("access.vpn.none")}</Text>}
         {issued && <>
           <Notice tone="warn">{t("access.vpn.once")}</Notice>
+          <Row>
+            <Button tone="primary" small onClick={() => saveText(profileFileName(session.me?.user), issued.profile)}>
+              {t("access.vpn.download")}
+            </Button>
+          </Row>
           <Code>{issued.profile}</Code>
         </>}
         {held && <KeyValue items={[
