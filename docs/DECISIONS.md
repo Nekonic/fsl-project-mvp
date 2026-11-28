@@ -11614,12 +11614,13 @@ Problems 19 and 20 called the wargame '회사 홈페이지' while the console na
 title, summary and body were changed through the staff API (copies before the change in the
 backup folder).
 
-## 2026-11-28 — Times are shown in KST
+## 2026-11-28 — Times are shown in UTC+9
 
 The user: "시간대 kst로 맞춰놔". The store and the API keep UTC ISO times; the console formats
 every time it shows through `front/src/format.ts` with `timeZone: "Asia/Seoul"`, whatever the
 viewer's browser zone. Kibana's spaces already carry `dateFormat:tz: Asia/Seoul`
-(`sandbox/kibana.py`), and the terminals run with `TZ=KST-9`.
+(`sandbox/kibana.py`), and the terminals run nine hours ahead of UTC. Docs write the
+zone as UTC+9.
 
 ## 2026-11-28 — Benign passes stay counted per pass
 

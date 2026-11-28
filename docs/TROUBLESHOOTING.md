@@ -587,6 +587,51 @@ writes the English reason to the platform log (`api/views.py`
 goes to the gate (`error_page 403 = @kibana-gate` in `platform/nginx.conf`)
 and gets the same Korean refusal.
 
+## The pvp demo period, 2026-11-27 and 2026-11-28
+
+### A migration refused with "pending trigger events"
+
+Symptom: the first replace from `demo` came up at training 0003; on
+PostgreSQL the migration that dropped the bot-vs-bot rounds refused
+("pending trigger events").
+
+Cause: the delete of those rounds and the ALTER TABLE ran in one migration,
+which PostgreSQL refuses; SQLite, which the unit tests use, does not.
+
+Fix: the delete moved to a migration of its own, scoring 0002
+(`0002_bot_vs_bot_rounds_removed.py`), run before training 0004. A store test
+migrates a PostgreSQL store holding a running bot-vs-bot round and a detection
+from 0003.
+
+### Sign-out traded home and sign-in until 429
+
+Symptom: after 로그아웃 the browser sent 249 to 394 requests in 10 s,
+measured on the deployed platform, and sign-out did not seem to finish.
+
+Cause: the server ended the session, but the console kept the signed-in user
+in memory. The sign-in page saw it and went home, home's reads answered 401,
+the 401 sent it back to sign-in, and the two pages traded places until the
+rate limit answered 429.
+
+Fix: sign-out, and a 401 from any call, clear the session the console holds;
+every page unmounts, which stops its polls, heartbeats and event follower,
+and the browser lands on the sign-in page once (`docs/DECISIONS.md`
+2026-11-27 "Sign-out ends everything at once").
+
+### The Kali terminal reloaded itself while ttyd's page loaded
+
+Symptom: the Kali terminal pane showed '연결하는 중', then '연결하지
+못했습니다'. ttyd's log showed a WebSocket opened and closed by the client
+each second and a new process each time.
+
+Cause: ttyd's page carries its 700 KB script inline in `<body>`. The
+console's `shellStateOf` read `body.textContent` before xterm existed, found
+numbers like `574` and took the page for a 5xx gateway page. It reloaded the
+iframe every 2 s and gave up after five reloads.
+
+Fix: a page with a `<script>` is never taken for a gateway refusal; a front
+end test holds it (`docs/DECISIONS.md` 2026-11-28 "pvp demo check").
+
 ## Answer-blind walk round 28: early rule checks, late passes, a slow verdict and open
 
 ### F4 step 7 judged a correct rule wrong a second after the search

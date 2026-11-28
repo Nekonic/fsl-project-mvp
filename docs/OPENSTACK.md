@@ -1936,10 +1936,13 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
   VM's internal Docker networks (`docker network inspect` over ssh, once per
   held stack), drawn as `<w>-backend`.
 
-The refill's last step seeds each stack's sensor with the baseline rules
-(`deploy/suricata/rules/local.rules` from the platform's checkout) through
-`sandbox.suricata.seed`; a round's start then applies its problem's posture
-over it. Everything else a stack needs is in its images and its user data.
+The refill's last step seeds each stack's sensor with its wargame's starting
+rules through `sandbox.suricata.seed`: the file the sensor device names under
+`baseline:` in `wargames/<w>/topology.yaml`, read from the platform's checkout
+(board `deploy/suricata/rules/local.rules`, corp
+`deploy/suricata/rules/corp.rules`). A Player vs AI round's start then applies
+its problem's posture over it; a `pvp` round has no problem and starts on the
+slot as it is. Everything else a stack needs is in its images and its user data.
 
 Secrets stay per round. The board's `seed` sets each seeded account's
 fixed password on every start, the image default; each round's start then
@@ -2092,8 +2095,9 @@ target bake also its commit in `compute.target_tag`), and with the new names
 is deleted and its refill builds it again. A change that alters the rendered template does the same
 without a bake: `wargames/<w>/topology.yaml`, the declaration's origins, the
 user data `sandbox/stack_plan.py` writes, or the template `sandbox/openstack.py`
-renders. The sensor's rules need no bake: each refill seeds the sensor with
-`deploy/suricata/rules/local.rules` from the platform's checkout (§6).
+renders. The sensor's rules need no bake: each refill seeds the sensor with the file
+its wargame's `topology.yaml` names under `baseline:`, from the platform's
+checkout (§6).
 
 **The first acceptance run on the OpenStack substrate**, 2026-10-11, on a range
 built from scratch by `bin/cloud up` on the previous cloud (OPNsense 26.7 edge):

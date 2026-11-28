@@ -28,7 +28,7 @@ in the loot pane, Korean objective names, the VPN profile listing only its
 round's target, the runner keeping a command's bytes as sent, a failed
 Claude child finishing as error, the kali command log stamping a command
 when it starts), and `review2` on top (the fixes of a second live review
-round, below), and `slot-fix` on top (2026-11-27, `docs/DECISIONS.md`: alerts Elasticsearch indexed late are read, the traffic cursor names one timestamp, the defence watch ends with its round, a judged baseline round gives its slot back, a round that does not start logs why), and `demo` on top (2026-11-27: `ingest-fix`, `no-baseline`, `problem-body` and `pvp-no-problem` merged; the bot-vs-bot rounds dropped by a migration of their own; an allocation's drop forgets its rounds' detections after the delete; a pvp round limited to 30 min; ending a round closes both sides before the final read; `docs/state/now.md`), and `ui-sweep` on top (2026-11-27: the Korean wording pass and the fixes of a UI sweep and three tester rounds, `docs/DECISIONS.md` 2026-11-27 "Sign-out ends everything at once", `docs/state/now.md`), and `pvp-demo-fix` on top (2026-11-28: `corp-ids` and `vpn-download` merged; the Kali terminal no longer reloads itself while ttyd's page loads, round log reads run off the request thread, corp's registration cases send the form's own field ids, the defence console opens on alerts, starting rules read '시작 룰', learners see no stack name, both consoles show the starting state, times are shown in KST; `docs/DECISIONS.md` 2026-11-28); `main` holds the old product until gate 2. The cloud runs `pvp-demo-fix` without the KST change since the morning of 2026-11-28: one replace (exit 0, 14 min), then a board and a corp pvp Playwright check passing every step from sign-in to sign-out. Before that it ran `ui-sweep` since the night of 2026-11-27: two replaces (both exit 0), and three Playwright sweeps of every route and button for both seats of a board and a corp 1:1 round and a Player vs AI round, the last finding no defect. Before that it ran `demo` since the evening of 2026-11-27: four replaces, a two-person Playwright rehearsal of a pvp round on board passing every step, and `bin/verify --changed --live` from the platform VM stopped at the one-hour limit with 54 passed, 0 failed and four groups unfinished. In a pvp round the starting WAF already refuses every single-request board case. Before that it ran `slot-fix` since the afternoon of 2026-11-27: one replace (exit 0), then the full acceptance from the platform VM 101 passed, 0 failed, 0 errors in 1 h 38 min. Before that it ran
+round, below), and `slot-fix` on top (2026-11-27, `docs/DECISIONS.md`: alerts Elasticsearch indexed late are read, the traffic cursor names one timestamp, the defence watch ends with its round, a judged baseline round gives its slot back, a round that does not start logs why), and `demo` on top (2026-11-27: `ingest-fix`, `no-baseline`, `problem-body` and `pvp-no-problem` merged; the bot-vs-bot rounds dropped by a migration of their own; an allocation's drop forgets its rounds' detections after the delete; a pvp round limited to 30 min; ending a round closes both sides before the final read; `docs/state/now.md`), and `ui-sweep` on top (2026-11-27: the Korean wording pass and the fixes of a UI sweep and three tester rounds, `docs/DECISIONS.md` 2026-11-27 "Sign-out ends everything at once", `docs/state/now.md`), and `pvp-demo-fix` on top (2026-11-28: `corp-ids` and `vpn-download` merged; the Kali terminal no longer reloads itself while ttyd's page loads, round log reads run off the request thread, corp's registration cases send the form's own field ids, the defence console opens on alerts, starting rules read '시작 룰', learners see no stack name, both consoles show the starting state, times are shown in UTC+9; `docs/DECISIONS.md` 2026-11-28); `main` holds the old product until gate 2. The cloud runs `pvp-demo-fix` since the morning of 2026-11-28, without the UTC+9 display and the probes wording that `dev` has since: one replace (exit 0, 14 min), then a board and a corp pvp Playwright check passing every step from sign-in to sign-out. corp's committed probes for `corp-rogue-admin` still hold the old `-4` registration requests; they are not recorded again yet. Before that it ran `ui-sweep` since the night of 2026-11-27: two replaces (both exit 0), and three Playwright sweeps of every route and button for both seats of a board and a corp 1:1 round and a Player vs AI round, the last finding no defect. Before that it ran `demo` since the evening of 2026-11-27: four replaces, a two-person Playwright rehearsal of a pvp round on board passing every step, and `bin/verify --changed --live` from the platform VM stopped at the one-hour limit with 54 passed, 0 failed and four groups unfinished. In a pvp round the starting WAF already refuses every single-request board case. Before that it ran `slot-fix` since the afternoon of 2026-11-27: one replace (exit 0), then the full acceptance from the platform VM 101 passed, 0 failed, 0 errors in 1 h 38 min. Before that it ran
 `review2` since the morning of 2026-11-27: one replace (exit 0,
 12 min 45 s), a new bot OAuth token on the VM, then the full acceptance
 from the platform VM: 87 passed, 3 failed and 11 errors in 1 h 44 min, all
@@ -266,8 +266,9 @@ a live range and passed.
 What ran on the range on 2026-11-23 and 2026-11-24 is under "Where things
 stand". Still not run on a range:
 
-- a captured walk of every page as a learner, against the live platform;
-- a live review round with zero countable findings, and a docs review;
+- a live review round with zero countable findings, and a docs review
+  (three Playwright sweeps of every route, button and form for both seats
+  ran on 2026-11-27, the last with no defect);
 - the edge's `pool` and `spent` sets after a reboot of the infra
   (`docs/OPENSTACK.md` §3.10, last check);
 - by hand: the IDS reload's refusal of `config: logging` and the WAF
@@ -286,22 +287,37 @@ stand". Still not run on a range:
 
 ## Next steps, in order
 
-1. **The name `cr-platform`** (an admin): remove the abandoned stack's
-   record from Heat's database, then one replace under that name
-   (`docs/OPENSTACK.md` §5.3).
-2. **The platform under several rounds** (found 2026-11-25): the PostgreSQL
-   store, rule applies outside a transaction and the one-query alert join
-   run on the range since 2026-11-25; three bot rounds at once ran on them
-   on 2026-11-26 (rounds 309 to 311): no round stopped, and a platform read
-   now and then took over 5 s. Free actions read from Elasticsearch at
-   scoring time stay.
+1. **corp's probes recorded again** with the fixed `corp-rogue-admin` case
+   (`bin/record-probes`), committed under `wargames/corp/probes/`.
+2. **A deploy of `dev`** (`bin/cloud up --replace`), which carries the UTC+9
+   display and the probes wording to the cloud.
 3. **External learners** (the user, 2026-11-25: the last task of the Player
    vs AI work): the public-IP forwards of UDP 51820-51919, TCP 2222 and the
    console, and `CR_VPN_HOST`.
-4. **A captured walk of every page as a learner**, then a live review round
-   with zero countable findings and a docs review.
-5. **Gate 2**: present what changed with the evidence; on approval, move the
-   verified, tagged state onto `dev` and then `main`.
+4. **Gate 2**: a live review round with zero countable findings and a docs
+   review, then present what changed with the evidence; on approval, move
+   the verified, tagged state onto `main`.
+
+Beside these, when they can: **the name `cr-platform`** (an admin removes
+the abandoned stack's record from Heat's database, then one replace under
+that name, `docs/OPENSTACK.md` §5.3); **the platform under several rounds**
+(three bot rounds at once on 2026-11-26, rounds 309 to 311: no round
+stopped, a platform read now and then took over 5 s; free actions read from
+Elasticsearch at scoring time stay).
+
+## Record of the trees, one line each
+
+- `pvp-demo-fix` (2026-11-28): one replace (exit 0, 14 min); a board pvp check (round 489) and a corp pvp check (round 490) passed every step from sign-in to sign-out after the fixes of `docs/DECISIONS.md` 2026-11-28 "pvp demo check".
+- `ui-sweep` (2026-11-27): two replaces (both exit 0); three Playwright sweeps of every route, button and form for both seats of a board and a corp 1:1 round and a Player vs AI round, 400, 351 and 328 actions, the last with no defect.
+- `demo` (2026-11-27): four replaces (12 min 22 s to 13 min 38 s; the first stopped at training 0003, TROUBLESHOOTING "pending trigger events"); a two-person pvp rehearsal on board passed every step; `bin/verify --changed --live` stopped at the one-hour limit, 54 passed, 0 failed.
+- `slot-fix` (2026-11-27): one replace (exit 0); the full acceptance from the platform VM 101 passed in 1 h 38 min.
+- `review2` (2026-11-27): one replace (exit 0, 12 min 45 s); the full acceptance 87 passed, 3 failed, 11 errors, all on board slots and one IDS apply check; those six modules alone 20 of 20.
+- First `pvp` round (2026-11-27): round 372, board, no objective lost, TP/FP/FN/TN 4/0/0/72.
+- `review-fix` (2026-11-26): one replace (exit 0, 13 min 43 s); the full acceptance 101 of 101 in 1 h 36 min.
+- `bundle-1126` (2026-11-26): rounds 309 (all three lost, detection O, response O), 310 and 311 at once; the full acceptance 101 of 101.
+- `defence-watch` (2026-11-26): rounds 277 and 278, both defence runs lasted the round, detection O, response X; acceptance 101 of 101.
+- `waf5` (2026-11-25): round 245 with no 920350 alert; acceptance 101 of 101; the attack bot stopped by its safeguards in 4 of 4 runs.
+- `integrate` (2026-11-25): the SQLite store loaded into PostgreSQL with every row count equal; acceptance 101 of 101.
 
 ## Open points
 
@@ -329,7 +345,10 @@ stand". Still not run on a range:
   rounds 309 to 311 a watch check's `defence_state` read now and then hit
   its 5 s cap; the launcher logs the check and the next one reads the same
   rows again. The ingest each read runs (`lifecycle.catch_up`) is the
-  suspect; not measured.
+  suspect; not measured. Since `pvp-demo-fix` that read runs on a thread of
+  its own (`CR_READ_IN_BACKGROUND=1` in `compose.yaml`,
+  `training/round/views_catch_up.py`), so no request waits for it; whether a
+  read under three rounds still runs past 5 s is not measured on that path.
 - **The acceptance room wait can run out.** On 2026-11-24 one module of the
   full run waited past `ROOM_WAIT` (1800 s, `test/plays.py`) for a board
   slot while 15 processes shared three, and errored at setup; alone it

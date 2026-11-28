@@ -48,7 +48,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   `sudo suricata -T`로 검사한 뒤 `sudo suricatasc -c reload-rules`로 반영합니다. 콘솔에는 IDS 룰을 고치는 폼이
   없고 지금 룰과 변경 이력, 룰 테스트만 있습니다. WAF 파일은 콘솔에서 고쳐 적용해도 되고, WAF 터미널에서 고친 뒤
   `sudo nginx -t`, `sudo nginx -s reload`로 반영해도 됩니다.
-- 룰 테스트를 통과해야 반영됩니다. 룰 테스트는 녹화한 요청(정상 케이스와 공격 케이스)과 이 라운드에서 공격자가
+- 룰 테스트를 통과해야 반영됩니다. 룰 테스트는 프로브(정상 케이스와 공격 케이스마다 저장해 둔 요청)와 이 라운드에서 공격자가
   지금까지 보낸 요청을 WAF는 임시 인스턴스에, IDS는 센서의 오프라인 `-r` 실행에 다시 보냅니다. 엔진이 파일을
   받아들이고 정상 케이스를 하나도 막지 않아야(WAF) 또는 정상 케이스에서 경보가 하나도 나지 않아야(IDS) 통과입니다.
   콘솔 적용은 이 라운드에서 같은 파일로 통과한 테스트가 있어야 받고(아니면 `409 not_tested`), 터미널의 reload도
@@ -76,7 +76,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 | `GET\|POST /api/staff/problems/`, `GET\|PUT\|DELETE /api/staff/problems/<id>/` | 문제, 라운드 설정, 시작 posture를 한 문서로 저장. `PUT`은 `base_revision`이 최신이 아니면 `409 stale_revision` |
 | `POST /api/staff/problems/validate/` | 저장하지 않고 검증. 오류는 필드 경로(`round.matchups[0]`)로 옴 |
 | `GET\|POST /api/staff/postures/`, `GET\|PUT /api/staff/postures/<id>/` | 시작 방어 설정(Suricata 룰, WAF 파일 텍스트) |
-| `POST /api/staff/wargames/<id>/probes/record/` | 룰 테스트용 요청 녹화 |
+| `POST /api/staff/wargames/<id>/probes/record/` | 룰 테스트용 프로브 만들기 |
 
 ## 점수
 
@@ -94,7 +94,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   공격 행동)에 든 공격 행동 가운데 하나라도 `expect`를 통과한 알림을 받았으면 O입니다. 마지막 행동만 보지 않으므로
   공격 뒤에 평범한 요청을 하나 더 보내도 바뀌지 않습니다. 대응은 목표를 잃기 전에 그 행동들의 출발지 IP가 소진됐거나
   (WAF error log의 `deny`·`limit_req`), 그 행동들의 첫 알림 뒤에(알림이 없으면 첫 행동 뒤에) 올라간 WAF 버전의
-  룰 테스트가 그 행동들이 보낸 요청(케이스는 녹화, 자유 요청은 플랫폼이 남긴 요청)을 다시 보내 WAF가 모두 막았으면
+  룰 테스트가 그 행동들이 보낸 요청(케이스는 프로브, 자유 요청은 플랫폼이 남긴 요청)을 다시 보내 WAF가 모두 막았으면
   O입니다. 효과를 확인하지 못한 버전이나 IDS 버전(IDS는 알리기만 함)은 대응이 아닙니다. Kibana를 본 것은 로그에
   남지 않으므로 대응이 아닙니다.
 - 대응하지 못한 채 잃은 목표는 탐지 여부와 상관없이 2배로 셉니다. 목표 등급의 난이도가 가중치입니다. 탐지와 첫
@@ -413,7 +413,7 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
    `install.sh`의 `WARGAMES`
 5. `deploy/waf/`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와 `deploy/roles/kali/install.sh`의 호스트 이름
 6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름, `compute.pool`에 스택 수
-7. 룰 테스트용 요청을 녹화해 `wargames/<이름>/probes/`에 커밋(`bin/record-probes`, 스태프 API 사용)
+7. 룰 테스트용 프로브를 만들어 `wargames/<이름>/probes/`에 커밋(`bin/record-probes`, 스태프 API 사용)
 
 ## 단위 테스트
 
@@ -539,11 +539,16 @@ sudo docker compose start platform rebuild
 
 ## 현재 상태
 
-지금 트리는 `integrate`(Player vs AI 라운드, PostgreSQL 저장소, IP 주소로 접속하는 안내)에 CRS 920350 제거, 공격 봇
-프롬프트, 라운드가 끝날 때까지 남는 방어 봇, 봇이 결과를 받아 가는 룰 테스트 작업, 한 번의 SSH 호출로 끝나는 룰 테스트
-재생을 더한 것이고, 클라우드의 `cr-platform2`에서 돌아갑니다. 역할 이미지는 이 트리로 다시 구웠고, 룰 테스트용
-녹화는 `wargames/<id>/probes/`에 커밋되어 있으며, 콘솔은 플랫폼 이미지의 `/srv/front`에서 나갑니다. 훈련 환경에서
-돌린 것과 그 결과, 아직 돌리지 않은 것은 [docs/STATE.md](docs/STATE.md)에 있습니다.
+지금 트리는 Player vs AI 라운드, PostgreSQL 저장소, 라운드가 끝날 때까지 남는 방어 봇 위에 다음을 더한 것입니다.
+두 차례 라이브 리뷰에서 나온 수정, 늦게 색인된 알림 읽기, 문제 없이 여는 `pvp`(30분 제한), 봇끼리 붙는 기준선
+라운드 제거, 화면 전체의 한국어 문구 정리와 로그아웃 수정, 워게임마다 따로 두는 IDS 시작 룰(corp는 `corp.rules`),
+요청과 따로 도는 로그 읽기, 다시 로드되지 않는 Kali 터미널, UTC+9 시각 표시. 클라우드의 `cr-platform2`에서
+돌아갑니다. 룰 테스트용 프로브는 `wargames/<id>/probes/`에 커밋되어 있고, 콘솔은 플랫폼 이미지의 `/srv/front`에서
+나갑니다. 훈련 환경에서 돌린 것과 그 결과, 아직 돌리지 않은 것은 [docs/STATE.md](docs/STATE.md)에 있습니다.
+
+시각: 저장소와 API는 UTC ISO 시각을 그대로 주고받습니다. 콘솔은 보는 사람의 브라우저 시간대와 상관없이 모든
+시각을 UTC+9로 보여 주고(`front/src/format.ts`), Kibana 공간도 UTC+9로 보여 줍니다(`sandbox/kibana.py`의
+`dateFormat:tz`). 터미널 출력은 도구가 찍는 그대로입니다. 백업 파일 이름은 UTC입니다.
 
 다음 순서는 [docs/state/now.md](docs/state/now.md)에 있습니다.
 

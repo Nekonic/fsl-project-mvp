@@ -28,7 +28,7 @@
 - **마커**: 요청의 `X-Request-ID` 값. API로 보낸 요청과 케이스는 플랫폼이 붙이고, 알림과 행동을 이 값으로 매칭.
   누구나 이 헤더를 붙일 수 있으므로 알림의 출발지가 그 행동을 보낸 주소일 때만 매칭(`correlate._sent_from`)
 - **posture**: 라운드 시작 시점의 Suricata 룰과 WAF 파일 텍스트. 스태프가 `Posture` 행으로 작성
-- **probe 녹화**: 룰 테스트에 쓰는 케이스별 요청·응답·pcap. `wargames/<id>/probes/`에 커밋
+- **프로브(probe)**: 룰 테스트에 쓰는 케이스별 요청·응답·pcap. `wargames/<id>/probes/`에 커밋
 
 ## 단위
 
@@ -147,7 +147,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                views.py     이벤트 피드, 방어 쪽 알림·트래픽 API   management/commands/  register_pipeline
   training/    Django 앱 하나. models.py에 Wargame부터 RuleTest까지 모든 훈련 기록
     content/   catalog.py(wargames/와 redteam/cases 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
-               내보내기·가져오기, posture)  probes.py(probe 녹화)  스태프 문제 API, 학습자 읽기 API
+               내보내기·가져오기, posture)  probes.py(프로브 만들기)  스태프 문제 API, 학습자 읽기 API
                bots.py(steps.yaml 난이도 3단계, cards.yaml ATT&CK 공격 카드 A1~A8 읽기)
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
                lifecycle.py   라운드 만들기, 참가, 시작, catch_up(READS), 케이스 판정, 종료, 기권, 점수
@@ -331,7 +331,7 @@ sequenceDiagram
 | `staff` | `/api/staff/users/`, `/api/staff/blocks/` | 승인, 차단 |
 | `accounts` | `/api/vpn/profile/` (POST 발급, GET 조회, DELETE 폐기) | 자기 계정의 VPN 프로필. 개인 키는 발급 응답에 한 번만 |
 | `staff` | `/api/vpn/profiles/`, `/api/users/<id>/vpn/` (DELETE) | 모든 계정의 프로필, 다른 계정 프로필 폐기 |
-| `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, probe 녹화(`training/round`, `training/content`) |
+| `staff` | `/api/staff/range/{,fabric/,leftovers/,pool/}`, `/api/staff/wargames/<id>/probes/record/`, `/api/staff/probes/<a>/` | 풀 운영, 프로브 만들기(`training/round`, `training/content`) |
 | `match` | `/api/allocations/`, `/api/allocations/<a>/{heartbeat,close,rounds}/`, `/api/rounds/`, `/api/rounds/<r>/{players/<side>/join,start,end,score,topology,site/requests,terminal-auth/{attack,defence,ids},attack/forfeit,defence/forfeit}/` | 할당, 라운드, 점수, 구성도, 사이트 패널, 터미널 인증(`training/round`) |
 | `match` | `/api/rounds/<r>/events/?after=&kinds=` | 커서 피드(`telemetry/views.py`). 종류마다 보는 쪽이 정해짐. `kinds`를 주면 그 종류만 돌려주고 커서는 건너뛴 이벤트 뒤로 옮김 |
 | `attack` | `/api/rounds/<r>/attack/{state,cases,requests,tools,tools/<run>,loot,origins/next,terminal}/` | 공격 API. 성공 응답에 `remaining`, 모든 응답에 `X-Origin`, `X-Origins-Left` |
@@ -372,7 +372,7 @@ sequenceDiagram
 
 - IDS 룰은 단독 센서를 다루듯 센서에서 고칩니다(2026-11-22 결정). API와 콘솔에는 IDS 룰을 쓰는 경로가 없고,
   `GET ids/rules/`는 센서가 지금 돌리는 룰 파일, 마지막 버전, 그 파일이 마지막 버전과 같은지(`recorded`)를 돌려줍니다.
-  `ids/rules/test/`(녹화된 요청으로 테스트)와 버전 이력은 그대로 있습니다.
+  `ids/rules/test/`(프로브로 테스트)와 버전 이력은 그대로 있습니다.
 - WAF는 `files`(파일 경로 → 파일 전체 텍스트)를 받습니다. 방어 쪽이 고치는 WAF 파일은
   `crs-setup.conf`, `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, `RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`,
   `/etc/nginx/defence/`의 `http.conf`(http 블록), `board.com.conf`·`corp.com.conf`(각 server 블록)입니다.
@@ -386,27 +386,27 @@ sequenceDiagram
   `config: logging` 검사를 스냅샷에 돌려 걸리면 불러오기 전에 멈춥니다.
 - 룰 테스트를 통과해야 반영됩니다(2026-11-22 결정). 테스트는 엔진이 받아들이고(WAF 임시 설정의 `nginx -t`, IDS
   `suricata -T`) 라운드의 정상 케이스를 빠짐없이 시험해 WAF가 400·403으로 막은 것도, IDS가 경보를 낸 것도 없어야
-  통과입니다(`passed`, 걸린 케이스는 `failed_benign`). 녹화가 없어 시험하지 못한 정상 케이스가 하나라도 있거나 시험한
+  통과입니다(`passed`, 걸린 케이스는 `failed_benign`). 프로브가 없어 시험하지 못한 정상 케이스가 하나라도 있거나 시험한
   정상 케이스가 없으면 통과하지 못합니다(`untested_benign`). 통과하면 `ruletest.permitted`가 박스가 계산하는 해시를
   `sandbox.crs.permit`·`sandbox.suricata.permit`으로 root 전용 파일 `/var/lib/cr-reloaded/waf.passed`(cr-waf)와
   `.../ids.passed`(센서 노드)에 한 줄씩 적습니다. WAF 해시는 방어 파일 여섯 개를 정해진 순서로 `sha256  경로` 줄로
   늘어놓은 것의 sha256(`crs.loaded_sha`), IDS 해시는 룰 파일의 sha256입니다. posture를 적용할 때 두 목록을 비웁니다
   (`ruletest.forget_passed`). 콘솔 적용은 지금 파일과 보낸 파일을 합친 결과가 이 라운드에서 통과한 테스트의 해시와
   같아야 받고(`409 not_tested`), 그 합친 파일 전체를 씁니다. 두 reload 래퍼는 스냅샷의 해시가 목록에 없으면 불러오지
-  않고 이유를 찍고 끝납니다. 플랫폼이 직접 불러오는 것(posture, 되돌리기, probe 녹화의 DetectionOnly)은
+  않고 이유를 찍고 끝납니다. 플랫폼이 직접 불러오는 것(posture, 되돌리기, 프로브 만들기의 DetectionOnly)은
   `crs.apply`가 reload 전에 그 해시를 목록에 넣습니다. 터미널 reload로 기록한 버전은 같은 파일로 통과한 테스트에
   묶입니다.
 - 터미널에서 reload한 파일도 다음 읽기 때 같은 검사를 거칩니다. 검사 대상은 지금 파일이 아니라 reload 때 남긴
   스냅샷입니다. 걸리면 기록하지 않고 마지막 버전 파일을 써서 reload하고 `rule.refused` 이벤트를 남깁니다. IDS는
   `config: logging`이 든 룰(그 트랜잭션의 eve 기록을 끔)이 걸리는 대상이고, 백슬래시로 여러 줄에 이어 쓴 룰도 한
   룰로 봅니다. reload하지 않고 고치기만 한 파일은 검사하지도 되돌리지도 않습니다.
-- WAF 흐름: 읽기 → 검사(`nginx -t`) → 녹화된 요청으로 테스트(통과 필수) → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
+- WAF 흐름: 읽기 → 검사(`nginx -t`) → 프로브로 테스트(통과 필수) → 쓰기 → reload → 버전 기록(파일 텍스트와 해시,
   `RuleSet.files`·`sha`·`source`). nginx가 거부하면 이전 파일로 되돌립니다. IDS는 라운드 시작 때 posture의 룰만
   플랫폼이 쓰고(센서마다 차례로, 하나라도 거부하면 앞서 쓴 센서를 되돌림), 그 뒤로는 터미널 reload로만 바뀝니다.
 - `check/`(WAF만): `sandbox.crs.refusals`와 임시 설정의 `nginx -t`(오류는 파일 경로와 줄로 돌려줌).
-- `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 녹화본으로 돌립니다. 실제 대상, 실제 센서,
+- `test/`: 라운드의 probe 케이스와 그 워게임의 정상 HTTP 케이스 전부를 프로브로 돌립니다. 실제 대상, 실제 센서,
   라운드의 알림은 건드리지 않습니다. WAF 테스트는 여기에 이 라운드의 공격 행동이 지금까지 보낸 요청
-  (`rules.attack_requests`: 쏜 케이스는 그 녹화본, 자유 요청·사이트 패널 요청은 플랫폼이 남긴 method·host·path·query·
+  (`rules.attack_requests`: 쏜 케이스는 그 프로브, 자유 요청·사이트 패널 요청은 플랫폼이 남긴 method·host·path·query·
   header·body)을 테스트마다 새로 만든 마커(`replay-<test>-<무작위>`)로 더해 보내고, 행동마다 막혔는지를 원래 행동의
   마커로 테스트 결과의 `actions`에 남깁니다. 방어자가 access log에서 본 실제 마커에 건 룰은 다시 보낸 요청을 막지
   못합니다. 이 목록은
@@ -414,9 +414,9 @@ sequenceDiagram
   - IDS: 센서 노드에서 같은 고정 이미지와 `suricata.yaml`로 `suricata -r <case>.pcap`을 돌리고, `/var/log/suricata`
     밖의 임시 `eve.json`을 읽습니다.
   - WAF: cr-waf에 따로 띄운 nginx 마스터(자기 prefix, `127.0.0.1`의 임시 포트, 자기 audit log)가 loopback의
-    `probe-upstream.py`를 upstream으로 씁니다. stub이 응답할 때까지 기다린 뒤, 녹화된 요청 전부를 순서대로
+    `probe-upstream.py`를 upstream으로 씁니다. stub이 응답할 때까지 기다린 뒤, 프로브의 요청 전부를 순서대로
     `curl` 하나(`--config`, 요청마다 `next`)로 SSH 한 번에 보내고 임시 audit log를 읽은 뒤 내립니다.
-  - WAF에서 도구 케이스는 `untested: tool_case`, 녹화가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
+  - WAF에서 도구 케이스는 `untested: tool_case`, 프로브가 없는 케이스는 `untested: not_recorded`입니다. 미탐이 아닙니다.
   - 판정은 `domain.verdicts`가 마커로 알림을 묶고 케이스 하나를 한 번 판정하고 `expect`로 수법을 확인합니다.
     `against_applied`는 적용된 버전의 테스트 결과와 비교합니다.
   - 할당·엔진마다 한 번에 하나만 돌고, 두 번째는 `409 test_busy`입니다.
@@ -579,7 +579,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 - `deploy/roles/infra/edge.nft`: `pool`, `spent` 집합과 established 허용보다 앞선 `spent` drop 규칙. `slot-boot`가
   테이블을 다시 읽으면 집합이 비고, 라운드 중에는 아무도 다시 채우지 않으므로 다음 라운드 시작까지 kali에서
   타깃에 닿지 않습니다. infra 이미지에는
-  `conntrack`, `tcpdump`(probe 녹화), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
+  `conntrack`, `tcpdump`(프로브 만들기), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
 - `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라지기 때문입니다.
   같은 파일이 오류 로그 `error_log /var/log/nginx/error.log warn;`을 정합니다.
@@ -635,9 +635,12 @@ SQLite에서 옮겼습니다. SQLite는 파일 하나에 쓰는 쪽이 하나뿐
   `bin/cloud up --replace`는 이전 VM을 백업하고 새 VM에 복원합니다. 이전 VM이 아직 SQLite면 `db-<UTC 시각>.sqlite3`로
   받고, 새 VM에서 `manage.py load_sqlite_store`가 PostgreSQL로 옮깁니다.
 - 단위 테스트는 SQLite에서 돕니다(`CR_DB_HOST`가 비면 `cr/settings.py`가 SQLite를 고름).
+- 시각은 저장소와 API에서 UTC ISO 시각입니다. 콘솔은 브라우저 시간대와 상관없이 `front/src/format.ts`(`timeZone: "Asia/Seoul"`)로
+  모든 시각을 UTC+9로 보여 주고, Kibana 공간은 `sandbox/kibana.py`가 넣는 `dateFormat:tz`로 같은 시간대를 씁니다.
+  터미널 출력은 도구가 찍는 그대로입니다.
 
 ## 아직 없는 것
 
 - API에 없어서 목업과 다른 곳: 지난 라운드의 종료 시각과 결과, 로비의 연 시각, CRS 미리 보기, 케이스·목표 목록(스태프 편집기는 id로
   입력)이 없습니다.
-- 훈련 환경에서 아직 돌리지 않은 것(`pvp` 라운드, 대응 O인 손실 등)은 `docs/STATE.md`의 "Not live-verified"에 있습니다.
+- 훈련 환경에서 아직 돌리지 않은 것(인프라 재부팅 뒤의 edge 집합, 밖에서 들어오는 학습자의 UDP 등)은 `docs/STATE.md`의 "Not live-verified"에 있습니다.
