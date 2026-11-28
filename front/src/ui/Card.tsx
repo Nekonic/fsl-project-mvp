@@ -32,10 +32,6 @@ export function CardHead({ title, meta, actions }: CardHeadProps) {
   );
 }
 
-export function CardFoot({ children }: { children: ComponentChildren }) {
-  return <div class="card-foot">{children}</div>;
-}
-
 export function CardTitle({ children }: { children: ComponentChildren }) {
   return <h1 class="card-title">{children}</h1>;
 }
@@ -87,10 +83,6 @@ export function Stack({ gap = "md", children }: StackProps) {
 
 export function Row({ wide, children }: { wide?: boolean; children: ComponentChildren }) {
   return <div class={wide ? "row-wide" : "row"}>{children}</div>;
-}
-
-export function Push({ children }: { children: ComponentChildren }) {
-  return <span class="push">{children}</span>;
 }
 
 export interface ColumnsProps {

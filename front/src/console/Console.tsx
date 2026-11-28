@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import type { ConsoleSpec, RailEntry } from "../layouts";
 import { setHash, usePlace } from "../router";
 import { t } from "../strings";
-import { Aside, ConsoleLayout, KeptPane, PaneSplit, Rail, type Crumb } from "../ui";
+import { Aside, ConsoleLayout, KeptPane, Rail, type Crumb } from "../ui";
 import { AppPage } from "../shell/AppPage";
 import { isPaneId, panes, type PaneId } from "../panes/registry";
 import type { Placement, Side } from "../panes/types";
@@ -29,7 +29,6 @@ function PaneSlot({ id, round, side, placement }: { id: PaneId; round: number; s
 export function Console({ spec, round, side = spec.side, title, crumbs, header, rail = spec.rail, asideLead = spec.asideLead, aside = spec.aside, open }: ConsoleProps) {
   const place = usePlace();
   const onRail = (id: string) => rail.some((entry) => entry.pane === id);
-  const besideOf = (id: PaneId) => rail.find((entry) => entry.pane === id)?.beside ?? [];
   const asideShown = asideLead ? [asideLead, ...aside] : aside;
   const fromHash = isPaneId(place.hash) && onRail(place.hash) ? place.hash : undefined;
   const first = rail[0]?.pane;
@@ -51,9 +50,7 @@ export function Console({ spec, round, side = spec.side, title, crumbs, header, 
       >
         {mounted.filter((id) => onRail(id)).map((id) => (
           <KeptPane key={id} shown={id === active}>
-            {besideOf(id).length > 0
-              ? <PaneSplit>{[id, ...besideOf(id)].map((shown) => <PaneSlot key={shown} id={shown} round={round} side={side} placement="main" />)}</PaneSplit>
-              : <PaneSlot id={id} round={round} side={side} placement="main" />}
+            <PaneSlot id={id} round={round} side={side} placement="main" />
           </KeptPane>
         ))}
       </ConsoleLayout>

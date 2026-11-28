@@ -1,14 +1,18 @@
 import { useEffect, useState } from "preact/hooks";
 import { api, RULE_TEST_TIMEOUT_MS, type Schemas } from "../api/client";
-import { useResource } from "../api/hooks";
+import { useEvents, useResource } from "../api/hooks";
 import { clock } from "../format";
+import { usePaneShownAgain } from "../router";
 import { t, tFor } from "../strings";
-import { Badge, Button, Code, CodeEditor, ErrorNotice, Loading, Notice, Pane, PaneSection, Select, Table, Text, type Column } from "../ui";
+import { Badge, Banner, Button, Code, CodeEditor, ErrorNotice, Loading, Notice, Pane, PaneSection, Select, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchButtons, BenchOutcome, RuleTestSection, fileName, rememberTest, useLatestTest, usePaneShownAgain, useRuleBench, type BenchCalls } from "./RuleTestTable";
+import { BenchButtons, BenchOutcome, RuleTestSection, fileName, rememberTest, useLatestTest, useRuleBench, type BenchCalls } from "./RuleBench";
 import type { PaneProps } from "./types";
 
 type WafFile = Schemas["WafFile"];
+
+const BELOW_FLOOR = "limit.below_floor";
+const SHARED_KEY = "limit.shared_key";
 
 function asMap(files: WafFile[]): Record<string, string> {
   return Object.fromEntries(files.map((one) => [one.path, one.text]));
@@ -140,11 +144,24 @@ export function Waf({ round }: PaneProps) {
       )}
       <BenchOutcome bench={bench} onReload={read.reload} />
       <RuleTestSection result={bench.result} stale={bench.stale && !bench.applied} untestedText={t("rule_test.not_yet.waf")} engine="waf" />
-      <PaneSection title={t("waf.versions")} ruled>
+      <PaneSection title={t("versions.title")} ruled>
         {versions.error ? <ErrorNotice error={versions.error} />
           : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}
       </PaneSection>
       {opened !== null && <StoredVersion round={round} version={opened} />}
     </Pane>
   );
+}
+
+export function LimitWarningBanner({ round }: { round: number }) {
+  const [warned, setWarned] = useState<{ kind: string; zone: string; rate: number; floor: number } | null>(null);
+  useEvents(round, [BELOW_FLOOR, SHARED_KEY], (events) => {
+    const last = events[events.length - 1];
+    if (!last?.body) return;
+    const body = last.body;
+    setWarned({ kind: last.kind, zone: String(body.zone ?? ""), rate: Number(body.rate_rpm ?? 0), floor: Number(body.floor_rpm ?? 0) });
+  }, true);
+  if (!warned) return null;
+  if (warned.kind === SHARED_KEY) return <Banner title={t("waf.limit.shared_key")} detail={t("waf.limit.shared_key.detail", warned)} />;
+  return <Banner title={t("waf.limit.below_floor")} detail={t("waf.limit.below_floor.detail", warned)} />;
 }

@@ -8,7 +8,7 @@ import type { PageProps } from "../routes";
 import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Button, ErrorNotice, Hero, PageBody } from "../ui";
-import { wargameName } from "./wargameText";
+import { wargameName } from "../wargame";
 
 const ROUND_EVENTS = ["round.ended"];
 

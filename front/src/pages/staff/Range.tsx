@@ -4,7 +4,7 @@ import { useResource, useRowAction } from "../../api/hooks";
 import { count } from "../../format";
 import type { PageProps } from "../../routes";
 import { AppPage } from "../../shell/AppPage";
-import { wargameName } from "../wargameText";
+import { wargameName } from "../../wargame";
 import { errorLine, errorText, t, tFor } from "../../strings";
 import { Badge, Button, Card, CardHead, ErrorNotice, Loading, PageBody, Progress, Row, Section, Stack, Table, Text, type BadgeTone, type Column, type DotTone, ServerDots, OpRow, RowActions } from "../../ui";
 

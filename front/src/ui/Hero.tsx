@@ -57,28 +57,3 @@ export function Hero({ eyebrow, title, badge, facts = [], lead = [], stats = [],
     </header>
   );
 }
-
-export interface TabItem {
-  id: string;
-  label: ComponentChildren;
-}
-
-export interface TabsProps {
-  tabs: TabItem[];
-  value: string;
-  onChange: (id: string) => void;
-}
-
-export function Tabs({ tabs, value, onChange }: TabsProps) {
-  return (
-    <div class="tabbar">
-      <div class="page-wrap tabs" role="tablist">
-        {tabs.map((tab) => (
-          <button key={tab.id} type="button" role="tab" class="tab" aria-selected={tab.id === value} onClick={() => onChange(tab.id)}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}

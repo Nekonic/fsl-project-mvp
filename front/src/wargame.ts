@@ -1,4 +1,4 @@
-import { hasString, t } from "../strings";
+import { hasString, t } from "./strings";
 
 function shown(key: string): string {
   return hasString(key) ? t(key) : "";

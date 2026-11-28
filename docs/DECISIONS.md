@@ -11769,3 +11769,22 @@ which held an image name, is `image`. `ELASTIC_SESSION_INDEX` is `ELASTIC_SLOT_I
 The board's ground truth is read only from inside the board, so `GroundTruthConfig` holds the
 port (`BOARD_PORT`, default 8000) instead of a compose-era URL. `pool.phase` and two orphan
 test fixtures are gone.
+
+## 2026-11-28 — Console names that said something else
+
+The defence console's terminal pane, which switches between the WAF and the IDS box, is
+`TerminalDefence` (pane id `terminal_defence`, label key `pane.terminal_defence`); the WAF
+box's title key is `terminal.waf.title`. `panes/RuleTestTable.tsx` holds the whole rule-test
+bench and is `panes/RuleBench.tsx`; its pane-visibility hook `usePaneShownAgain` sits in
+`router.ts`. `panes/Verdicts.tsx` is `console/VerdictNotices.tsx`, `pages/wargameText.ts` is
+`src/wargame.ts`, and `ui/Record.tsx`, which holds the staff editor parts, is
+`ui/EditorParts.tsx`. The WAF `limit_req` warning banner moved from `Origins.tsx` to `Waf.tsx`
+and its keys are `waf.limit.*`. The list of live rule versions has one label key,
+`versions.title` ("적용 기록"), in the aside and in the WAF and IDS panes. The rule engine union
+is `Engine` alone. `ConsoleSpec.mark`, `LayoutName`, `RailEntry.beside` with `PaneSplit`,
+`to.attack`, `to.defence`, the unused `ui` components (`CardFoot`, `Push`, `Tabs`, `FootRow`,
+`Divided`, `TryRow`, `KeyNote`, `Inputs`) and their CSS, the `score` pane registration and the
+lesson-era and unread strings are gone. The Kali notice is `map-symbols/node-kali.txt`, like
+its symbol. A pvp round's brief pane is titled "워게임 설명", and the round tables show "—" under
+"문제" for a pvp round; the past-round and record tables show the wargame in its own column.
+The staff range page writes the pool as `pool`. A sign-in block's end shows in UTC+9.

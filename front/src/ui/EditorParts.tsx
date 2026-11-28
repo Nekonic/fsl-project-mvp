@@ -202,18 +202,6 @@ export function LineList({ lines, removeLabel, onRemove, addLabel, placeholder, 
   );
 }
 
-export function TryRow({ children }: { children: ComponentChildren }) {
-  return <div class="try-row">{children}</div>;
-}
-
-export function KeyNote({ children }: { children: ComponentChildren }) {
-  return <span class="key-note">{children}</span>;
-}
-
-export function Inputs({ children }: { children: ComponentChildren }) {
-  return <div class="inputs">{children}</div>;
-}
-
 export function WithUnit({ unit, children }: { unit: ComponentChildren; children: ComponentChildren }) {
   return <span class="with-unit">{children}<span>{unit}</span></span>;
 }

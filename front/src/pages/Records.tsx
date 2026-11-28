@@ -8,7 +8,8 @@ import { AppPage } from "../shell/AppPage";
 import { t, tFor } from "../strings";
 import { Badge, Button, ErrorNotice, Hero, Loading, PageBody, Section, Stack, Table, type Column } from "../ui";
 import { DebriefReport, stepsLine } from "./Debrief";
-import { wargameName } from "./wargameText";
+import { problemOrNone } from "./roundText";
+import { wargameName } from "../wargame";
 
 type RecordLine = Schemas["RecordLine"];
 type DebriefShown = Schemas["Debrief"];
@@ -16,6 +17,10 @@ type ScoreShown = Schemas["Score"];
 
 function problemTitle(line: { problem_title: string | null; wargame: string | null }): string {
   return line.problem_title ?? (line.wargame ? wargameName(line.wargame) : "—");
+}
+
+function wargameOrNone(line: { wargame: string | null }): string {
+  return line.wargame ? wargameName(line.wargame) : "—";
 }
 
 function endedAt(line: RecordLine): string {
@@ -26,7 +31,8 @@ export function Records(_props: PageProps) {
   const records = useResource("/api/records/", {});
   const columns: Column<RecordLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round_number }) },
-    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: problemTitle },
+    { key: "wargame", label: t("col.wargame"), kind: "nowrap", cell: wargameOrNone },
+    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: problemOrNone },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     { key: "steps", label: t("records.col.steps"), kind: "nowrap", cell: (line) => stepsLine(line.steps) || "—" },
     { key: "ended", label: t("records.col.ended"), kind: "mono", cell: endedAt },

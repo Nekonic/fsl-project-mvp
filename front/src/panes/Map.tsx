@@ -2,7 +2,7 @@ import type cytoscapeFactory from "cytoscape";
 import type { Core, ElementDefinition, NodeSingular, StylesheetJson } from "cytoscape";
 import { useEffect, useRef, useState } from "preact/hooks";
 import { useResource } from "../api/hooks";
-import { usePaneShownAgain } from "./RuleTestTable";
+import { usePaneShownAgain } from "../router";
 import { errorText, hasString, t } from "../strings";
 import { MapFrame, Pane } from "../ui";
 import type { PaneProps } from "./types";

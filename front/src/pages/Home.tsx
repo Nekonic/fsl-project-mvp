@@ -10,8 +10,8 @@ import {
   Badge, Badges, Button, Card, ErrorNotice, Group, GroupHead, Hero, ListRow, Loading, PageBody, Section, Stack, Table, TargetHead, Text,
   Tile, Tiles, phaseTone, roundTileLook, type Column,
 } from "../ui";
-import { botRoundProblems, roundTitle } from "./roundText";
-import { wargameHost, wargameLead, wargameName } from "./wargameText";
+import { botRoundProblems, problemOrNone, roundTitle } from "./roundText";
+import { wargameHost, wargameLead, wargameName } from "../wargame";
 
 type Problem = Schemas["LearnerProblemSummary"];
 type Wargame = Schemas["LearnerWargame"];
@@ -135,6 +135,7 @@ function ProblemTiles({ catalogue }: { catalogue: Catalogue }) {
 interface PastLine {
   key: string;
   name: string;
+  wargame: string;
   problem: string;
   href: string;
 }
@@ -142,6 +143,7 @@ interface PastLine {
 function Past({ lines }: { lines: PastLine[] }) {
   const columns: Column<PastLine>[] = [
     { key: "name", label: t("col.round"), kind: "strong", cell: (line) => line.name },
+    { key: "wargame", label: t("col.wargame"), kind: "nowrap", cell: (line) => line.wargame },
     { key: "problem", label: t("col.problem"), kind: "wrap", cell: (line) => line.problem },
     {
       key: "result", label: t("col.result"), kind: "end",
@@ -167,7 +169,7 @@ export function Home(_props: PageProps) {
   const mineIds = new Set(roundsMine.map((line) => line.round));
   const joinableShown = (joinable.data ?? []).filter((line) => !mineIds.has(line.round) && openSides(line).length > 0);
   const past: PastLine[] = roundsMine.filter((line) => line.phase === "ended").map((line) => ({
-    key: `r${line.round}`, name: t("round.name", { round: line.round }), problem: roundTitle(line), href: to.result(line.round),
+    key: `r${line.round}`, name: t("round.name", { round: line.round }), wargame: wargameName(line.wargame), problem: problemOrNone(line), href: to.result(line.round),
   }));
 
   const all = botRoundProblems(problems.data ?? []);

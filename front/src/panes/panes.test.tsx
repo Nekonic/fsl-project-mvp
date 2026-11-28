@@ -13,12 +13,12 @@ import { fallenNames } from "./Loot";
 import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
-import { rememberTest, RuleTestTable, Untested } from "./RuleTestTable";
+import { rememberTest, RuleTestTable, Untested } from "./RuleBench";
 import { versionNoteKey } from "./RuleVersions";
 import { Score, SCORE_PENDING_READ_EVERY_MS, ScoreReport } from "./Score";
 import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
 import { objectiveLabel } from "./staff/RoundSetupEditor";
-import { judgedCase, VERDICT_NOTICE_MS, VerdictNotices } from "./Verdicts";
+import { judgedCase, VERDICT_NOTICE_MS, VerdictNotices } from "../console/VerdictNotices";
 import { Waf } from "./Waf";
 
 const objectives = [
@@ -98,8 +98,10 @@ describe("Brief", () => {
         : { matchup: "pvp", brief: { title: "Community board", summary: "", body: "" }, objectives };
       return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
-    render(<Brief round={45} side="attack" placement="aside" />);
+    const { container } = render(<Brief round={45} side="attack" placement="aside" />);
     expect(await screen.findByText(t("matchup.pvp"))).toBeTruthy();
+    expect(container.querySelector("summary")?.textContent).toContain(t("pane.brief_pvp"));
+    expect(container.querySelector("summary")?.textContent).not.toContain(t("pane.brief"));
     expect(screen.getByText(t("wargame.board"))).toBeTruthy();
     expect(screen.queryByText("Community board")).toBeNull();
   });

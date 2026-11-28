@@ -16,7 +16,7 @@ type DefenceBox = Exclude<Box, "attack">;
 
 const TITLE: Record<Box, StringKey> = {
   attack: "terminal.attack.title",
-  waf: "terminal.defence.title",
+  waf: "terminal.waf.title",
   ids: "terminal.ids.title",
 };
 
@@ -123,7 +123,7 @@ export function TerminalKali({ round }: PaneProps) {
   return <Terminal round={round} box="attack" />;
 }
 
-export function TerminalWaf({ round }: PaneProps) {
+export function TerminalDefence({ round }: PaneProps) {
   const [box, setBox] = useState<DefenceBox>("waf");
   const actions = (Object.keys(SWITCH) as DefenceBox[]).map((one) => (
     <Button key={one} small tone={one === box ? "dark" : "ghost"} onClick={() => setBox(one)}>{t(SWITCH[one])}</Button>

@@ -14,8 +14,8 @@ import {
   Row, Select, Stack, Table, Task, Text, phaseTone, type Column,
 } from "../ui";
 import { ProblemText } from "../panes/Brief";
-import { botRoundProblems, roundTitle } from "./roundText";
-import { wargameHost, wargameName } from "./wargameText";
+import { botRoundProblems, problemOrNone } from "./roundText";
+import { wargameHost, wargameName } from "../wargame";
 
 type Allocation = Schemas["AllocationDetail"];
 type RoundLine = Schemas["RoundLine"];
@@ -109,7 +109,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
 
   const columns: Column<RoundLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round }) },
-    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: roundTitle },
+    { key: "problem", label: t("col.problem"), kind: "nowrap", cell: problemOrNone },
     { key: "matchup", label: t("col.matchup"), kind: "nowrap", cell: (line) => tFor("matchup", line.matchup) },
     ...SIDES.map((side): Column<RoundLine> => ({
       key: side, label: t(`col.${side}_player`),

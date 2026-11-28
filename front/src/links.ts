@@ -1,3 +1,5 @@
+import type { Side } from "./panes/types";
+
 export const to = {
   home: () => "/",
   login: (next?: string) => (next && next !== "/" && !next.startsWith("/login") ? `/login?next=${encodeURIComponent(next)}` : "/login"),
@@ -7,9 +9,7 @@ export const to = {
   record: (record: number) => `/records/${record}`,
   debrief: (round: number) => `/rounds/${round}/debrief`,
   allocation: (allocation: number) => `/allocations/${allocation}`,
-  attack: (round: number) => `/rounds/${round}/attack`,
-  defence: (round: number) => `/rounds/${round}/defence`,
-  player: (round: number, side: "attack" | "defence") => `/rounds/${round}/${side}`,
+  player: (round: number, side: Side) => `/rounds/${round}/${side}`,
   result: (round: number, side?: string) => `/rounds/${round}/result${side ? `?side=${side}` : ""}`,
   staffProblems: () => "/staff/problems",
   staffProblem: (id: number) => `/staff/problems/${id}`,

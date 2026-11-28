@@ -4,11 +4,12 @@ import { useEvents, useResource } from "../api/hooks";
 import { clock, clockSeconds, count } from "../format";
 import { t, tFor } from "../strings";
 import { Badge, Button, ErrorNotice, Field, Filters, Form, Input, Loading, Pane, PaneSection, Select, Table, Text, type Column } from "../ui";
+import type { Engine } from "./RuleVersions";
 import type { PaneProps } from "./types";
 
 type Alert = Schemas["Alert"];
 type TrafficOrigin = Schemas["TrafficOrigin"];
-type EngineFilter = "" | "ids" | "waf";
+type EngineFilter = "" | Engine;
 
 interface AlertFilter {
   engine: EngineFilter;

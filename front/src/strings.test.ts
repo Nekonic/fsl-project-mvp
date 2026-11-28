@@ -84,4 +84,10 @@ describe("console strings", () => {
     expect(errorText({ errors: [{ path: "", code: "password_too_short", params: { min_length: 8 } }] })).toContain("8");
     expect(errorText({ errors: [{ path: "", code: "no_such_code" }] })).toBe(t("error.unknown"));
   });
+
+  it("shows a sign-in block's end in Seoul time", () => {
+    const said = errorLine({ path: "", code: "sign_in_blocked", params: { until: "2026-11-28T06:49:00.123456+00:00", retry_after: 600 } });
+    expect(said).toContain("15:49");
+    expect(said).not.toContain("2026-11-28T");
+  });
 });

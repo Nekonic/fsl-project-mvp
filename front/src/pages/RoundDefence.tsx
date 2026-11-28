@@ -1,8 +1,8 @@
 import { Console } from "../console/Console";
 import { RoundHeader } from "../console/RoundHeader";
 import { layouts } from "../layouts";
-import { LimitWarningBanner } from "../panes/Origins";
-import { VerdictNotices } from "../panes/Verdicts";
+import { LimitWarningBanner } from "../panes/Waf";
+import { VerdictNotices } from "../console/VerdictNotices";
 import type { PageProps } from "../routes";
 import { t } from "../strings";
 

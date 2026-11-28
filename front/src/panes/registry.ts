@@ -9,16 +9,15 @@ import { Loot } from "./Loot";
 import { MapPane } from "./Map";
 import { Objectives } from "./Objectives";
 import { RuleVersions } from "./RuleVersions";
-import { Score } from "./Score";
 import { Site } from "./Site";
-import { TerminalKali, TerminalWaf } from "./Terminal";
+import { TerminalDefence, TerminalKali } from "./Terminal";
 import type { PaneProps } from "./types";
 import { Waf } from "./Waf";
 
 export const panes = {
   kibana: Kibana,
   terminal_kali: TerminalKali,
-  terminal_waf: TerminalWaf,
+  terminal_defence: TerminalDefence,
   site: Site,
   map: MapPane,
   ids_rules: IdsRules,
@@ -29,7 +28,6 @@ export const panes = {
   origins: Origins,
   cases: AttackCases,
   applied: RuleVersions,
-  score: Score,
   brief: Brief,
 } satisfies Record<string, FunctionComponent<PaneProps>>;
 

@@ -2,10 +2,11 @@ import { useState } from "preact/hooks";
 import { api, RULE_TEST_TIMEOUT_MS } from "../api/client";
 import { useResource } from "../api/hooks";
 import { clock } from "../format";
+import { usePaneShownAgain } from "../router";
 import { t, tFor } from "../strings";
 import { Badge, Button, Code, ErrorNotice, Loading, Notice, Pane, PaneSection, Table, Text, type Column } from "../ui";
 import { AppliedMeta, VersionNote, useRuleVersions, type AppliedVersion } from "./RuleVersions";
-import { BenchOutcome, RuleTestSection, rememberTest, useLatestTest, usePaneShownAgain, useRuleBench } from "./RuleTestTable";
+import { BenchOutcome, RuleTestSection, rememberTest, useLatestTest, useRuleBench } from "./RuleBench";
 import type { PaneProps } from "./types";
 
 const RULE_EVENTS = ["rule.applied", "rule.refused", "round.ended"];
@@ -72,7 +73,7 @@ export function IdsRules({ round }: PaneProps) {
       )}
       <BenchOutcome bench={bench} onReload={rules.reload} />
       <RuleTestSection result={bench.result} stale={bench.stale} untestedText={t("rule_test.not_yet.ids")} engine="ids" />
-      <PaneSection title={t("waf.versions")} ruled>
+      <PaneSection title={t("versions.title")} ruled>
         {versions.error ? <ErrorNotice error={versions.error} />
           : <Table columns={versionColumns} rows={[...versions.versions].reverse()} rowKey={(row) => row.version} variant="grid" empty={t("versions.none")} />}
       </PaneSection>

@@ -76,13 +76,13 @@ export function RuleVersions({ round, placement }: PaneProps) {
 
   if (placement === "main") {
     return (
-      <Pane title={t("pane.applied")}>
+      <Pane title={t("versions.title")}>
         {body ?? <Table columns={COLUMNS} rows={all} rowKey={(row) => `${row.engine}-${row.version}`} variant="grid" empty={t("versions.none")} />}
       </Pane>
     );
   }
   return (
-    <AsideCard title={t("pane.applied")}>
+    <AsideCard title={t("versions.title")}>
       {body ?? (all.length ? all.map((row) => (
         <RowLine key={`${row.engine}-${row.version}`}>
           <span><Text tone="muted">{engineLabel(row.engine)} {row.version}</Text> <Text mono>{clock(row.applied_at)}</Text></span>

@@ -7,12 +7,10 @@ export interface RailEntry {
   pane: PaneId;
   label: StringKey;
   icon: IconName;
-  beside?: PaneId[];
 }
 
 export interface ConsoleSpec {
   side: Side;
-  mark: "attack" | "defence";
   rail: RailEntry[];
   asideLead?: PaneId;
   aside: PaneId[];
@@ -23,25 +21,21 @@ const map: RailEntry = { pane: "map", label: "pane.map", icon: "map" };
 const idsRules: RailEntry = { pane: "ids_rules", label: "pane.ids_rules", icon: "rules" };
 const waf: RailEntry = { pane: "waf", label: "pane.waf", icon: "shield" };
 const alerts: RailEntry = { pane: "alerts", label: "pane.alerts", icon: "bell" };
-const terminalWaf: RailEntry = { pane: "terminal_waf", label: "pane.terminal_waf", icon: "terminal" };
+const terminalDefence: RailEntry = { pane: "terminal_defence", label: "pane.terminal_defence", icon: "terminal" };
 const terminalKali: RailEntry = { pane: "terminal_kali", label: "pane.terminal_kali", icon: "terminal" };
 const site: RailEntry = { pane: "site", label: "pane.site", icon: "globe" };
 const loot: RailEntry = { pane: "loot", label: "pane.loot", icon: "upload" };
 
-export type LayoutName = "attack" | "defence";
-
-export const layouts: Record<LayoutName, ConsoleSpec> = {
+export const layouts: Record<Side, ConsoleSpec> = {
   attack: {
     side: "attack",
-    mark: "attack",
     rail: [terminalKali, site, loot],
     asideLead: "origins",
     aside: ["brief", "objectives", "loot", "cases"],
   },
   defence: {
     side: "defence",
-    mark: "defence",
-    rail: [alerts, kibana, map, idsRules, waf, terminalWaf],
+    rail: [alerts, kibana, map, idsRules, waf, terminalDefence],
     asideLead: "objectives",
     aside: ["brief", "applied"],
   },

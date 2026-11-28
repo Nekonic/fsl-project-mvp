@@ -12,7 +12,7 @@ import { RoundDefence } from "./RoundDefence";
 import { RoundHeader, NOT_STARTED_READ_EVERY_MS } from "../console/RoundHeader";
 import { setHash } from "../router";
 import { RoundLobby } from "./RoundLobby";
-import { wargameName } from "./wargameText";
+import { wargameName } from "../wargame";
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
@@ -98,9 +98,11 @@ describe("RoundLobby rounds", () => {
     expect(screen.queryByText(t("player.join"))).toBeNull();
   });
 
-  it("names a pvp round by its wargame", async () => {
+  it("shows no problem for a pvp round, which opens from the wargame", async () => {
     lobbyWith([{ round: 73, wargame: "board", problem: null, problem_title: null, matchup: "pvp", phase: "created", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
-    expect(await screen.findByText(wargameName("board"))).toBeTruthy();
+    const row = (await screen.findByText(t("round.name", { round: 73 }))).closest("tr");
+    expect(row?.textContent).toContain("—");
+    expect(row?.textContent).not.toContain(wargameName("board"));
   });
 
   it("links a running round to the console of the player's own seat", async () => {

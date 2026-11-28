@@ -90,7 +90,3 @@ export function Empty({ children }: { children: ComponentChildren }) {
 export function Loading({ children }: { children: ComponentChildren }) {
   return <p class="loading" aria-busy="true">{children}</p>;
 }
-
-export function Divided({ children }: { children: ComponentChildren }) {
-  return <div class="divided">{children}</div>;
-}

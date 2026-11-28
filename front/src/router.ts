@@ -97,3 +97,15 @@ export function followLink(event: MouseEvent, href: string): void {
   event.preventDefault();
   navigate(href);
 }
+
+export function usePaneShownAgain(pane: string, onShown: () => void): void {
+  const place = usePlace();
+  const shown = place.hash === pane;
+  const was = useRef(shown);
+  const latest = useRef(onShown);
+  latest.current = onShown;
+  useEffect(() => {
+    if (shown && !was.current) latest.current();
+    was.current = shown;
+  }, [shown]);
+}

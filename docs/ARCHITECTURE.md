@@ -190,12 +190,12 @@ deploy/        roles/<kali|waf|infra|target>/(역할 이미지의 원본 파일)
 front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /srv/front로 내줌
   src/theme/   tokens.css(색, 글꼴, 크기, 간격, 둥글기, 그림자 값)  components.css(모든 컴포넌트 클래스)
   src/ui/      props만 받아 클래스를 그리는 작은 컴포넌트: Button, Badge, Card, Hero, Table, Field, Notice, Shell(TopNav,
-               PageShell), Console(Rail, Pane, PaneHeader, Aside), Site, Editor, Ops, Record, Tiles, Text, Icon
+               PageShell), Console(Rail, Pane, PaneHeader, Aside), Site, Editor, EditorParts(스태프 편집기 부품), Ops, Tiles, Text, Icon
                looks.ts     상태별 모양 선택(타일 색, 단계 색). index.ts에서 모두 내보냄
   src/panes/   설계 §13의 패널. 각자 api/의 훅으로 데이터를 받고 ui/로 그림. 어느 페이지에 있는지 모름
                Kibana  Terminal(Kali, 방어 쪽 WAF·IDS 전환)  Site  Map(+map-symbols/)  IdsRules(읽기 전용)  Waf
-               RuleTestTable  Alerts
-               Objectives  Origins  Loot  AttackCases  RuleVersions  Score  Verdicts
+               RuleBench(WAF·IDS 룰 테스트)  Alerts
+               Objectives  Origins  Loot  AttackCases  RuleVersions  Score(결과 페이지가 씀)
                registry.ts  패널 id → 컴포넌트 표
                staff/  문제·posture 편집기, 가져오기. RoundSetupEditor(봇 난이도, 공격 봇 카드 체크)
   src/pages/   얇은 배치: 어떤 패널을 어디에 둘지. Login  Signup  Home  RoundLobby(대전 방식, 봇 쪽 난이도)
@@ -203,11 +203,13 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
                Records(내 기록 목록과 기록 한 건)  Access(VPN 프로필, 워게임별 공격 대상 주소, kali SSH 설정)
                staff/(Problems  Postures  Users  Range)
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
+               VerdictNotices.tsx(방어 콘솔 머리의 판정 알림)
   src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
   src/api/     client.ts(CSRF 갱신, 90초 제한, 슬롯 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 할당 heartbeat)
                hooks.ts(useResource, useEvents 등)  schema.d.ts(생성, 커밋 안 함)
   src/         layouts.ts(공격·방어 콘솔의 레일 순서와 오른쪽 열)  routes.ts(경로 표)  nav.ts(상단 메뉴 표)
-               strings.ts(t(key, params), strings/console.json 읽기)  links.ts  router.ts  format.ts  App.tsx  main.tsx
+               strings.ts(t(key, params), strings/console.json 읽기)  links.ts  router.ts  format.ts
+               wargame.ts(워게임 이름·설명)  App.tsx  main.tsx
   mock/        개발 서버(npm run dev)에서만 쓰는 가짜 /api/ 응답. fixtures/에 화면별 응답, 영어 자리표시
 ```
 
@@ -218,7 +220,6 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 색, 글꼴, 크기, 간격, 둥글기(지도 포함) | `front/src/theme/tokens.css`. 지도 아이콘(`panes/map-symbols/node-*.svg`)은 색과 둥글기를 `var(--map-…)`로 적고, `panes/Map.tsx`가 그리기 전에 토큰 값으로 바꿔 넣음. cytoscape의 모서리, 글꼴 크기, 투명도도 `--map-…` 토큰에서 읽음 |
 | 카드, 버튼, 표 같은 모양 | `front/src/theme/components.css`. 페이지와 패널에는 스타일이 없음(진행 막대 너비만 예외) |
 | 콘솔의 레일 순서, 패널 추가·제거, 오른쪽 열 | `front/src/layouts.ts`의 한 줄. 오른쪽 열 맨 위의 큰 패널은 `asideLead`, 나머지는 `aside`라서 `aside` 순서를 바꿔도 모양은 그대로 |
-| 본문에 패널 둘을 나란히 | `front/src/layouts.ts`에서 레일 항목에 `beside: ["<패널>"]`을 적음. 그 탭을 열면 본문이 패널과 `beside` 패널로 나뉨(좁은 화면에서는 위아래) |
 | 페이지에 어떤 패널을 둘지 | `front/src/pages/<페이지>.tsx` |
 | 경로, 상단 메뉴 | `front/src/routes.ts`, `front/src/nav.ts` |
 | 문구 | `strings/console.json`. 화면 문구는 모두 `t(key, params)`로 나옴. `strings.ts`는 값 안의 `{@키}` 참조를 풀지만 지금 그렇게 쓴 값은 없음 |
@@ -229,8 +230,6 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 
 - 지도 선 굵기와 라벨 여백 같은 cytoscape 수치 일부, 아이콘 안 그림의 선 굵기는 아직 `panes/Map.tsx`와 SVG 파일에
   숫자로 있습니다.
-- `beside`는 레일 탭 하나에 붙고, 나란히 놓인 패널은 같은 너비로 나뉩니다. 너비 비율을 바꾸려면
-  `components.css`의 `.pane-split`을 고쳐야 합니다.
 
 ## 격리 경계
 

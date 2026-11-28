@@ -8,7 +8,7 @@ import { t, tFor } from "../strings";
 import { Badge, Banner, Button, ConfirmButton, ErrorNotice, RoundBar } from "../ui";
 import { botRunText } from "../botRun";
 import { clock } from "../format";
-import { wargameName } from "../pages/wargameText";
+import { wargameName } from "../wargame";
 
 const FORFEIT_PATH = {
   attack: "/api/rounds/{round_id}/attack/forfeit/",

@@ -1,5 +1,5 @@
 import { useResource } from "../api/hooks";
-import { wargameLead, wargameName } from "../pages/wargameText";
+import { wargameLead, wargameName } from "../wargame";
 import { t } from "../strings";
 import { AsideFold, ErrorNotice, Loading, Pane, Prose, Stack, Text } from "../ui";
 import type { PaneProps } from "./types";
@@ -36,6 +36,7 @@ export function Brief({ round, side, placement }: PaneProps) {
   const shown = brief
     ? <ProblemText problem={brief} />
     : error ? <ErrorNotice error={error} /> : <Loading>{t("common.loading")}</Loading>;
-  if (placement === "main") return <Pane title={t("pane.brief")} meta={brief?.title}>{shown}</Pane>;
-  return <AsideFold title={t("pane.brief")} meta={brief?.title}>{shown}</AsideFold>;
+  const title = t(pvp ? "pane.brief_pvp" : "pane.brief");
+  if (placement === "main") return <Pane title={title} meta={brief?.title}>{shown}</Pane>;
+  return <AsideFold title={title} meta={brief?.title}>{shown}</AsideFold>;
 }

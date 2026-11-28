@@ -82,10 +82,6 @@ export function KeptPane({ shown, children }: { shown: boolean; children: Compon
   return <div class={shown ? "pane" : "pane pane-kept"} aria-hidden={shown ? undefined : true} inert={shown ? undefined : true}>{children}</div>;
 }
 
-export function PaneSplit({ children }: { children: ComponentChildren }) {
-  return <div class="pane-split">{children}</div>;
-}
-
 export interface PaneProps {
   title?: ComponentChildren;
   meta?: ComponentChildren;

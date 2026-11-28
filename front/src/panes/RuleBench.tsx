@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import { api, ApiError, type Schemas } from "../api/client";
 import { caseLabel } from "../format";
-import { usePlace } from "../router";
 import { t, tFor, type StringKey } from "../strings";
 import { Badge, Badges, Button, ErrorNotice, Notice, PaneSection, Stack, Stat, Stats, Table, Text, type BadgeTone, type Column } from "../ui";
+import type { Engine } from "./RuleVersions";
 
 
 export type RuleTestResult = Schemas["RuleTestResult"];
@@ -152,10 +152,10 @@ export interface RuleTestSectionProps {
   result: RuleTestResult | undefined;
   stale: boolean;
   untestedText: string;
-  engine: "waf" | "ids";
+  engine: Engine;
 }
 
-function Passing({ result, engine }: { result: RuleTestResult; engine: "waf" | "ids" }) {
+function Passing({ result, engine }: { result: RuleTestResult; engine: Engine }) {
   if (result.passed) return <Notice tone="ok">{t(engine === "waf" ? "rule_test.passed.waf" : "rule_test.passed.ids")}</Notice>;
   if (result.failed_benign.length) return <Notice tone="danger">{t("rule_test.failed_benign", { cases: result.failed_benign.join(", ") })}</Notice>;
   if (result.untested_benign.length) return <Notice tone="danger">{t("rule_test.untested_benign", { cases: result.untested_benign.join(", ") })}</Notice>;
@@ -290,13 +290,11 @@ export function useRuleBench(body: string) {
 
 export type RuleBench = ReturnType<typeof useRuleBench>;
 
-export type RuleEngine = "waf" | "ids";
-
-function rememberedKey(round: number, engine: RuleEngine): string {
+function rememberedKey(round: number, engine: Engine): string {
   return `cr.rule_test.${round}.${engine}`;
 }
 
-export function rememberTest(round: number, engine: RuleEngine, content: string, test: number): void {
+export function rememberTest(round: number, engine: Engine, content: string, test: number): void {
   try {
     localStorage.setItem(rememberedKey(round, engine), JSON.stringify({ content, test }));
   } catch {
@@ -304,7 +302,7 @@ export function rememberTest(round: number, engine: RuleEngine, content: string,
   }
 }
 
-export function rememberedTest(round: number, engine: RuleEngine, content: string): number | null {
+export function rememberedTest(round: number, engine: Engine, content: string): number | null {
   try {
     const held = JSON.parse(localStorage.getItem(rememberedKey(round, engine)) ?? "null") as { content?: unknown; test?: unknown } | null;
     return held && held.content === content && typeof held.test === "number" ? held.test : null;
@@ -313,14 +311,14 @@ export function rememberedTest(round: number, engine: RuleEngine, content: strin
   }
 }
 
-function readTest(round: number, engine: RuleEngine, test: number): Promise<RuleTestResult> {
+function readTest(round: number, engine: Engine, test: number): Promise<RuleTestResult> {
   if (engine === "waf") return api.get("/api/rounds/{round_id}/defence/waf/tests/{test_id}/", { params: { round_id: round, test_id: test } });
   return api.get("/api/rounds/{round_id}/defence/ids/rules/tests/{test_id}/", { params: { round_id: round, test_id: test } });
 }
 
 export interface LatestTestProps {
   round: number;
-  engine: RuleEngine;
+  engine: Engine;
   content: string | null;
   body: string;
   liveBody: string;
@@ -354,18 +352,6 @@ export function BenchButtons({ bench, calls, disabled }: { bench: RuleBench; cal
       <Button small tone="dark" busy={bench.busy === "apply"} disabled={disabled || bench.busy !== null || !bench.applicable} onClick={() => void bench.apply(calls)}>{t("rules.apply")}</Button>
     </>
   );
-}
-
-export function usePaneShownAgain(pane: string, onShown: () => void): void {
-  const place = usePlace();
-  const shown = place.hash === pane;
-  const was = useRef(shown);
-  const latest = useRef(onShown);
-  latest.current = onShown;
-  useEffect(() => {
-    if (shown && !was.current) latest.current();
-    was.current = shown;
-  }, [shown]);
 }
 
 export function BenchOutcome({ bench, onReload, problemsShownInline }: { bench: RuleBench; onReload: () => void; problemsShownInline?: (problem: RuleProblem) => boolean }) {

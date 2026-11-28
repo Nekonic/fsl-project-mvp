@@ -50,12 +50,3 @@ export function Table<Row>({ columns, rows, rowKey, variant = "plain", empty, fo
   );
   return scroll ? <div class={cx("table-scroll")}>{table}</div> : table;
 }
-
-export function FootRow({ label, value, span }: { label: ComponentChildren; value: ComponentChildren; span: number }) {
-  return (
-    <tr>
-      <td colSpan={span}>{label}</td>
-      <td class="cell-end">{value}</td>
-    </tr>
-  );
-}

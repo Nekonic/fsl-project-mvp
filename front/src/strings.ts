@@ -1,4 +1,5 @@
 import table from "@strings/console.json";
+import { clock } from "./format";
 
 export type StringKey = keyof typeof table;
 export type StringParams = Record<string, string | number | null | undefined>;
@@ -46,9 +47,17 @@ export interface ErrorShape {
   errors: ShownError[];
 }
 
+const TIME_PARAMS = new Set(["until"]);
+
+function shownParam(name: string, value: unknown): string | null | undefined {
+  if (value === null || value === undefined) return value;
+  if (TIME_PARAMS.has(name) && typeof value === "string") return clock(value);
+  return String(value);
+}
+
 function asParams(params: Record<string, unknown> | undefined): StringParams | undefined {
   if (!params) return undefined;
-  return Object.fromEntries(Object.entries(params).map(([name, value]) => [name, value === null || value === undefined ? value : String(value)])) as StringParams;
+  return Object.fromEntries(Object.entries(params).map(([name, value]) => [name, shownParam(name, value)])) as StringParams;
 }
 
 export function errorLine(error: ShownError): string {

@@ -1,5 +1,4 @@
-import { useState } from "preact/hooks";
-import { useAction, useEvents, useResource } from "../api/hooks";
+import { useAction, useResource } from "../api/hooks";
 import type { Schemas } from "../api/client";
 import { clock, count } from "../format";
 import { t, tFor } from "../strings";
@@ -7,8 +6,6 @@ import { AsideCard, AsideHead, Banner, ConfirmButton, ErrorNotice, KeyValue, Loa
 import type { PaneProps } from "./types";
 
 export const ORIGIN_EVENTS = ["origin.spent", "origin.switched", "origins.spent", "action.sent", "round.started", "round.ended"];
-const BELOW_FLOOR = "limit.below_floor";
-const SHARED_KEY = "limit.shared_key";
 
 export type AttackState = Schemas["AttackState"];
 type Remaining = Schemas["Remaining"];
@@ -116,17 +113,4 @@ export function OriginsSpentBanner({ round }: { round: number }) {
   const state = useAttackState(round);
   if (!state.data || state.data.remaining.left > 0 || state.data.phase === "ended") return null;
   return <Banner tone="danger" title={t("error.origins_spent")} />;
-}
-
-export function LimitWarningBanner({ round }: { round: number }) {
-  const [warned, setWarned] = useState<{ kind: string; zone: string; rate: number; floor: number } | null>(null);
-  useEvents(round, [BELOW_FLOOR, SHARED_KEY], (events) => {
-    const last = events[events.length - 1];
-    if (!last?.body) return;
-    const body = last.body;
-    setWarned({ kind: last.kind, zone: String(body.zone ?? ""), rate: Number(body.rate_rpm ?? 0), floor: Number(body.floor_rpm ?? 0) });
-  }, true);
-  if (!warned) return null;
-  if (warned.kind === SHARED_KEY) return <Banner title={t("origins.shared_key")} detail={t("origins.shared_key.detail", warned)} />;
-  return <Banner title={t("origins.below_floor")} detail={t("origins.below_floor.detail", warned)} />;
 }

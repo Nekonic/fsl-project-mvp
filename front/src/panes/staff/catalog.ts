@@ -1,6 +1,6 @@
 import { useResource } from "../../api/hooks";
 import type { Schemas } from "../../api/client";
-import { wargameName } from "../../pages/wargameText";
+import { wargameName } from "../../wargame";
 
 export type Wargame = Schemas["Wargame"];
 

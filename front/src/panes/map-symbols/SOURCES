@@ -5,6 +5,6 @@ node-*.svg
   as its affinity symbols, under the Unlicense (public domain); node-logs is the statistics glyph of
   gns3server/symbols/affinity/square/gray/statistics.svg from gns3-server 3.1.0a6. Only fill and stroke colours
   were changed. node-kali.svg holds the Kali dragon, unmodified, on a light disc inside the same tile;
-  host-kali.txt is its notice and the trademark policy.
+  node-kali.txt is its notice and the trademark policy.
 
 cytoscape is the npm package pinned in front/package.json (MIT), bundled by the front build.
