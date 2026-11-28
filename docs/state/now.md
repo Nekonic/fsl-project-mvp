@@ -15,7 +15,7 @@ Updated: 2026-11-28.
 `dev` is ahead of the cloud by two changes, not deployed: every time the
 console shows is UTC+9 (`front/src/format.ts`; Kibana's spaces already show
 UTC+9 through `dateFormat:tz` in `sandbox/kibana.py`), and the console says
-프로브 for the stored requests the rule test replays.
+probes for the stored requests the rule test replays.
 
 ## Checked live today
 
