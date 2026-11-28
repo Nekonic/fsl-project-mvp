@@ -55,7 +55,7 @@ split (`platform/api/`); the routes and modules they quote
 `api/reset.py`, `range/sandbox.py`) are that tree's and are kept as the
 record. The procedures name the side split's routes, the staff range API
 under `/api/staff/range/` (`GET /`, `fabric/`, `leftovers/`, `pool/`), which
-has not yet run on a cloud.
+`bin/cloud` calls.
 
 ## Target: one-click build
 
@@ -131,9 +131,10 @@ The platform builds the range as one Heat stack per allocation, `cr-slot-<n>`,
 each four Nova servers on Neutron networks of the stack's own (§6). It creates them
 as a member user. The range's design was
 `docs/superpowers/specs/2026-11-18-heat-range-design.md` (archived; git keeps
-it); the side split keeps it and adds the edge sets, the WAF access log, the
+it under that path); the side split keeps it and adds the edge sets, the WAF access log, the
 scratch CRS instance and `analyst` (§3.7,
-`docs/superpowers/specs/2026-11-19-side-split-design.md`).
+`docs/specs/2026-11-19-side-split-design.md`; the current layout is
+`docs/ARCHITECTURE.md`).
 
 The platform VM runs only the control plane as containers: platform,
 Elasticsearch, Kibana and the collector. `docker compose` pulls their

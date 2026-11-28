@@ -2,9 +2,10 @@
 
 The product backlog and the record of where the build stands. The handover to
 the next session is `docs/state/now.md`; rulings are in `docs/DECISIONS.md`;
-problems and their measurements in `docs/TROUBLESHOOTING.md`; the design in
-`docs/superpowers/specs/2026-11-19-side-split-design.md` (the spec, cited
-below by section). The record of the old tree (`platform/api/`, the console
+problems and their measurements in `docs/TROUBLESHOOTING.md`; the current
+design in `docs/ARCHITECTURE.md`, and the historical 2026-11-19 design in
+`docs/specs/2026-11-19-side-split-design.md` (the spec, cited below by
+section). The record of the old tree (`platform/api/`, the console
 templates, the scenario course) up to 2026-11-18 is in this file's git
 history.
 
@@ -389,7 +390,7 @@ Elasticsearch at scoring time stay).
   round bar, a past round's end and result, the allocation's opening time, a CRS preview, case and objective
   catalogs for the staff editor, and coded slot and server failures.
 - **Screens not yet one file to change.** Verdict tones differ between
-  `Score` and `RuleTestTable`; some cytoscape widths and margins in
+  `Score` and `RuleBench`; some cytoscape widths and margins in
   `panes/Map.tsx` and the SVG stroke widths are still numbers in code.
 - **A round no one calls on does nothing.** The benign pass, origin loss,
   alert ingest, verdicts and the time-limit end wait for the next request
@@ -451,8 +452,8 @@ them: offline IDS against the live sensor;
 mapping `suricata -T` errors to a line; scratch CRS instance fidelity;
 recorded sqlmap pcaps as an IDS preview; error-log loss on the UDP hop (an origin
 the defender banned is not spent); spend lag of one read interval plus shipping; forged markers and
-customer addresses on a root box; free-action attribution by window; reads
-on request keeping up under four sqlmap runs; the first Preact build and
+customer addresses on a root box; free-action attribution by window; the
+background round read (`CR_READ_IN_BACKGROUND=1`) keeping up under four sqlmap runs; the first Preact build and
 the SPA fallback order.
 
 ## Known gaps

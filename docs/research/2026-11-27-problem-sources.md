@@ -2,7 +2,7 @@
 
 ## 목적
 
-board(Django 게시판)와 corp(WordPress 회사 사이트) 워게임에 쓸 한국어 공개 문제의 근거 자료를 골랐습니다. 다섯 갈래(KISA, 국내 기타, 블루팀 플랫폼, 사이버 레인지, 웹 콘텐츠)로 모은 자료에서 다음 셋 중 하나에 해당하는 것만 남겼습니다.
+board(Django 게시판)와 corp(WordPress 회사 사이트) 워게임에 쓸 한국어 공개 문제의 근거 자료를 골랐습니다. 다섯 갈래(KISA, 국내 기타, 블루팀 플랫폼, cyber range, 웹 콘텐츠)로 모은 자료에서 다음 셋 중 하나에 해당하는 것만 남겼습니다.
 
 - 웹 공격과 WAF/IDS 방어 문제를 쓰는 데 직접 쓸 수 있다.
 - 우리 점수 체계와 맞는 채점·형식 아이디어를 준다. 우리 점수는 타깃 ground truth로 판정한 objective 손실, 탐지·대응 O/X, 케이스별 TP/FP/FN/TN이다.
@@ -36,11 +36,11 @@ board(Django 게시판)와 corp(WordPress 회사 사이트) 워게임에 쓸 한
 | Trends and challenges for balanced scoring (Locked Shields) | Frontiers in Education 2022 | https://www.frontiersin.org/articles/10.3389/feduc.2022.958405 | 공격을 web·network·client-side로 분류, SITREP과 key event 대조, 더미 서비스로 체크를 속이면 감점 | open access(CC BY 추정, 미확인) | "모두 막으면 FP 점수는 좋지만 objective는 다 잃는다"는 우리 원칙의 근거 |
 | Cybersecurity AI: Attack/Defense CTFs (arXiv 2510.17521) | Alias Robotics | https://arxiv.org/html/2510.17521v1 | patching과 operational defence(가용성을 지키는 방어)를 구분. 성공률 54.3% → 23.9% | arXiv, 재사용 조건 미확인. 인용만 함 | 사람 대 AI 봇 라운드에 가장 가까운 선행 연구 |
 | ENOWARS docs (FAUST 계열) | ENOFLAG | https://enowars.github.io/docs/play/general | 공격·방어·SLA 분리. gameserver가 정상 기능으로 flag를 회수 | 규칙 문서. 인용만 함 | gameserver의 SLA 체크가 우리 benign 케이스와 같은 역할 |
-| KYPO Training Design Field Manual / demo training.json | Masaryk University | https://webcentrum.muni.cz/media/3462734/kypo_crp-training_design-field_manual_v10.pdf · https://gitlab.ics.muni.cz/kypo-library/content/kypo-library-demo-training/-/raw/master/training.json | 시나리오 작성 절차(목표, 스토리, ATT&CK 매핑, inject). 문제 스키마(`max_score`, `hint_penalty`, `solution_penalized`) | demo training은 MIT. 매뉴얼 본문은 라이선스 표기 없음 | 우리와 같은 OpenStack 기반 레인지. 문제 문서 형식의 본보기 |
+| KYPO Training Design Field Manual / demo training.json | Masaryk University | https://webcentrum.muni.cz/media/3462734/kypo_crp-training_design-field_manual_v10.pdf · https://gitlab.ics.muni.cz/kypo-library/content/kypo-library-demo-training/-/raw/master/training.json | 시나리오 작성 절차(목표, 스토리, ATT&CK 매핑, inject). 문제 스키마(`max_score`, `hint_penalty`, `solution_penalized`) | demo training은 MIT. 매뉴얼 본문은 라이선스 표기 없음 | 우리와 같은 OpenStack 기반 range. 문제 문서 형식의 본보기 |
 | Splunk BOTS v1 | Splunk | https://github.com/splunk/botsv1 | suricata, iis, stream:http 로그와 attack-only 데이터셋. Q&A는 요청 시 공개 (https://www.splunk.com/en_us/blog/security/boss-of-the-soc-scoring-server-questions-and-answers-and-dataset-open-sourced-and-ready-for-download.html) | CC0-1.0 | 유일하게 재사용 가능한 블루 콘텐츠. Kibana 로그 분석 문제의 형식 참고. Elasticsearch 적재는 해 보지 않음 |
 | SA-ctf_scoreboard | Splunk | https://github.com/splunk/SA-ctf_scoreboard | 질문·답·힌트 CSV 구조 | CC0 1.0(일부 파일 제외), 2022년 지원 종료 | 문제 데이터 형식 참고 |
 | TryHackMe SOC Sim | TryHackMe | https://help.tryhackme.com/en/articles/10508054-soc-sim | TP·FP가 섞인 실시간 알림 큐, TP를 오분류하면 시나리오 실패 | 독점, 형식만 참고 | 우리 TP/FP 판정과 "대응 없이 잃으면 2배" 규칙과 비교할 거리 |
-| LetsDefend Detecting Web Attacks / 시나리오 생성 방식 | LetsDefend | https://app.letsdefend.io/training/lessons/web-attacks-101 · https://letsdefend.io/blog/how-we-generate-simulated-siem-alerts | SQLi·LFI·명령어 삽입 알림 이름(SOC165 등). 시나리오 구성 절차(공격 → 로그 → 시그니처 → 알림 → 플레이북 → 사고 보고) | 조건 표기 없음, 형식만 참고 | 문제 한 개를 쓰는 절차의 본보기. 알림 이름이 board 케이스와 대응됨 |
+| LetsDefend Detecting Web Attacks / 시나리오 생성 방식 | LetsDefend | https://app.letsdefend.io/training/lessons/web-attacks-101 · https://letsdefend.io/blog/how-we-generate-simulated-siem-alerts | SQLi·LFI·명령어 삽입 알림 이름(SOC165 등). 시나리오 구성 절차(공격 → 로그 → signature → 알림 → 플레이북 → 사고 보고) | 조건 표기 없음, 형식만 참고 | 문제 한 개를 쓰는 절차의 본보기. 알림 이름이 board 케이스와 대응됨 |
 | 사이버공격방어대회 CCE | 국가정보원 주최(주관 문구 미확인) | https://cce.cstec.kr | 문제 유형을 "예방(취약점 점검)"과 "탐지 분석 대응(사고조사)"으로 나눔. 공격팀·방어팀 분리. "방어목표시스템의 가용성 확보" | 재사용 조건 미확인, 형식만 참고 | 레드·블루 분리를 한국어로 부르는 실제 용례 |
 | 화이트햇 2026 | 국방부 주최(검색 요약 기준) | https://www.whitehat2026.kr | IR 부문: "침해사고 시나리오 기반 로그·증거 분석" | 형식만 참고 | 블루 쪽 Kibana 로그 분석 문제의 한국어 명칭 |
 | KISA 사이버 위기대응 모의훈련 / 사이버 시큐리티 훈련 플랫폼 | KISA | https://www.boho.or.kr/kr/subPage.do?menuNo=205014 · https://www.boho.or.kr/kr/subPage.do?menuNo=205015 | "AI 에이전트를 활용하여 홈페이지 별 맞춤형 시나리오로 수행하는 AI 모의침투". 탐지 대응: "알려진 취약점 공격에 대한 탐지, 대응체계 여부 점검 (IPS, WAF 등...)" | 시나리오 비공개, 용어만 인용 | 국내 공공기관이 AI 모의침투와 WAF 탐지 대응 점검을 이미 운영함. 문제 소개문의 근거 |

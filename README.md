@@ -10,7 +10,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 학습은 **실전 라운드**로 합니다. 레슨은 다시 만들 예정이라 지금은 없습니다.
 
-실전 라운드에는 슬롯 스택 하나에 공격 플레이어와 방어 플레이어가 하나씩 들어갑니다. 플레이어는 사람이거나 봇입니다. 매치업은 셋입니다.
+실전 라운드에는 slot stack 하나에 공격 플레이어와 방어 플레이어가 하나씩 들어갑니다. 플레이어는 사람이거나 봇입니다. 매치업은 셋입니다.
 
 | 매치업 | 공격 플레이어 | 방어 플레이어 |
 |---|---|---|
@@ -18,7 +18,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 | `def_vs_bot` | AI 공격 봇 | 사람 |
 | `atk_vs_bot` | 사람 | AI 수비 봇 |
 
-`pvp`는 문제 없이 워게임에서 엽니다. 라운드 내용은 그 워게임의 목표와 케이스 전부이고, 시작 방어 설정은 슬롯에
+`pvp`는 문제 없이 워게임에서 엽니다. 라운드 내용은 그 워게임의 목표와 케이스 전부이고, 시작 방어 설정은 slot에
 올라가 있는 그대로입니다. 문제는 봇 매치업(`def_vs_bot`, `atk_vs_bot`)에만 씁니다. 라운드를 만들 때 `pvp`에 문제를
 주면 `400 problem_not_allowed`, 봇 매치업에 문제가 없으면 `400 required`입니다.
 `pvp` 라운드의 시간 제한은 `CR_PVP_TIME_LIMIT_SECONDS`(기본 900초, 15분)입니다.
@@ -30,7 +30,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ## 학습 단계
 
-교육 담당자가 문제를 만들고, 학습자는 실전 라운드에 들어갑니다.
+교육 담당자가 봇 매치업(`def_vs_bot`, `atk_vs_bot`)용 문제를 만들고, 학습자는 실전 라운드에 들어갑니다. `pvp` 라운드는 문제 없이 워게임에서 엽니다.
 
 ### 레슨
 
@@ -39,8 +39,9 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ### 실전 라운드
 
-라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, 고객 트래픽, 시간 제한을
-정합니다.
+봇 매치업의 라운드 문제는 매치업, 시작 방어 설정(posture), 룰 테스트에 쓸 케이스, 노리는 목표, 고객 트래픽, 시간
+제한을 정합니다. `pvp` 라운드는 문제 없이 워게임의 목표와 케이스 전부, slot에 올라가 있는 방어 설정,
+`CR_PVP_TIME_LIMIT_SECONDS`로 열립니다.
 
 - 공격 플레이어는 Kali 터미널, 대상 사이트 패널, API로 공격하고 탈취한 값을 loot로 제출합니다.
 - 방어 플레이어는 Kibana, 방어 터미널, 구성도, 알림 목록으로 보고, IDS 룰과 WAF 파일을 고칩니다. 방어 터미널은
@@ -104,7 +105,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 - 케이스 하나는 알림이 몇 건 나오든 1건입니다. `board-sqli-orderby-sqlmap`은 WAF로 요청을 약 2,000건 보내고
   알림도 많이 나오지만 1건입니다. 알림 단위로 세면 방어가 아니라 알림 임계값을 재게 됩니다.
-- 알림이 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
+- 알림이 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 signature에 없으면) `corroborated: false`로 표시하고
   탐지로 인정하지 않습니다.
 - 탐지 결과에 들어가는 것은 선언된 케이스(`cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격 플레이어가
   터미널이나 API로 자유롭게 보낸 요청은 출발지별로 따로 보여 주고(`free_actions`) 정탐·오탐으로 세지 않습니다.
@@ -152,13 +153,13 @@ flowchart TB
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
       platform["platform: API, 채점, ssh 점프"]
-      refill["refill: 반납된 슬롯 스택 재생성"]
+      refill["refill: 반납된 slot stack 재생성"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
     pvm --- mgmt["cr-mgmt 네트워크 10.31.0.0/24<br/>훈련 환경 VM마다 제어 포트 1개"]
     mgmt --- stack
-    subgraph stack["할당마다 Heat 스택 cr-slot-N: VM 4대, 모든 스택이 같은 주소"]
+    subgraph stack["할당마다 Heat stack cr-slot-N: VM 4대, 모든 stack이 같은 주소"]
       kali["VM kali<br/>출발지 주소 100개"] --- inet["internet 121.134.88.40/29"]
       inet --- edge["VM infra: 라우터<br/>wan .42"]
       edge --- dmz["dmz 10.30.0.0/24"]
@@ -182,16 +183,16 @@ flowchart TB
 | 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어 플레이어의 점프 권한 |
 | 학습자 ssh → 센서 | 같은 2222 → `cr-mgmt`의 infra 22번, `analyst` 계정. 방어 플레이어의 두 번째 점프 권한 |
 | 플랫폼 → 훈련 환경 VM | `cr-mgmt`의 제어 포트로 ssh. 관리 계정 `ubuntu`, 비밀번호 없는 sudo. 대상 컨테이너는 target VM에서 `docker exec` |
-| WAF → log-server | 스택의 `mgmt`로 syslog 514/tcp |
+| WAF → log-server | stack의 `mgmt`로 syslog 514/tcp |
 | log-server → collector | infra의 제어 포트에서 `cr-mgmt`로 syslog 5140/udp(센서 알림, WAF audit log, 모든 요청의 nginx 접근 로그) |
 
-- `bin/cloud up`이 Heat 스택 `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로 슬롯 스택
+- `bin/cloud up`이 Heat stack `cr-platform`으로 플랫폼 VM을 만들고, 플랫폼이 Heat API로 slot stack
   `cr-slot-<n>`을 만듭니다.
-- 슬롯 스택은 VM 4대(kali, waf, infra, target)와 LAN 5개(internet, dmz, web-outer, web-inner, mgmt)입니다. LAN은
-  스택마다 따로 만든 Neutron 네트워크이고 Neutron 라우터가 없습니다. 스택끼리 네트워크가 다르므로 모든 스택이 같은
+- slot stack은 VM 4대(kali, waf, infra, target)와 LAN 5개(internet, dmz, web-outer, web-inner, mgmt)입니다. LAN은
+  stack마다 따로 만든 Neutron 네트워크이고 Neutron 라우터가 없습니다. stack끼리 네트워크가 다르므로 모든 stack이 같은
   주소를 씁니다.
-- 스택은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
-  준비된 스택 하나를 받고, 할당을 닫거나 하트비트 없이 만료되면 그 스택을 지우고 새로 만듭니다. 할당 하나에서 라운드를
+- stack은 워게임별 풀에 미리 띄워 둡니다(`compute.pool`, 기본 board 3개, corp 1개). 할당을 열면(`POST /api/allocations/`)
+  준비된 stack 하나를 받고, 할당을 닫거나 하트비트 없이 만료되면 그 stack을 지우고 새로 만듭니다. 할당 하나에서 라운드를
   여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(`409 objective_fallen`). board 비밀번호는
   이제 라운드마다 새로 정하지만 이 규칙은 아직 그대로입니다.
 - 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
@@ -201,14 +202,14 @@ flowchart TB
   통과합니다.
 - 라우터는 infra VM의 nftables입니다. `wan`은 공인 IP 121.134.88.42/29 하나이고, 80/tcp를 WAF의 DMZ 주소로
   포트포워딩합니다. Kali에서 `board.com`, `corp.com`은 이 공인 IP로 풀립니다. VPN으로 들어온 학습자는 이름 없이
-  `http://121.134.88.42/`를 그대로 입력합니다. WAF는 이름이 없는 `Host`를 그 스택의 워게임 사이트로 보냅니다.
+  `http://121.134.88.42/`를 그대로 입력합니다. WAF는 이름이 없는 `Host`를 그 stack의 워게임 사이트로 보냅니다.
 - board와 corp는 target VM의 Docker 컨테이너이고 WAF 뒤 `web-inner`에 있습니다. DB는 target VM 안의 Docker
   내부망에만 있습니다. Kali의 공격은 모두 WAF를 지나갑니다.
-- 센서는 스택마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스 브리지 `br0`에 인라인으로
+- 센서는 stack마다 하나이고 infra VM에 있습니다. `web-outer`와 `web-inner`를 잇는 리눅스 브리지 `br0`에 인라인으로
   붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 알림의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 플랫폼 VM의 `refill` 서비스(같은 이미지의 `manage.py refill_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
+- 플랫폼 VM의 `refill` 서비스(같은 이미지의 `manage.py refill_slots`)는 반납된 slot의 stack을 다시 만드는 일만
   합니다. `bots` 서비스(`cr-bots`)는 대기 중인 봇 실행을 REST API로 가져가 실행마다 Claude Code를 하나 띄웁니다
   (`bots/README.md`). 방어 봇은 라운드가 끝날 때까지 같은 세션에 남고, 런처가 난이도 단계의 주기(`steps.yaml`의
   `watch_s`)마다 새 알림, 새 차단, 처음 보는 출발지를 넣어 줍니다.
@@ -225,7 +226,7 @@ flowchart TB
 | 단위 | 맡는 일 |
 |---|---|
 | `users/` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 |
-| `sandbox/` | 훈련 환경: 풀, Heat 스택, 에지, 점프 접속, 그리고 바깥 장치를 아는 파일 전부(OpenStack, Suricata, CRS/nginx, Kibana, 공격 박스, 고객 박스) |
+| `sandbox/` | 훈련 환경: 풀, Heat stack, 에지, 점프 접속, 그리고 바깥 장치를 아는 파일 전부(OpenStack, Suricata, CRS/nginx, Kibana, 공격 박스, 고객 박스) |
 | `telemetry/` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 |
 | `training/` | 문제와 워게임(`content/`), 할당과 라운드(`round/`), 고객 트래픽(`traffic/`), 공격 API(`attack/`), 방어 API(`defence/`), 비어 있는 `lessons/` |
 | `scoring/` | 대상의 정답 데이터 읽기, baseline, 목표, 판정, 점수 |
@@ -251,7 +252,7 @@ flowchart TB
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
 - Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
-  스냅샷의 `min_disk`는 빌더의 디스크 크기가 되므로, 빌더 flavor의 디스크가 훈련 환경 VM의 flavor보다 크면 스택이 뜨지 않습니다.
+  스냅샷의 `min_disk`는 빌더의 디스크 크기가 되므로, 빌더 flavor의 디스크가 훈련 환경 VM의 flavor보다 크면 stack이 뜨지 않습니다.
   절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. target 이미지는 구울 때 받은 board, corp
   이미지의 태그(그 커밋)를 `compute.target_tag`에 적습니다. 기본값은 `cr-target-bake1`을 구운 커밋입니다.
 
@@ -261,8 +262,8 @@ flowchart TB
 | 훈련 환경 VM(kali, waf, infra, target) | `compute.flavors.<역할>` | 디스크가 역할 이미지의 `min_disk` 이상(지금 이미지는 모두 30 GB). 지정하지 않으면 `dba.small`(디스크 30 GB) |
 
 - 예: 플랫폼 `m1.large`(2 vCPU, 8 GB, 60 GB)
-- quota: 인스턴스 1 + 4 × 스택 수, 그만큼의 vCPU와 RAM. 기본 풀(스택 4개)이면 인스턴스 17개. 보안 그룹은 스택 수와 상관없이 9개
-- 스택 하나에 드는 RAM, `dba.small`로 target의 Docker와 MySQL이 충분한지는 아직 재지 않았습니다.
+- quota: 인스턴스 1 + 4 × stack 수, 그만큼의 vCPU와 RAM. 기본 풀(stack 4개)이면 인스턴스 17개. 보안 그룹은 stack 수와 상관없이 9개
+- stack 하나에 드는 RAM, `dba.small`로 target의 Docker와 MySQL이 충분한지는 아직 재지 않았습니다.
 
 VM 1대에 클라우드 전체를 올려 시험하려면 [VM 1대로 시험하기](docs/OPENSTACK.md#9-try-it-in-one-vm-virtualbox-or-vmware)를 보세요.
 
@@ -277,8 +278,8 @@ uv run bin/cloud up
 ```
 
 `up`이 끝나면 `the range is ready; the platform is at http://ADDRESS:8000/`를
-출력합니다. `up`은 플랫폼 스택, 공용 네트워크 `cr-mgmt`와 보안 그룹, 이전 훈련 환경이 남긴
-자원 정리, 슬롯 스택 생성, 스택 부팅 대기, IDS 기본 룰 적재 순서로 진행합니다. 플랫폼 VM과
+출력합니다. `up`은 플랫폼 stack, 공용 네트워크 `cr-mgmt`와 보안 그룹, 이전 훈련 환경이 남긴
+자원 정리, slot stack 생성, stack 부팅 대기, IDS 기본 룰 적재 순서로 진행합니다. 플랫폼 VM과
 역할 이미지 빌드는 apt 패키지를 카카오 미러(`mirror.kakao.com`)에서 받습니다.
 
 ### init
@@ -293,7 +294,7 @@ uv run bin/cloud up
 | 인증 정보 | `~/.config/openstack/clouds.yaml`의 `fsl-range` 항목(0600)에 씀 |
 | flavor | 플랫폼은 조건에 맞는 것 중 가장 작은 것을, 훈련 환경 VM은 역할마다 `compute.flavors.<역할>`(없으면 `dba.small`)을 고름. private flavor는 프로젝트에 공유 |
 | 베이스 이미지 | `ubuntu-24.04`가 없으면 noble amd64 클라우드 이미지를 받아 `SHA256SUMS`로 확인하고 public으로 올림 |
-| quota | 플랫폼 VM과 `compute.pool`의 스택(스택마다 VM 4대)이 들어가는지 확인 |
+| quota | 플랫폼 VM과 `compute.pool`의 stack(stack마다 VM 4대)이 들어가는지 확인 |
 | ssh 키 | `~/.ssh/fsl_claude`가 없으면 생성 |
 | `cloud.yaml` | `deploy/openstack/cloud.yaml`에 찾은 값을 씀 |
 
@@ -305,7 +306,7 @@ uv run bin/cloud up
 | `more than one external network` | 출력된 이름 하나를 `cloud.yaml`의 `network.external`에 적고 다시 실행 |
 | `no flavor fits` | 출력된 `openstack flavor create` 명령 실행 후 다시 실행 |
 | `not active` | 출력된 `openstack image delete` 명령 실행 후 다시 실행 |
-| `cannot hold the platform and the pool` | 출력된 값만큼 `openstack quota set` 후 다시 실행하거나 `compute.pool`의 스택 수를 줄임 |
+| `cannot hold the platform and the pool` | 출력된 값만큼 `openstack quota set` 후 다시 실행하거나 `compute.pool`의 stack 수를 줄임 |
 | `no flavor ... for the slot role` | 있는 flavor 이름을 `compute.flavors.<역할>`에 적고 다시 실행 |
 | `no working entry fsl-range` | `uv run bin/cloud init --reset-password` 실행 후 `uv run bin/cloud up --replace` |
 
@@ -318,8 +319,8 @@ uv run bin/cloud up
 
 ## 동작 확인
 
-콘솔의 스태프 레인지 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. 슬롯마다
-할당과 재생성 상태(`refill.state`)가 나오고, `idle`이면서 할당이 없는 슬롯을 새 할당이 받습니다. 슬롯 스택의 서버
+콘솔의 스태프 range 페이지(`/staff/range/`)가 이 상태를 보여 주지만 훈련 환경에서는 아직 확인하지 않았으므로, API로도 확인합니다. 스태프 계정으로 로그인한 쿠키로 풀 상태를 봅니다. slot마다
+할당과 재생성 상태(`refill.state`)가 나오고, `idle`이면서 할당이 없는 slot을 새 할당이 받습니다. slot stack의 서버
 상태는 `GET /api/staff/range/pool/`에 있습니다.
 
 ```bash
@@ -334,20 +335,20 @@ curl -s -b cookies.txt http://ADDRESS:8000/api/staff/range/
 
 | 증상 | 확인 | 조치 |
 |---|---|---|
-| 스택이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`. target은 이미지 태그가 `compute.target_tag`와 다르면 그 `image:` 줄)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
-| 스택이 `NOT_STANDING`, `no active image ... in Glance` | `compute.images`의 이름과 Glance의 이미지 | 이미지를 굽거나 있는 이름을 `compute.images.<역할>`에 적고 `uv run bin/cloud up --replace` |
-| 스택이 `CREATE_FAILED` | `GET /api/staff/range/pool/`의 `failures`(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
+| stack이 `SETUP_FAILED` | 그 VM의 `/var/lib/cr/failed`(부팅 유닛의 `systemctl status`. target은 이미지 태그가 `compute.target_tag`와 다르면 그 `image:` 줄)와 `/var/log/cloud-init-output.log` | 원인 수정 후 `uv run bin/cloud up` |
+| stack이 `NOT_STANDING`, `no active image ... in Glance` | `compute.images`의 이름과 Glance의 이미지 | 이미지를 굽거나 있는 이름을 `compute.images.<역할>`에 적고 `uv run bin/cloud up --replace` |
+| stack이 `CREATE_FAILED` | `GET /api/staff/range/pool/`의 `failures`(Heat의 `stack_status_reason`) | 원인 수정 후 `uv run bin/cloud up` |
 | 플랫폼이 응답하지 않음 | `ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS`에서 `systemctl status cr-platform`, `sudo docker logs cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
 | `docker ps`에 `cr-platform`이 없음 | `sudo cloud-init status --long`. 대개 VM이 인터넷에 못 나감([인터넷 연결](docs/OPENSTACK.md#26-internet-egress)) | 원인 수정 후 `uv run bin/cloud up --replace` |
-| Heat 스택 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
-| 슬롯의 `refill.state`가 `failed` | `GET /api/staff/range/`의 `refill.reason` | 원인 수정 후 `uv run bin/cloud up` |
+| Heat stack 생성 실패 | `uvx --from python-openstackclient --with python-heatclient openstack --os-cloud fsl-range stack failures list cr-platform` | 원인 수정 후 `uv run bin/cloud up` |
+| slot의 `refill.state`가 `failed` | `GET /api/staff/range/`의 `refill.reason` | 원인 수정 후 `uv run bin/cloud up` |
 
 ## 운영
 
 ```bash
-uv run bin/cloud up              # 없는 것만 만들고 풀의 스택을 띄움
+uv run bin/cloud up              # 없는 것만 만들고 풀의 stack을 띄움
 uv run bin/cloud up --replace    # 플랫폼 VM 교체 후 풀까지 맞춤. DB는 백업 후 복원
-uv run bin/cloud down            # DB 백업 후 슬롯 스택, cr-mgmt, 플랫폼 VM 삭제
+uv run bin/cloud down            # DB 백업 후 slot stack, cr-mgmt, 플랫폼 VM 삭제
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
@@ -355,13 +356,13 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
   실패하면 아무것도 지우지 않습니다. 아직 SQLite를 쓰는 이전 플랫폼 VM이면 `db-<UTC+9 시각>.sqlite3`로 받고,
   새 VM이 그 파일을 PostgreSQL로 한 번 옮겨 담습니다(아래 "백업과 복원").
 - 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
-  옮겨 주고, 템플릿·이미지·flavor·`target_tag`가 같은 스택은 그대로 씁니다. 다른 스택은
+  옮겨 주고, 템플릿·이미지·flavor·`target_tag`가 같은 stack은 그대로 씁니다. 다른 stack은
   `STALE`이 되어 지우고 새로 만듭니다. 새 플랫폼 VM은 이전 VM의 `cr-mgmt` 포트(`cr-platform.mgmt`)를
   그대로 붙이므로 `cr-mgmt` 주소가 바뀌지 않습니다.
 - push하지 않은 이미지를 올릴 때는 `--sideload NAME=TARBALL`을 씁니다. 절차는
   [재구축과 삭제](docs/OPENSTACK.md#53-rebuild-and-delete--lossless)에 있습니다.
-- 풀 크기는 `cloud.yaml`의 `compute.pool`(워게임별 스택 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
-  실행합니다. 플랫폼은 이 값을 Heat 스택 파라미터로 받고, 할당이 없는 스택은 새 배정에 맞는
+- 풀 크기는 `cloud.yaml`의 `compute.pool`(워게임별 stack 수)입니다. 바꾼 뒤 `uv run bin/cloud up --replace`를
+  실행합니다. 플랫폼은 이 값을 Heat stack 파라미터로 받고, 할당이 없는 stack은 새 배정에 맞는
   워게임으로 다시 만듭니다.
 
 `cloud.yaml` 항목:
@@ -370,9 +371,9 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 |---|---|
 | `cloud` | `clouds.yaml` 항목 이름 |
 | `network` | 외부 네트워크, 고정 floating IP, DNS, platform·mgmt CIDR, 플랫폼에 접속할 수 있는 대역 |
-| `compute` | 베이스 이미지, availability zone, 워게임별 스택 수(`pool`), 역할별 flavor와 이미지, target 이미지의 워게임 태그(`target_tag`) |
+| `compute` | 베이스 이미지, availability zone, 워게임별 stack 수(`pool`), 역할별 flavor와 이미지, target 이미지의 워게임 태그(`target_tag`) |
 | `keys` | Nova 키페어 이름과 개인키 경로, 플랫폼의 훈련 환경 ssh 키 |
-| `platform` | 스택 이름, 저장소, ref |
+| `platform` | stack 이름, 저장소, ref |
 | `backups` | `backups/`에 남길 백업 수 |
 
 `bin/cloud`가 쓰는 훈련 환경 API(`/api/staff/range/fabric/`, `/leftovers/`, `/pool/`)는
@@ -405,17 +406,17 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 ## 워게임 추가
 
 1. `wargames/<이름>/`에 `wargame.yaml`(id, 제목, 이미지, 공개 URL, 호스트, 목표 판정 방식, 케이스 파일, 기본 고객
-   트래픽), `compose.yaml`, `objectives.yaml`, `topology.yaml`(스택의 LAN, VM, 고정 IP, 장치와 역할), 필요하면
+   트래픽), `compose.yaml`, `objectives.yaml`, `topology.yaml`(stack의 LAN, VM, 고정 IP, 장치와 역할), 필요하면
    `traffic.yaml`
 2. `cases/<이름>.yaml`에 공격 케이스와 정상 케이스. 정상 케이스가 없으면 테스트가 실패합니다.
    센서의 시작 룰은 `deploy/suricata/rules/<이름>.rules`에 공격 케이스마다 signature 하나(`msg`에 케이스의
-   `expect`)로 쓰고, `topology.yaml`의 `cr-ids` 장비 `baseline:`에 그 경로를 적습니다. `baseline:`이 없으면 슬롯
+   `expect`)로 쓰고, `topology.yaml`의 `cr-ids` 장비 `baseline:`에 그 경로를 적습니다. `baseline:`이 없으면 slot
    재생성이 실패합니다
 3. 모든 워게임 `topology.yaml`의 `cr-waf`에서 `names:`에 사이트 이름, `upstreams:`에 대상 주소
 4. `deploy/roles/target/`에 compose 파일 링크 `<이름>.yaml`, `wargames.yaml`의 `fronts`와 `limits`,
    `install.sh`의 `WARGAMES`
 5. `deploy/roles/waf/sites.conf`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와 `deploy/roles/kali/install.sh`의 호스트 이름
-6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름, `compute.pool`에 스택 수
+6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름, `compute.pool`에 stack 수
 7. 룰 테스트용 probes를 만들어 `wargames/<이름>/probes/`에 커밋(`bin/record-probes`, 스태프 API 사용)
 
 ## 단위 테스트
@@ -517,7 +518,7 @@ sudo docker compose start platform refill
 | 플레이어 | 상대 쪽 경로는 403. 라운드 시작 전 쓰기는 `409 round_not_started`, 끝난 뒤는 `409 round_closed`. 플레이어는 할당을 열거나 닫지 못하고 라운드를 끝내지 못함(기권만 가능). PvP에서 한 사람이 양쪽 플레이어를 맡지 못함(`already_playing`) |
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
 | WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, real IP 설정, 감사 로그 설정과 `include`는 측정용이라 콘솔이 거부하고, 터미널의 `sudo nginx -s reload`·`-t`·`-T`도 이런 설정이 든 파일은 불러오지 않고 거부함. 콘솔 적용과 터미널 reload 모두 이 라운드에서 같은 파일로 통과한 룰 테스트가 있어야 함. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
-| `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET terminal/`이나 `GET ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
+| `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET attack/terminal/`, `GET defence/waf/terminal/`, `GET defence/ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
 | `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
@@ -530,7 +531,7 @@ sudo docker compose start platform refill
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | DB | `cr-postgres`는 포트를 열지 않고 내부 `store` 네트워크에만 붙음. 거기에는 `platform`과 `refill`만 있고 `bots`는 없음. 비밀번호는 `/opt/cr/store-password`(0640)를 compose secret으로 읽음 |
 | 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
-| 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
+| 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. stack 사이, stack과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 
 초기 계정은 `admin` / `123456`이고 언제나 있습니다. 빈 저장소에 마이그레이션을 돌리면 스태프 계정으로 생기고,
@@ -566,4 +567,4 @@ sudo docker compose start platform refill
 - [THREAT-MODEL.md](docs/THREAT-MODEL.md): 위협 모델
 - [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 겪은 문제와 해결(영어)
 - [STATE.md](docs/STATE.md): 작업 현황(영어)
-- [설계 문서](docs/superpowers/specs/2026-11-19-side-split-design.md): 2026-11-19 승인한 공격·방어·심판 분리 설계
+- [2026-11-19 설계 문서](docs/specs/2026-11-19-side-split-design.md): 그날 승인한 공격·방어·심판 분리 설계. 지금 구조는 ARCHITECTURE.md에 있음

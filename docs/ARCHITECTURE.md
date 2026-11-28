@@ -1,8 +1,8 @@
 # 아키텍처
 
-이 문서는 `restructure` 브랜치의 단위, 계층, 파일 지도, 격리 경계, 라운드 흐름을 다룹니다. 설계 근거는
-[설계 문서](superpowers/specs/2026-11-19-side-split-design.md)와 `docs/DECISIONS.md`의 2026-11-21 항목(다섯 단위로
-다시 나눔), 점수 정의는 `CLAUDE.md`, 작업 현황은 `docs/STATE.md`에 있습니다. 훈련 환경(OpenStack, Heat 스택, 역할
+이 문서는 지금 코드의 단위, 계층, 파일 지도, 격리 경계, 라운드 흐름을 다룹니다. 설계 근거는
+2026-11-19 설계 문서([specs/2026-11-19-side-split-design.md](specs/2026-11-19-side-split-design.md), 지금 구조와 다른 부분이 있는 기록)와 `docs/DECISIONS.md`의 2026-11-21 항목(다섯 단위로
+다시 나눔), 점수 정의는 `CLAUDE.md`, 작업 현황은 `docs/STATE.md`에 있습니다. 훈련 환경(OpenStack, Heat stack, 역할
 이미지) 운영 절차는 `docs/OPENSTACK.md`에 있습니다.
 
 이전 구조(`platform/api/`, `platform/console/`, 시나리오 엔진)의 설명은 git 기록에 있습니다. 새 구조는 이전 코드를
@@ -14,13 +14,13 @@
 
 - **워게임**: 대상 앱과 그 목표, 케이스. `board`와 `corp` 두 개. `wargames/<id>/wargame.yaml`이 정의
 - **문제**(`Problem`): 스태프가 DB에 쓰는 라운드 문제. 라운드 설정(`RoundSetup`)을 가짐. 봇 매치업 라운드에만 쓰고, `pvp` 라운드는 문제 없이(`Round.problem`이 비어 있음) 워게임의 목표와 케이스로 진행
-- **할당**(`Allocation`): 슬롯 스택 하나를 운영자에게 준 것. KYPO의 sandbox allocation에서 온 이름. 용도는 `round`,
-  `probe`. 닫히거나 만료되면 스택을 지우고 새로 만듦
+- **할당**(`Allocation`): slot stack 하나를 운영자에게 준 것. KYPO의 sandbox allocation에서 온 이름. 용도는 `round`,
+  `probe`. 닫히거나 만료되면 stack을 지우고 새로 만듦
 - **라운드**(`Round`): 할당 위에서 도는 한 판. 종류는 `round`, 단계는 `created → starting → running → ended`
 - **플레이어**(`Player`): 라운드의 공격 쪽이나 방어 쪽을 맡은 사람(`human`) 또는 봇(`bot`). 봇 플레이어는 플레이어
   토큰을 가짐
 - **매치업**: `pvp`, `def_vs_bot`(사람 수비 vs AI 공격 봇), `atk_vs_bot`(사람 공격 vs AI 수비 봇)
-- **슬롯**: `cr-slot-N`의 N. 다시 쓰는 번호. Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`도 이 번호
+- **slot**: `cr-slot-N`의 N. 다시 쓰는 번호. Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`도 이 번호
 - **케이스**: `cases/<wargame>.yaml`에 선언한 공격 요청이나 정상 요청. 알림이 몇 건 나오든 판정은 1건
 - **자유 행동**: 선언된 케이스가 아닌 요청, 도구 실행, 명령, 사이트 패널 요청. 출발지와 시간으로 묶어 따로 보고하고
   정탐·오탐으로 세지 않음
@@ -38,7 +38,7 @@
 | 단위 | Django 앱 | 맡는 일 | 모델 |
 |---|---|---|---|
 | `users/` | `users` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 | `SignInBlock` |
-| `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: 풀, Heat 스택, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
+| `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: 풀, Heat stack, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
 | `telemetry/` | `telemetry` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 | `Event`, `Detection`, `AlertCursor`, `AccessCursor` |
 | `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet` |
 | `scoring/` | `scoring` | 대상의 정답 데이터, baseline, 목표, 케이스 판정, 점수 | `ObjectiveLoss`, `Verdict` |
@@ -137,8 +137,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                customers.py 경계: infra VM의 고객 프로그램(cr-customers.service)과 고객 주소
                cloud_config.py  stack_plan.py  declaration.py(+declaration.yaml)  fabric.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 쪽별 필터)  pool.py  refill.py
-               runner.py  substrate.py(runner 묶음, 훈련 환경 전체·슬롯·할당별 범위)
-               service.py   다른 단위가 쓰는 풀, fabric, 슬롯 호출
+               runner.py  substrate.py(runner 묶음, 훈련 환경 전체·slot·할당별 범위)
+               service.py   다른 단위가 쓰는 풀, fabric, slot 호출
                management/commands/  refill_slots(refill 서비스)  run_on_role
   telemetry/   Event, Detection, AlertCursor, AccessCursor
                events.py    종류별 스키마와 보는 쪽, append, after
@@ -206,7 +206,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
   src/console/ Console.tsx(layouts.ts의 선언대로 레일, 본문, 오른쪽 열을 그림)  RoundHeader.tsx
                VerdictNotices.tsx(방어 콘솔 머리의 판정 알림)
   src/shell/   AppPage.tsx(상단 메뉴와 페이지 틀)  AuthCard.tsx(로그인·가입 카드)
-  src/api/     client.ts(CSRF 갱신, 90초 제한, 슬롯 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 할당 heartbeat)
+  src/api/     client.ts(CSRF 갱신, 90초 제한, slot 대기, 오류 형태)  follow.ts(이벤트 커서 하나, 할당 heartbeat)
                hooks.ts(useResource, useEvents 등)  schema.d.ts(생성, 커밋 안 함)
   src/         layouts.ts(공격·방어 콘솔의 레일 순서와 오른쪽 열)  routes.ts(경로 표)  nav.ts(상단 메뉴 표)
                strings.ts(t(key, params), strings/console.json 읽기)  links.ts  router.ts  format.ts
@@ -259,9 +259,9 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
   예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/jump.py`)을 쓰고,
   `training/attack`과 `training/defence`는 서로 import하지 않으므로 공용 경계가 어느 한쪽에 있으면 안 됩니다.
   박스 주소, runner, 계정은 호출하는 쪽이 넘깁니다.
-- `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 그 슬롯 워게임의
+- `sandbox/openstack.py`는 slot을 재생성할 때 `sandbox.suricata.seed`로 그 slot 워게임의
   `topology.yaml`이 센서 장비(`cr-ids`)의 `baseline:`에 적은 룰 파일(board는 `deploy/suricata/rules/board.rules`,
-  corp는 `deploy/suricata/rules/corp.rules`)을 적재합니다. 재생성 기본 룰은 슬롯의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
+  corp는 `deploy/suricata/rules/corp.rules`)을 적재합니다. 재생성 기본 룰은 slot의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `telemetry/elastic.py`), `operator_log.py`(→
   `sandbox/attacker.py`), `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께
   삭제), `blue.html`의 Kibana localStorage 설정(→ `front/src/panes/Kibana.tsx`)은 없어졌습니다.
@@ -278,15 +278,15 @@ sequenceDiagram
   participant A as training.attack
   O->>R: POST /api/allocations/ {wargame}
   R-->>O: allocation, slot, ready
-  O->>R: POST /api/allocations/<a>/rounds/ {problem, matchup, players}
+  O->>R: POST /api/allocations/<a>/rounds/ {matchup, players, problem(봇 매치업만)}
   R-->>O: round, bot_tokens(한 번만)
   O->>R: POST /api/rounds/<r>/start/
-  R->>R: 문제 스냅숏 고정
-  R->>D: posture 적용(센서 전부, WAF)
+  R->>R: 스냅숏 고정(봇 매치업은 문제, pvp는 워게임)
+  R->>D: posture 적용(센서 전부, WAF). 없으면 slot의 지금 룰 기록
   R->>S: board 비밀번호 새로 설정, baseline 읽기
   R->>A: 출발지 풀 채우기(에지 pool)
   R->>R: Kibana space, infra VM의 고객 트래픽 시작
-  loop 라운드에 API 요청이 올 때(CatchingUpView, 한 번에 한 요청, CR_READ_EVERY_SECONDS 간격)
+  loop 라운드에 API 요청이 올 때(CatchingUpView, 한 번에 하나, CR_READ_EVERY_SECONDS 간격, CR_READ_IN_BACKGROUND=1이면 요청과 따로 도는 스레드에서)
     R->>D: 알림 수집, 터미널 reload 기록
     R->>A: 오류 로그로 출발지 소진, 명령 기록 읽기, 박스에서 끝난 도구 실행 닫기
     R->>S: corp 변경 관찰, 목표 정리, 케이스 판정(case.judged)
@@ -296,7 +296,7 @@ sequenceDiagram
   O->>R: GET /api/rounds/<r>/score/
 ```
 
-- 시작 조건: 비어 있는 사람 플레이어가 없어야 하고(`players_open`), 슬롯이 준비돼 있어야 하며, 채점 라운드는 목표를
+- 시작 조건: 비어 있는 사람 플레이어가 없어야 하고(`players_open`), slot이 준비돼 있어야 하며, 채점 라운드는 목표를
   잃은 적 없는 할당이어야 합니다(`objective_fallen`).
 - 종료 이유: `time_limit`, `all_objectives_lost`, `origins_spent`(정상 케이스가 한 바퀴 돈 뒤에만), `ended_by_operator`,
   `forfeit_attack`, `forfeit_defence`, `allocation_expired`.
@@ -319,7 +319,7 @@ sequenceDiagram
   바로 `judged_at`을 적습니다. 다른 요청이 읽는 중이면
   그 읽기가 끝나거나 버려질 때까지 기다렸다가 읽습니다. 요청은 할당 만료를 보기 전에
   라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
-- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `refill` 서비스
+- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 slot의 stack은 `refill` 서비스
   (`manage.py refill_slots`, `sandbox.service.keep_refilling`)가 다시 만듭니다.
 
 ## API
@@ -520,7 +520,7 @@ sequenceDiagram
 - 고객 요청은 kali가 아니라 infra VM에서 나갑니다. infra는 고객 주소를 dummy 링크 `customers`에 /32로 들고,
   DMZ 포트로 WAF 앞단에 바로 보냅니다. 에지를 거치지 않으므로 고객 주소는 `pool`에도 `spent`에도 들어가지
   않고, kali가 고객 주소를 붙여 보내면 `pool` 밖 주소라 에지에서 버려집니다.
-- 라운드를 시작할 때 `sandbox.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. 슬롯은
+- 라운드를 시작할 때 `sandbox.edge.restart`가 `pool`과 `spent`를 비우고 새 라운드의 주소로 다시 채웁니다. slot은
   할당을 반납할 때만 다시 만들어지므로, 그러지 않으면 같은 할당의 다음 라운드가 앞 라운드에서 소진된 출발지를
   물려받습니다. 라운드 중에는 다시 채우지 않습니다.
 - 라운드가 끝나면 `training.attack.origins.close_edge`가 두 집합을 비웁니다. 오류 로그는 라운드 중에만 읽으므로, 비우지 않으면 kali에
@@ -561,7 +561,7 @@ sequenceDiagram
 시작되면 `training/round/bot_runs.py`가 봇 자리마다 `BotRun`을 만들고, 실행기가 `bot_run_claim`(태그 `bots`, 실행기 키
 `IsLauncher`)으로 가져가 플레이어 토큰, 모델, 속도, 허용 동작, 공격이면 카드를 받습니다. 실행기는 `bot_run_report`로
 메모를, `bot_run_finish`로 종료를 알립니다. 서버는 봇 자리를 사람 자리와 똑같이 다루고, 속도와 허용 동작은 실행기의
-프록시가 겁니다. 실행기는 compose 서비스 `bots`(`bots/launcher.py`, 이미지 `cr-bots`)입니다. 실행마다 `127.0.0.1`에 `relay.py`를 띄우고 그 뒤에 Claude Code를 print 모드(stream-json 입력)로 실행합니다. 공격 봇은 첫 메시지 하나를 받고 입력이 닫혀, 턴이 끝나면 실행도 끝납니다. 방어 봇은 라운드가 끝날 때까지 세션을 그대로 둡니다. 실행기가 난이도의 `watch_s`(1~3단계 75·30·10초)마다 플레이어 토큰으로 `defence_state`, `defence_alerts`, `defence_traffic`를 커서 이어서 읽고, 새 알림, 거부, 처음 보는 출발지 주소, 단계 변화가 있으면 그것을 담은 메시지를 하나 더 보냅니다(`watch.py`, 알림과 주소는 20개까지 보이고 나머지는 개수만). 턴이 끝나도 실행은 이어지고, 단계가 `ended`가 되면 그 확인의 알림·트래픽 읽기가 실패해도 `round_score`를 읽으라는 마지막 메시지를 보내고 입력을 닫습니다. `defence_state`가 `401`(실행 토큰 폐기)로 답하면 바로 입력을 닫습니다. 난이도의 턴 수(메시지를 합쳐 셈)나 예산을 다 쓰면 그때도 끝납니다. 자식은 relay 주소와 실행 키만 받고, 플레이어 토큰은 relay만 쥡니다. 속도를 넘긴 호출은 `429 pace_limited`, 난이도가 주지 않는 동작이나 케이스는 `403 not_at_this_step`으로 플랫폼에 닿기 전에 거부합니다. 자식은 실행마다 빈 작업 디렉터리와 자기 설정 디렉터리에서 `--safe-mode`, 설정 소스 없이, Bash(`python -m bots.cli`와 `sleep`만 허용)와 Write(작업 디렉터리 최상위의 `.json`만 허용, `Edit(/*.json)`) 두 도구로 돌고, 비밀을 못 읽는 별도 uid(`bot0`..`bot7`)로 실행됩니다. 명령줄 설정은 `bashOutputMaxChars` 128000 하나입니다. 기본값 30,000자를 넘는 응답(`defence_waf`는 약 42 KB)은 파일로 빠지는데, 자식은 파일을 읽는 명령이 전부 막혀 있어 그 파일을 못 엽니다. 따옴표가 든 인자는 명령줄에 쓰지 않고 Write로 `call.json`에 적은 뒤 `python -m bots.cli <도구> --json-file call.json`으로 넘깁니다. 실행기는 플랫폼을 compose 이름 `http://platform:8000`으로 부르므로 플랫폼 스택이 `DJANGO_ALLOWED_HOSTS`에 `platform`을 넣습니다. 이미지에는 `bots/`와 `openapi/schema.yaml`만 있습니다. nginx는 세션 쿠키 없이 Bearer 헤더로 온 요청을 그 헤더로 묶어(`api_client`) 봇 자리마다 사람 세션처럼 따로 셉니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
+프록시가 겁니다. 실행기는 compose 서비스 `bots`(`bots/launcher.py`, 이미지 `cr-bots`)입니다. 실행마다 `127.0.0.1`에 `relay.py`를 띄우고 그 뒤에 Claude Code를 print 모드(stream-json 입력)로 실행합니다. 공격 봇은 첫 메시지 하나를 받고 입력이 닫혀, 턴이 끝나면 실행도 끝납니다. 방어 봇은 라운드가 끝날 때까지 세션을 그대로 둡니다. 실행기가 난이도의 `watch_s`(1~3단계 75·30·10초)마다 플레이어 토큰으로 `defence_state`, `defence_alerts`, `defence_traffic`를 커서 이어서 읽고, 새 알림, 거부, 처음 보는 출발지 주소, 단계 변화가 있으면 그것을 담은 메시지를 하나 더 보냅니다(`watch.py`, 알림과 주소는 20개까지 보이고 나머지는 개수만). 턴이 끝나도 실행은 이어지고, 단계가 `ended`가 되면 그 확인의 알림·트래픽 읽기가 실패해도 `round_score`를 읽으라는 마지막 메시지를 보내고 입력을 닫습니다. `defence_state`가 `401`(실행 토큰 폐기)로 답하면 바로 입력을 닫습니다. 난이도의 턴 수(메시지를 합쳐 셈)나 예산을 다 쓰면 그때도 끝납니다. 자식은 relay 주소와 실행 키만 받고, 플레이어 토큰은 relay만 쥡니다. 속도를 넘긴 호출은 `429 pace_limited`, 난이도가 주지 않는 동작이나 케이스는 `403 not_at_this_step`으로 플랫폼에 닿기 전에 거부합니다. 자식은 실행마다 빈 작업 디렉터리와 자기 설정 디렉터리에서 `--safe-mode`, 설정 소스 없이, Bash(`python -m bots.cli`와 `sleep`만 허용)와 Write(작업 디렉터리 최상위의 `.json`만 허용, `Edit(/*.json)`) 두 도구로 돌고, 비밀을 못 읽는 별도 uid(`bot0`..`bot7`)로 실행됩니다. 명령줄 설정은 `bashOutputMaxChars` 128000 하나입니다. 기본값 30,000자를 넘는 응답(`defence_waf`는 약 42 KB)은 파일로 빠지는데, 자식은 파일을 읽는 명령이 전부 막혀 있어 그 파일을 못 엽니다. 따옴표가 든 인자는 명령줄에 쓰지 않고 Write로 `call.json`에 적은 뒤 `python -m bots.cli <도구> --json-file call.json`으로 넘깁니다. 실행기는 플랫폼을 compose 이름 `http://platform:8000`으로 부르므로 플랫폼 stack이 `DJANGO_ALLOWED_HOSTS`에 `platform`을 넣습니다. 이미지에는 `bots/`와 `openapi/schema.yaml`만 있습니다. nginx는 세션 쿠키 없이 Bearer 헤더로 온 요청을 그 헤더로 묶어(`api_client`) 봇 자리마다 사람 세션처럼 따로 셉니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
 엽니다(`403 bot_rounds_closed`). `{name}` 자리(토큰을 한 번 돌려주는 외부 드라이버)는 스태프만 만듭니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
 도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_waf_terminal`이 주는
 SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
@@ -573,7 +573,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 
 ## 훈련 환경
 
-훈련 환경은 이전 구조와 같습니다. 할당마다 Heat 스택 `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
+훈련 환경은 이전 구조와 같습니다. 할당마다 Heat stack `cr-slot-N`(VM kali, waf, infra, target, LAN 다섯 개)을 쓰고,
 워게임별 풀에 미리 띄워 둡니다. 네트워크 구성, 주소, 로그 경로는 `README.md`의 "구성", 클라우드 준비와 이미지 굽기는
 `docs/OPENSTACK.md`에 있습니다. 바뀌는 점은 아래입니다. 네 역할 이미지는 이 내용으로 다시 구웠고(`docs/OPENSTACK.md` §3.6), §3.7~§3.10 점검을
 훈련 환경에서 통과했습니다.
@@ -586,7 +586,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라지기 때문입니다.
   같은 파일이 오류 로그 `error_log /var/log/nginx/error.log warn;`을 정합니다.
   각 server 블록의 `listen`은 `/etc/nginx/slot/<워게임>.listen`에서 읽고, WAF의 `slot-boot`가 `/etc/slot.env`의
-  `WARGAMES`(그 스택의 워게임)에만 `default_server`를 붙입니다. 그래서 `Host`가 공인 IP인 요청도 그 스택의 사이트로
+  `WARGAMES`(그 stack의 워게임)에만 `default_server`를 붙입니다. 그래서 `Host`가 공인 IP인 요청도 그 stack의 사이트로
   가고, `board.com`·`corp.com` 이름으로 보낸 요청은 전처럼 이름으로 갈립니다. corp의 WordPress는
   `WORDPRESS_CONFIG_EXTRA`로 `WP_HOME`을 요청의 `Host`에 맞춰, 주소로 들어온 학습자를 `corp.com`으로 돌려보내지 않습니다.
   룰 테스트의 임시 인스턴스(`probe.conf`)는 board를 `default_server`로 두므로, 룰 테스트가 origin 요청을 다시 보낼 때

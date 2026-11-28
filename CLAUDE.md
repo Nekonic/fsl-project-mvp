@@ -257,4 +257,4 @@ logic changed, and before a push.
   by default). OpenStack procedures are in
   `docs/OPENSTACK.md`.
   `README.md` has the ports, `docs/ARCHITECTURE.md` the file map and the isolation seams,
-  `docs/superpowers/specs/` the design.
+  `docs/specs/` the historical 2026-11-19 design.

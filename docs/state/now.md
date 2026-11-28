@@ -2,8 +2,9 @@
 
 The handover to the next session, kept short. The build record, one line per
 tree, and the backlog are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`;
-problems in `docs/TROUBLESHOOTING.md`; the design in
-`docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
+problems in `docs/TROUBLESHOOTING.md`; the current design in
+`docs/ARCHITECTURE.md`, the historical 2026-11-19 design in
+`docs/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 
 Updated: 2026-11-28.
 
@@ -52,6 +53,10 @@ not yet deployed. `main` holds the old product until gate 2.
   round that does not start now logs why.
 - Whether a platform read under three rounds still runs past 5 s now that it
   runs off the request thread (`CR_READ_IN_BACKGROUND=1`) is not measured.
+- The 2026-11-28 renames on `sweep-fix` (role files in `deploy/roles/`,
+  `cases/`, `sites.conf`, `customers.py`, `web-proxy.py`, `board.rules`, the
+  `refill` service, `defence/waf/terminal/`) are not deployed; the role files
+  reach the VMs at the next bake of each role (DECISIONS 2026-11-28).
 - The rest is in `docs/STATE.md` "Not live-verified" and "Open points".
 
 ## Next, in order

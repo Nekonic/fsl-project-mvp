@@ -11804,3 +11804,20 @@ corp rogue-admin loss detected (still unanswered). `test/opening.py` keeps only 
 calls (`refused_for_room`, `settling`). `bin/build-css` (the removed Django template console's
 Tailwind build) and `bin/worldmap` (the removed map screen, left behind in the 2026-10 entry)
 are deleted; `bin/pick-origins` stays and `docs/ARCHITECTURE.md` says when to run it.
+
+## 2026-11-28 — The console and the docs write probes, range, slot, stack and signature in English
+
+The console already showed probes, range, slot, stack and signature in English; the README,
+`docs/ARCHITECTURE.md` and the research note still wrote 프로브, 슬롯, 스택, 시그니처 and 레인지.
+They now write the English word with the Korean particle after it ("slot stack 하나에", "Heat
+stack", "slot마다", "signature에 없으면", "cyber range"). Identifiers (`cr-slot-N`), dated
+DECISIONS entries and terminal output stay as they are.
+
+## 2026-11-28 — The design specs live in `docs/specs/`
+
+`docs/superpowers/specs/` was named after a Claude Code plugin (superpowers), not after
+what it holds. The one spec left, `2026-11-19-side-split-design.md`, is
+`docs/specs/2026-11-19-side-split-design.md`, kept as written as the historical 2026-11-19
+design; `docs/ARCHITECTURE.md` is the current one, and `CLAUDE.md`, the README, `docs/STATE.md`,
+`docs/state/now.md` and `docs/OPENSTACK.md` say so. Older entries here that name
+`docs/superpowers/specs/` files name paths git keeps in its history.
