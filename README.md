@@ -147,7 +147,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
 
 ```mermaid
 flowchart TB
-  user(["브라우저, ssh, WireGuard"]) -->|"8000, 8002, 2222, 51820-51919/udp"| fip["floating IP<br/>provider 네트워크"]
+  user(["브라우저, ssh, WireGuard"]) -->|"8000, 2222, 51820-51919/udp"| fip["floating IP<br/>provider 네트워크"]
   subgraph os["OpenStack 프로젝트 fsl-range"]
     fip --- pnet["cr-platform 네트워크 10.20.0.0/24"]
     pnet --- pvm
@@ -178,7 +178,7 @@ flowchart TB
 
 | 연결 | 경로 |
 |---|---|
-| 브라우저 → 콘솔 | floating IP의 8000, 8002 |
+| 브라우저 → 콘솔 | floating IP의 8000 |
 | 학습자 ssh → Kali | floating IP의 2222(플랫폼 컨테이너의 sshd) → `cr-mgmt`의 Kali 22번. 공격 플레이어의 점프 권한 |
 | 학습자 ssh → WAF | 같은 2222 → `cr-mgmt`의 WAF 22번, `analyst` 계정. 방어 플레이어의 점프 권한 |
 | 학습자 ssh → 센서 | 같은 2222 → `cr-mgmt`의 infra 22번, `analyst` 계정. 방어 플레이어의 두 번째 점프 권한 |
@@ -383,21 +383,18 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 
 | 포트 | 서비스 | 접속 |
 |---|---|---|
-| 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`) | 브라우저, 봇, `test/`, `bin/` |
-| 8002 | 대상 사이트(`/site/<라운드 id>/<host>/<path>`) | 콘솔 안의 iframe |
+| 8000 | 콘솔, `/api/`, Kibana(`/kibana/`), 터미널(`/vm-terminal/`), 대상 사이트(`/site/<라운드 id>/<host>/<path>`, 콘솔 안의 iframe) | 브라우저, 봇, `test/`, `bin/` |
 | 2222 | SSH 점프 호스트, 플랫폼 컨테이너 안의 sshd | 학습자 PC의 `ssh`. 플레이어마다 받은 키로 공격 플레이어는 Kali 22번, 방어 플레이어는 WAF 22번과 infra 22번(둘 다 `analyst`)으로만 포워딩. 셸 없음 |
 | 51820-51919/udp | 학습자 WireGuard 터널의 UDP 중계, 플랫폼 컨테이너 안 | 학습자 PC의 WireGuard. 계정마다 포트 하나. 라운드 동안 그 판의 Kali 51820번(`cr-mgmt`)으로 넘김 |
 | 5140/udp | collector | 훈련 환경 infra VM의 log-server, `cr-mgmt`에서만 |
 | 5601 | Kibana 직접 접속, VM loopback 전용 | ssh 터널, 인증 없음 |
 | 9200 | Elasticsearch, VM loopback 전용 | acceptance 테스트, 인증 없음 |
 
-- 8002는 콘솔과 다른 origin이라 대상 사이트의 스크립트가 콘솔을 읽지 못합니다. 로그인은 8000과 같이 씁니다.
-  로그인하지 않은 채 8002를 열면 콘솔 로그인 페이지로 가고, 로그인하면 보던 사이트 주소로 돌아옵니다.
-- 콘솔과 사이트의 origin은 `compose.yaml`의 `CR_CONSOLE_ORIGIN`, `CR_SITE_ORIGIN`으로 정합니다. 비워 두면 요청한
-  호스트의 `http://<host>:8000`, `http://<host>:8002`입니다. TLS 리버스 프록시나 도메인 뒤에 둘 때는 둘 다
-  `https://cr.example`처럼 scheme, 호스트, 포트만 적습니다. 플랫폼 컨테이너가 시작할 때 nginx 설정에 넣고,
-  사이트 origin은 `/api/me/`의 `site_origin`으로 콘솔에 알려 줍니다. 형식이 틀리면 컨테이너가 시작하지 않습니다.
-- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격 플레이어가 8002로 보낸 요청은 공격 API와 같은 경로로
+- 사이트 창은 콘솔과 같은 8000의 `/site/` 아래에 있습니다. 모든 응답에
+  `Content-Security-Policy: sandbox allow-forms allow-same-origin; script-src 'none'; object-src 'none'; base-uri 'none'`을
+  붙여 대상 사이트의 스크립트는 하나도 돌지 않고, iframe에도 같은 `sandbox`를 겁니다. 폼 전송과 링크 이동은 됩니다.
+  로그인하지 않은 채 열면 콘솔 로그인 페이지로 가고, 로그인하면 보던 사이트 주소로 돌아옵니다.
+- `board.com`과 `corp.com`은 훈련 환경 안에서만 응답합니다. 공격 플레이어가 사이트 창에서 보낸 요청은 공격 API와 같은 경로로
   나갑니다. 방어 플레이어의 요청은 할당의 브라우징 마커를 달고 infra VM에서 고객 주소로 나가며, 공격으로도 오탐으로도
   세지 않습니다.
 - 공격 API와 방어 API의 계약은 `openapi/schema.yaml`입니다. 공격·방어 쪽 스키마는 `/api/schema/attack/`,
@@ -528,18 +525,18 @@ sudo docker compose start platform refill
 | 이벤트 피드 | 이벤트 종류마다 볼 수 있는 쪽이 정해져 있음. 공격 쪽은 알림과 룰 이벤트를, 방어 쪽은 공격 행동과 출발지 이벤트를 보지 못함 |
 | WAF 파일 | 방어 플레이어가 고치는 파일은 `crs-setup.conf`, REQUEST-900·RESPONSE-999 예외 파일, `deny`·`limit_req`를 넣는 nginx 파일(`/etc/nginx/defence/`)뿐. `log_format`, `access_log`, `error_log`, real IP 설정, 감사 로그 설정과 `include`는 측정용이라 콘솔이 거부하고, 터미널의 `sudo nginx -s reload`·`-t`·`-T`도 이런 설정이 든 파일은 불러오지 않고 거부함. 콘솔 적용과 터미널 reload 모두 이 라운드에서 같은 파일로 통과한 룰 테스트가 있어야 함. `SecRuleEngine Off`·`DetectionOnly`는 허용(점수에 결과가 드러남) |
 | `/vm-terminal/<attack\|defence\|ids>/<round>/` | nginx `auth_request`가 `/api/rounds/<round>/terminal-auth/<attack\|defence\|ids>/`에 그 라운드의 그 쪽 플레이어인지 물음(`ids`는 방어 플레이어). 공격 플레이어는 Kali의 `kali` 계정, 방어 플레이어는 cr-waf와 cr-infra의 `analyst` 계정(root 아님)으로 열리고, `GET attack/terminal/`, `GET defence/waf/terminal/`, `GET defence/ids/terminal/`로 받은 점프 권한이 없거나 라운드가 끝났으면 열리지 않음. 열려 있던 셸도 15초마다 다시 확인해 권한이 없어지면 닫힘 |
-| `/kibana/`, 8002(`/site/...`) | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로이거나 `CR_SITE_ORIGIN`(기본은 같은 호스트의 8002)의 `/site/` 주소만 받음 |
+| `/kibana/`, `/site/...` | nginx `auth_request`로 `/api/me/`에 로그인 세션 확인. 없으면 로그인 페이지로. 로그인 뒤 돌아가는 `next`는 콘솔 안의 경로(`/site/...` 포함)만 받음 |
 | 회원가입 계정 | 비활성 상태로 만들어짐. 스태프가 승인해야 로그인 가능 |
 | 로그인 시도 | IP당 분당 5회(버스트 5), 넘으면 429. 계정은 잠그지 않고 시도한 쪽을 차단: 스태프 계정에 3번 틀린 IP는 1시간, 다른 아이디에 10번 틀린 IP는 15분. 같은 브라우저 헤더 지문이 두 IP 이상에서 같은 횟수만큼 틀려도 차단. 스태프가 `DELETE /api/staff/blocks/<id>/`로 해제 |
 | 회원가입 요청 | IP당 분당 1회(버스트 3), 같은 주소에서 시간당 5개까지. 승인 대기 계정이 50개면 가입을 받지 않음 |
 | `/api/` 요청량 | 로그인 세션당 초당 20회(버스트 40), IP당 초당 100회(버스트 200). 넘으면 429 |
-| 터미널, 8002 사이트 연결 | 로그인 세션당 동시 연결 10개 |
+| 터미널, 사이트 창 연결 | 로그인 세션당 동시 연결 10개 |
 | 제한 제외 | 플랫폼 VM 자신이 보낸 요청(loopback, Docker 게이트웨이, `DJANGO_ALLOWED_HOSTS`의 IP)은 nginx 제한을 받지 않음. VM에서 도는 `bin/verify` acceptance가 여기에 해당 |
-| 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음 |
+| `/site/`의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음. 위 CSP로 대상의 스크립트를 막음 |
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 그 게이트가 한국어 안내와 함께 403으로 거절 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
 | DB | `cr-postgres`는 포트를 열지 않고 내부 `store` 네트워크에만 붙음. 거기에는 `platform`과 `refill`만 있고 `bots`는 없음. 비밀번호는 `/opt/cr/store-password`(0640)를 compose secret으로 읽음 |
-| 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
+| 플랫폼 VM 인바운드 | ssh, 2222, 8000, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
 | 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. stack 사이, stack과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |
 

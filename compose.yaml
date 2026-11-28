@@ -125,7 +125,6 @@ services:
       store: {}
     ports:
       - "${CR_PUBLISH:-127.0.0.1}:8000:8000"
-      - "${CR_PUBLISH:-127.0.0.1}:8002:8002"
       - "${CR_PUBLISH:-127.0.0.1}:2222:2222"
       - "${CR_PUBLISH:-127.0.0.1}:51820-51919:51820-51919/udp"
     environment: &platform-environment
@@ -141,8 +140,6 @@ services:
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
       CR_ALLOCATION_IDLE_MINUTES: "${CR_ALLOCATION_IDLE_MINUTES:-30}"
       CR_READ_IN_BACKGROUND: "1"
-      CR_CONSOLE_ORIGIN: "${CR_CONSOLE_ORIGIN:-}"
-      CR_SITE_ORIGIN: "${CR_SITE_ORIGIN:-}"
       CR_BOT_ROUND_USERS: "${CR_BOT_ROUND_USERS:-}"
     env_file: &platform-env-file
       - path: ./openstack.env

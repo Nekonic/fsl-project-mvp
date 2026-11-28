@@ -11864,3 +11864,27 @@ time in a row (`stop_hook_active`), so a reply it sent back once ends the turn.
 Rejected: more memory notes (they were the status quo), and blocking on every
 `?` in a reply (code and quoted text carry them; code spans are stripped
 first).
+
+## 2026-11-28 — One port: the site pane moves to 8000 under a no-script policy
+
+The user: "xss그냥 막아버리면 끝이잖아", "도메인 안붙이기로 했잖아". Port 8002 gave the
+site pane an origin of its own so the target's script could not read the console, and
+`CR_CONSOLE_ORIGIN` and `CR_SITE_ORIGIN` were there for a domain or a TLS proxy in front of
+the two. With no domain coming, a second port only means a second forward for the user. The
+pane is now `/site/<round>/<host>/...` on 8000, and nginx answers it with
+`Content-Security-Policy: sandbox allow-forms allow-same-origin; script-src 'none'; object-src 'none'; base-uri 'none'`;
+the console's iframe carries `sandbox="allow-forms allow-same-origin"`. No script of the
+target runs, so it does not matter that the page shares the console's origin. Forms still
+post and links still follow; cookies are still stripped both ways.
+
+The script nginx injected into every site page went with it: its link renaming, its F12
+forward and its element locator had no reader left in `front/`, and the address bar now reads
+the frame's own `location` on each load, which the shared origin allows. `site_origin` left
+`/api/me/`, `safeNext` takes only console paths, `cr.config` no longer renders
+`/tmp/nginx-origins.conf`, compose publishes 8000, 2222 and the WireGuard ports, and the Heat
+template opens 22, 2222, 8000 and the WireGuard ports. The attack cases never went through the
+pane. Rejected: keeping 8002 with the script policy (two forwards for no gain), and allowing
+only the injected script by hash (it served nothing the console reads).
+
+Replaces: `CR_SITE_ORIGIN|CR_CONSOLE_ORIGIN|site_origin|nginx-origins`
+Replaces: `\b8002\b` except `docs/OPENSTACK.md`

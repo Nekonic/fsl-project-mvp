@@ -25,7 +25,7 @@ function server(signedIn: { value: boolean }, refuse: (url: string) => boolean =
       return json(204, null);
     }
     if (!signedIn.value || refuse(url)) return notSignedIn();
-    if (url === "/api/me/") return json(200, { user: "learner", is_staff: false, approved: true, site_origin: "" });
+    if (url === "/api/me/") return json(200, { user: "learner", is_staff: false, approved: true });
     return json(200, []);
   }));
   return asked;

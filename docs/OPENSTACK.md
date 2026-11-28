@@ -570,7 +570,7 @@ for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
 
 | Group | Made by | Rules |
 |---|---|---|
-| `cr-platform` | Heat stack | tcp 22, tcp 2222 (the Kali jump), tcp 8000, tcp 8002, udp 51820-51919 (the learners' WireGuard ports), icmp in |
+| `cr-platform` | Heat stack | tcp 22, tcp 2222 (the Kali jump), tcp 8000, udp 51820-51919 (the learners' WireGuard ports), icmp in |
 | `cr-reach` | fabric | on the platform's `cr-mgmt` port; nothing in except udp 123 (NTP) from members of `cr-mgmt` and udp 5140 (the collector) from members of `cr-senders` |
 | `cr-mgmt` | fabric | on every range VM's control port; all IPv4 in, only from members of `cr-reach` (the platform's `cr-mgmt` port); out only to members of `cr-reach` and to udp 67 (DHCP) |
 | `cr-senders` | fabric | also on each stack's infra control port, the only sender the collector takes; no rule in; out only to members of `cr-reach` and to udp 67 |
@@ -594,17 +594,14 @@ drive and do not need it (`docs/DECISIONS.md`, 2026-11-18). The second full
 before (§5.5). `DELETE fabric/` deletes the `cr-lan-` groups after the
 range stacks (§6.2).
 
-Port 8002 is the console's site pane (`/site/<round>/<host>/`, proxied to
-`training/round/site.py`). An attack player's request goes over an ssh
+The console's site pane is `/site/<round>/<host>/` on port 8000, proxied to
+`training/round/site.py`. An attack player's request goes over an ssh
 stream (over `cr-mgmt`) to the allocation's Kali VM, through
 `training/attack/actions.send` from the current origin; a
 defence player's request goes from the infra VM, which sends it from a customer address with the
-allocation's browse marker, out of its DMZ port straight to the WAF. A platform stack
-made before 2026-10-13 lacks the rule. Add it by hand:
-
-```bash
-openstack security group rule create --protocol tcp --dst-port 8002 cr-platform
-```
+allocation's browse marker, out of its DMZ port straight to the WAF. Port 8002, where the pane
+was until 2026-11-28, is closed; a platform stack made before then keeps its 8002 rule until
+`bin/cloud up --replace` builds the group again.
 
 Port 2222 is the jump for a player's own ssh to its box: an sshd that
 `platform/entrypoint.sh` starts inside the platform container, beside ttyd,
@@ -1131,7 +1128,7 @@ in a container's environment.
 | `network.external` | `provider` | the stack's router and floating IP |
 | `network.address` | `""` (**(this cloud)** `192.168.2.247`) | optional; a floating IP the project already holds. The stack associates it and never releases it, so the address survives `bin/cloud down` and every rebuild. If empty, the stack allocates a new one (§5.1) |
 | `network.dns` | `[8.8.8.8, 8.8.4.4]` | the platform network's DNS |
-| `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, the Kali jump 2222, 8000, 8002 and the WireGuard ports udp 51820-51919 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
+| `network.allowed` | `[0.0.0.0/0]` | optional; the source networks the group `cr-platform` takes ssh, the Kali jump 2222, 8000 and the WireGuard ports udp 51820-51919 from, one rule per network and port. `init` writes the default. Keep the network `bin/cloud` runs from in it, or the rebuild cannot reach the VM over ssh. Without it, open to all |
 | `network.platform`, `.mgmt` | `10.20.0.0/24`, `10.31.0.0/24` | The platform VM's network and the fabric's `cr-mgmt`, where every range VM has its control port. The ranges must be private and must not overlap. They must also stay outside Docker's default local address pools (172.17.0.0/16 to 172.31.0.0/16 and 192.168.0.0/16, moby `daemon/libnetwork/ipamutils/utils.go`), `compose.yaml`'s networks and the declared origins. A range stack's own LANs take their addresses from `wargames/<w>/topology.yaml`, the same in every stack (§6) |
 | `compute.base_image` | `ubuntu-24.04` | the platform VM, and the builder of the Ubuntu role images (§3.6) |
 | `compute.availability_zone` | `""` | the platform VM and every range VM; if empty, Nova chooses |
@@ -1742,17 +1739,14 @@ curl -s -b jar -c jar -H "X-CSRFToken: $T" -H 'Content-Type: application/json' \
 curl -s -b jar http://$ADDRESS:8000/api/staff/range/
 ```
 
-`/kibana/` and port 8002 ask nginx's `auth_request` to `/api/me/` first, so
+`/kibana/` and `/site/` ask nginx's `auth_request` to `/api/me/` first, so
 the same session opens them; nginx keeps the answer for five seconds per
 session cookie and client address (`proxy_cache signed_in`), so a page that
 loads a hundred assets asks Django once. `/vm-terminal/<side>/<round>/` asks
 `/api/rounds/<round>/terminal-auth/<side>/` instead, uncached, so it opens
 only for the user who is that side's player in that round while the round runs.
-Signed out, port 8002 redirects to the console's `/login/` with the site
-address as `next`, and the console returns there after sign-in. The two
-origins are `CR_CONSOLE_ORIGIN` and `CR_SITE_ORIGIN` in `compose.yaml`
-(unset: `http://<asked host>:8000` and `:8002`); behind a TLS reverse proxy
-or a domain set both, as `https://cr.example`, scheme, host and port only.
+Signed out, `/site/` redirects to the console's `/login/` with the site
+path as `next`, and the console returns there after sign-in.
 
 Elasticsearch and Kibana run without security. They listen on the platform
 VM's loopback only (127.0.0.1:9200 and 127.0.0.1:5601), and the range has no

@@ -71,7 +71,7 @@ describe("RoundLobby", () => {
 });
 
 describe("RoundLobby rounds", () => {
-  const learner = { user: "learner-one", approved: true, is_staff: false, site_origin: "" };
+  const learner = { user: "learner-one", approved: true, is_staff: false };
 
   function human(side: string, username: string | null) {
     return { side, client: "human", username, bot_name: "", step: "", bot_run: null };
@@ -239,31 +239,20 @@ describe("debrief origin change", () => {
 });
 
 describe("safeNext", () => {
-  const site = "http://range.example:8002";
-
-  it("keeps a console path", () => {
-    expect(safeNext("/rounds/12/attack", site)).toBe("/rounds/12/attack");
-  });
-
-  it("keeps a site pane address on exactly the configured site origin", () => {
-    expect(safeNext("http://range.example:8002/site/12/board.com/posts/1/", site)).toBe("http://range.example:8002/site/12/board.com/posts/1/");
-    expect(safeNext("https://site.example/site/12/board.com/", "https://site.example")).toBe("https://site.example/site/12/board.com/");
+  it("keeps a console path and a site pane path", () => {
+    expect(safeNext("/rounds/12/attack")).toBe("/rounds/12/attack");
+    expect(safeNext("/site/12/board.com/posts/1/?q=a")).toBe("/site/12/board.com/posts/1/?q=a");
   });
 
   it.each([
-    [null, site],
-    ["//evil.example/", site],
-    ["/\\evil.example/", site],
-    ["/login/?next=/", site],
-    ["http://evil.example/site/12/board.com/", site],
-    ["https://range.example:8002/site/12/board.com/", site],
-    ["http://range.example:8000/site/12/board.com/", site],
-    ["http://range.example:8002/login/", site],
-    ["http://range.example:8002/site/../login/", site],
-    ["javascript:alert(1)", site],
-    ["http://range.example:8002/site/12/board.com/", undefined],
-  ])("sends %s home", (next, origin) => {
-    expect(safeNext(next, origin)).toBe("/");
+    [null],
+    ["//evil.example/"],
+    ["/\\evil.example/"],
+    ["/login/?next=/"],
+    ["http://evil.example/site/12/board.com/"],
+    ["javascript:alert(1)"],
+  ])("sends %s home", (next) => {
+    expect(safeNext(next)).toBe("/");
   });
 });
 
@@ -328,7 +317,7 @@ describe("access page profile download", () => {
       if (made) saved.push({ name: this.download, blob: made });
     });
     render(
-      <SessionContext.Provider value={{ me: { user: "kim/a b", approved: true, is_staff: false, site_origin: "" }, loading: false, reload: () => undefined }}>
+      <SessionContext.Provider value={{ me: { user: "kim/a b", approved: true, is_staff: false }, loading: false, reload: () => undefined }}>
         <Access params={{}} />
       </SessionContext.Provider>,
     );

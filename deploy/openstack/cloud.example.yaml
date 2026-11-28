@@ -11,7 +11,7 @@ network:
   dns: [8.8.8.8, 8.8.4.4]
   platform: 10.20.0.0/24                # the platform VM's network
   mgmt: 10.31.0.0/24                    # cr-mgmt: every slot VM's control port; ssh from the platform, syslog and NTP to it
-  allowed: [0.0.0.0/0]                  # source networks the platform VM takes ssh, 2222 (the Kali jump), 8000 and 8002 from; keep the one bin/cloud runs in
+  allowed: [0.0.0.0/0]                  # source networks the platform VM takes ssh, 2222 (the Kali jump) and 8000 from; keep the one bin/cloud runs in
 
 compute:
   base_image: ubuntu-24.04              # the stock noble-server-cloudimg-amd64.img, uploaded as is

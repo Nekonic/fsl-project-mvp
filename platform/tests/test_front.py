@@ -7,7 +7,6 @@ import pytest
 from django.conf import settings
 from django.urls import Resolver404, resolve
 
-from cr import config as config_module
 from cr import errors
 from tests import composed
 from training.round import views as match_views
@@ -89,10 +88,6 @@ def console():
     return server("8000")
 
 
-def site_listener():
-    return server("8002")
-
-
 def location(where, *args):
     return where.child("location", *args)
 
@@ -116,11 +111,11 @@ def django_route(path):
         return None
 
 
-def test_the_config_is_one_well_formed_nginx_file_with_the_two_listeners():
+def test_the_config_is_one_well_formed_nginx_file_with_one_listener():
     whole = config()
 
     assert [one.name for one in whole.block] == ["worker_processes", "pid", "error_log", "events", "http"]
-    assert sorted(one.values("listen")[0][0] for one in http().children("server")) == ["8000", "8002"]
+    assert sorted(one.values("listen")[0][0] for one in http().children("server")) == ["8000"]
 
 
 def test_the_well_formedness_check_catches_a_missing_semicolon_and_an_unclosed_block():
@@ -236,15 +231,14 @@ def test_a_terminal_path_reaches_the_player_the_check_asked_about(raw, reached):
 
 
 def test_the_sign_in_checks_reach_the_api_s_own_session_check_and_cache_it_per_cookie_and_address():
-    for listener in (console(), site_listener()):
-        check = location(listener, "=", "/signed-in")
-        [[target]] = check.values("proxy_pass")
+    check = location(console(), "=", "/signed-in")
+    [[target]] = check.values("proxy_pass")
 
-        assert check.values("internal") == [[]]
-        assert target.startswith("http://127.0.0.1:8001/") and django_route(target.removeprefix("http://127.0.0.1:8001"))
-        assert check.values("proxy_cache_key") == [[f"$cookie_{settings.SESSION_COOKIE_NAME}|$remote_addr"]]
-        assert check.values("proxy_cache") == [["signed_in"]]
-        assert re.fullmatch(r"[1-9]s", check.values("proxy_cache_valid")[0][-1])
+    assert check.values("internal") == [[]]
+    assert target.startswith("http://127.0.0.1:8001/") and django_route(target.removeprefix("http://127.0.0.1:8001"))
+    assert check.values("proxy_cache_key") == [[f"$cookie_{settings.SESSION_COOKIE_NAME}|$remote_addr"]]
+    assert check.values("proxy_cache") == [["signed_in"]]
+    assert re.fullmatch(r"[1-9]s", check.values("proxy_cache_valid")[0][-1])
     assert "keys_zone=signed_in:1m" in " ".join(http().values("proxy_cache_path")[0])
     assert settings.SESSION_COOKIE_NAME == "cr_session"
 
@@ -331,7 +325,7 @@ def test_the_django_routes_only_nginx_may_call_are_refused_from_outside(internal
 
 
 def test_the_site_pane_is_proxied_per_round_to_the_site_proxy_route_with_the_raw_rest_of_the_path():
-    found = regex_location(site_listener(), "/site/12/board.com/posts/1/")
+    found = regex_location(console(), "/site/12/board.com/posts/1/")
     taken = pattern(found).match("/site/12/board.com/posts/1/")
     site_tail = next(one for one in http().children("map") if one.args == ["$request_uri", "$site_uri"])
     tail = re.compile(site_tail.block[0].name.removeprefix("~").replace("(?<", "(?P<"))
@@ -346,58 +340,30 @@ def test_the_site_pane_is_proxied_per_round_to_the_site_proxy_route_with_the_raw
 
 
 def test_the_site_pane_hands_django_only_the_session_cookie_and_keeps_none_of_the_target_s():
-    found = regex_location(site_listener(), "/site/12/board.com/")
+    found = regex_location(console(), "/site/12/board.com/")
 
     assert ["Cookie", "cr_session=$cookie_cr_session"] in found.values("proxy_set_header")
     assert ["Set-Cookie"] in found.values("proxy_hide_header")
-    assert any(args[0] == "Content-Security-Policy" and args[1].startswith("sandbox ")
-               for args in found.values("add_header"))
     assert "Access-Control" not in FRONT.read_text()
     assert "$session" not in found.text()
 
 
-def test_the_site_listener_answers_nothing_else():
-    assert location(site_listener(), "/").values("return") == [["404"]]
+def test_the_site_pane_is_served_under_a_policy_that_runs_no_script_of_the_target():
+    found = regex_location(console(), "/site/12/board.com/")
+    [policy] = [args[1] for args in found.values("add_header") if args[0] == "Content-Security-Policy"]
+    directives = {part.split()[0]: part.split()[1:] for part in policy.split(";") if part.strip()}
+
+    assert directives["sandbox"] == ["allow-forms", "allow-same-origin"]
+    assert directives["script-src"] == ["'none'"] and directives["object-src"] == ["'none'"]
+    assert ["Content-Security-Policy", policy, "always"] in found.values("add_header")
+    assert "<script" not in found.text()
 
 
-def test_the_site_listener_sends_a_signed_out_learner_to_the_console_s_sign_in_with_the_site_address_to_come_back_to():
-    assert location(site_listener(), "@sign-in").values("return") == [
-        ["302", "$console_origin/login/?next=$site_origin$request_uri"]]
+def test_a_signed_out_learner_on_the_site_pane_goes_to_the_sign_in_and_comes_back_to_the_site_address():
+    found = regex_location(console(), "/site/12/board.com/")
+
+    assert ["401", "=", "@sign-in"] in found.values("error_page")
     assert location(console(), "@sign-in").values("return") == [["302", "/login/?next=$request_uri"]]
-    assert "/tmp/nginx-origins.conf" in [args[0] for args in http().values("include")]
-    assert "8000" not in location(site_listener(), "@sign-in").text()
-
-
-def test_the_entrypoint_renders_the_configured_origins_before_nginx_checks_its_config():
-    lines = ENTRYPOINT.read_text().splitlines()
-    rendered = lines.index("python -m cr.config > /tmp/nginx-origins.conf")
-
-    assert rendered < next(number for number, line in enumerate(lines) if line.startswith("nginx -t"))
-
-
-def origin_maps(environ):
-    text = config_module.nginx_origins(config_module.origins(environ))
-    return {one.args[1]: one.block[0].args[0] for one in parsed(text).children("map")}
-
-
-def test_unset_origins_keep_the_console_on_8000_and_the_site_on_8002_of_the_host_asked_over_http():
-    assert origin_maps({}) == {"$console_origin": "http://$host:8000", "$site_origin": "http://$host:8002"}
-    assert config_module.origins({}).site_for("range.example") == "http://range.example:8002"
-
-
-def test_configured_origins_replace_both_for_a_tls_proxy_or_a_domain():
-    environ = {"CR_CONSOLE_ORIGIN": "https://cr.example/", "CR_SITE_ORIGIN": "https://site.cr.example:8443"}
-
-    assert origin_maps(environ) == {"$console_origin": "https://cr.example",
-                                    "$site_origin": "https://site.cr.example:8443"}
-    assert config_module.origins(environ).site_for("ignored") == "https://site.cr.example:8443"
-
-
-@pytest.mark.parametrize("given", ["cr.example", "https://cr.example/login", "ftp://cr.example", 'https://a"; }',
-                                   "https://cr.example?x=1"])
-def test_an_origin_that_is_not_a_scheme_host_and_port_stops_the_start(given):
-    with pytest.raises(ValueError):
-        config_module.origins({"CR_SITE_ORIGIN": given})
 
 
 DISCOVER_CALLS = (

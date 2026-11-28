@@ -21,8 +21,8 @@ export function SiteAddress({ warning, children }: { warning?: ComponentChildren
   );
 }
 
-export function SiteFrame({ src, title, frameRef }: { src: string; title: string; frameRef: Ref<HTMLIFrameElement> }) {
-  return <iframe ref={frameRef} class="site-frame" src={src} title={title} />;
+export function SiteFrame({ src, title, frameRef, onLoad }: { src: string; title: string; frameRef: Ref<HTMLIFrameElement>; onLoad: () => void }) {
+  return <iframe ref={frameRef} class="site-frame" src={src} title={title} sandbox="allow-forms allow-same-origin" onLoad={onLoad} />;
 }
 
 export function PaneColumn({ children }: { children: ComponentChildren }) {

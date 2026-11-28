@@ -3770,13 +3770,9 @@ components:
           type: boolean
         approved:
           type: boolean
-        site_origin:
-          type: string
-          readOnly: true
       required:
       - approved
       - is_staff
-      - site_origin
       - user
     MethodEnum:
       enum:

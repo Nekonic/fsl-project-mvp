@@ -20,6 +20,8 @@ import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
 import { objectiveLabel } from "./staff/RoundSetupEditor";
 import { judgedCase, VERDICT_NOTICE_MS, VerdictNotices } from "../console/VerdictNotices";
 import { Waf } from "./Waf";
+import { framedPath, siteBase } from "./Site";
+import { SiteFrame } from "../ui";
 
 const objectives = [
   { key: "objective-a", name: "Objective A", state: "lost", seen: false },
@@ -649,5 +651,23 @@ describe("applied version note", () => {
   it("calls the round-start version the starting rules, not an untested change", () => {
     expect(versionNoteKey(version)).toBe("versions.starting_rules");
     expect(versionNoteKey({ ...version, version: 2, source: "terminal" })).toBe("versions.untested");
+  });
+});
+
+describe("Site pane", () => {
+  it("loads the target from the console's own /site/ path in a frame that runs no script", () => {
+    render(<SiteFrame src={`${siteBase(12, "board.com")}/posts/1/`} title="site" frameRef={{ current: null }} onLoad={() => undefined} />);
+    const frame = screen.getByTitle("site") as HTMLIFrameElement;
+
+    expect(frame.getAttribute("src")).toBe("/site/12/board.com/posts/1/");
+    expect(frame.getAttribute("sandbox")?.split(" ").sort()).toEqual(["allow-forms", "allow-same-origin"]);
+  });
+
+  it("reads the address the frame went to from the frame itself", () => {
+    const at = (pathname: string, search: string) => ({ contentWindow: { location: { pathname, search } } }) as unknown as HTMLIFrameElement;
+
+    expect(framedPath(at("/site/12/board.com/posts/2/", "?page=3"))).toBe("/site/12/board.com/posts/2/?page=3");
+    expect(framedPath(at("/login/", ""))).toBeNull();
+    expect(framedPath(null)).toBeNull();
   });
 });

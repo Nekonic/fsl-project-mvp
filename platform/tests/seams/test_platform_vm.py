@@ -86,7 +86,7 @@ def test_a_browser_reaches_the_platform_at_the_floating_ip_from_the_allowed_netw
     }
 
     assert opened == {
-        *{("tcp", port, cidr) for port in (22, 2222, 8000, 8002) for cidr in ("203.0.113.0/24", "198.51.100.7/32")},
+        *{("tcp", port, cidr) for port in (22, 2222, 8000) for cidr in ("203.0.113.0/24", "198.51.100.7/32")},
         *{("udp", 51820, cidr) for cidr in ("203.0.113.0/24", "198.51.100.7/32")},
         ("icmp", 0, None),
     }, opened

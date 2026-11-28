@@ -75,7 +75,7 @@ positive rate against real users.
 **The platform API authenticates the caller and checks the seat.** Every
 `/api/` endpoint needs a signed-in Django session or, for a bot, a player
 token (`Authorization: Bearer`, shown once when the round is created and
-stored only as a hash). The terminals, `/kibana/` and port 8002 ask the
+stored only as a hash). The terminals, `/kibana/` and `/site/` ask the
 platform through nginx's `auth_request`. The first start makes `admin` with
 the password `123456`, and nothing makes anyone change it, so the password
 stops nobody who knows the default. Anyone who reaches port 8000 can sign
@@ -133,8 +133,8 @@ own path from outside. Limits:
 **Abuse limits.** nginx answers 429 past 5 sign-in POSTs a minute per address
 (burst 5), 1 sign-up POST a minute (burst 3), 20 `/api/` requests a second
 per session cookie or bearer token (burst 40) and 100 per address (burst
-200), and 10 open connections per session cookie to the terminals and port
-8002. Django blocks the client, never the account (`users/blocks.py`): 3
+200), and 10 open connections per session cookie to the terminals and the
+site pane. Django blocks the client, never the account (`users/blocks.py`): 3
 wrong passwords against a staff account within an hour block that address
 from signing in for an hour; 10 against any other name block it for 15
 minutes. A fingerprint of the headers the browser sends with the sign-in
@@ -181,29 +181,28 @@ members of `cr-mgmt` and udp 5140 (syslog) from members of `cr-senders`, the
 infra VM's control port, and nothing else; the stacks' LANs have no Neutron
 router, so no range VM has another way to the platform. The API holds no per-request refusal of range
 addresses; what keeps a range VM from it is the network above. nginx keeps
-the session check's answer for `/kibana/` and port 8002 five seconds, keyed
+the session check's answer for `/kibana/` and `/site/` five seconds, keyed
 on the session cookie and the client's address, so a cached yes is never
 reused for another address. The terminal check (`terminal-auth`) is not
 cached, and an open shell is checked again every 15 seconds.
 
-**The target's script does not reach the console.** The target is not
-published. Port 8000 is the console. The XSS cases make the target run
-script in any browser that loads its pages, and the site pane serves the
-target on port 8002 of the same host, so that script runs in the signed-in
-browser, one port away from the console. Cookies are kept per host, not per
-port, so the console's cookies reach 8002. What keeps the script from the
-API:
+**The target's script does not run.** The target is not published. The XSS
+cases make the target send script to any browser that loads its pages, and
+the site pane serves the target under `/site/` on port 8000, the console's own
+origin, so a script that ran there would run as the console. None runs:
 
-- The session cookie `cr_session` is HttpOnly, so the script cannot read it.
-  The CSRF cookie `cr_csrf` is not HttpOnly, so the script can read it.
-- The platform sends no CORS header, so the browser hands the script no answer
-  from 8000.
-- The API parses only `application/json`, which a page on another origin
-  cannot send without a CORS preflight the platform does not answer, and
-  Django's CSRF check refuses a write whose `Origin` is not the console's.
-- nginx drops the `Cookie` header before it hands a request on 8002 to the
-  site proxy and never passes the target's `Set-Cookie` to the browser, and
-  the site is served under a sandboxing `Content-Security-Policy`.
+- nginx sends every `/site/` answer with `Content-Security-Policy: sandbox
+  allow-forms allow-same-origin; script-src 'none'; object-src 'none';
+  base-uri 'none'`, and the console's iframe carries `sandbox="allow-forms
+  allow-same-origin"`. Without `allow-scripts` the browser runs no inline
+  script, no event handler attribute, no `javascript:` link and no external
+  script; without `allow-top-navigation` a link cannot move the console away.
+- A form the target plants still posts, but a write to `/api/` needs the CSRF
+  token, which a page with no script cannot read; only `/site-proxy/` skips
+  the check, and nginx refuses that path from outside.
+- nginx drops the `Cookie` header before it hands a `/site/` request to the
+  site proxy and never passes the target's `Set-Cookie` to the browser.
+- The session cookie `cr_session` is HttpOnly.
 
 **The learner map is a pane of the defence console (`front/src/panes/Map.tsx`).**
 

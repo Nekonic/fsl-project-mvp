@@ -66,8 +66,7 @@ class Logout(APIView):
 class Me(APIView):
     @extend_schema(tags=ACCOUNTS, responses=serializers.Me, operation_id="me")
     def get(self, request):
-        site_origin = service.site_origin(request.get_host())
-        return Response(serializers.Me(request.user, context={"site_origin": site_origin}).data)
+        return Response(serializers.Me(request.user).data)
 
 
 class Users(APIView):

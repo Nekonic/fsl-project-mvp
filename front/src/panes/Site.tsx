@@ -15,8 +15,8 @@ const STATE_PATH = {
 
 const REQUEST_EVENTS = ["action.sent", "round.started"];
 
-export function siteBase(siteOrigin: string, round: number, host: string): string {
-  return `${siteOrigin}/site/${round}/${host}`;
+export function siteBase(round: number, host: string): string {
+  return `/site/${round}/${host}`;
 }
 
 function shownAddress(round: number, host: string, framePath: string): string {
@@ -41,6 +41,15 @@ function requestPath(url: string): string {
     return `${parsed.pathname}${parsed.search}`;
   } catch {
     return url;
+  }
+}
+
+export function framedPath(frame: HTMLIFrameElement | null): string | null {
+  try {
+    const shown = frame?.contentWindow?.location;
+    return shown && shown.pathname.startsWith("/site/") ? `${shown.pathname}${shown.search}` : null;
+  } catch {
+    return null;
   }
 }
 
@@ -122,15 +131,10 @@ export function Site({ round, side }: PaneProps) {
   const [loads, setLoads] = useState(0);
   const frame = useRef<HTMLIFrameElement>(null);
 
-  useEffect(() => {
-    const heard = (message: MessageEvent) => {
-      if (!frame.current || message.source !== frame.current.contentWindow) return;
-      const said = message.data as { site?: unknown } | null;
-      if (said && typeof said.site === "string") setShownPath(said.site);
-    };
-    window.addEventListener("message", heard);
-    return () => window.removeEventListener("message", heard);
-  }, []);
+  const loaded = () => {
+    const shown = framedPath(frame.current);
+    if (shown) setShownPath(shown);
+  };
 
   const go = (next: string) => {
     setPath(next);
@@ -146,7 +150,7 @@ export function Site({ round, side }: PaneProps) {
       {host && <AddressBar host={host} hosts={hosts} address={address} onHost={(next) => { setChosenHost(next); go("/"); }} onGo={go} onReload={reload} />}
       <SiteSplit>
         {host && me
-          ? <SiteFrame key={`${host}-${loads}`} frameRef={frame} src={`${siteBase(me.site_origin, round, host)}${path}`} title={t("pane.site")} />
+          ? <SiteFrame key={`${host}-${loads}`} frameRef={frame} src={`${siteBase(round, host)}${path}`} title={t("pane.site")} onLoad={loaded} />
           : <FrameEmpty title={t("pane.site")}>{error ? errorText(error) : t("common.loading")}</FrameEmpty>}
         <RequestList round={round} />
       </SiteSplit>

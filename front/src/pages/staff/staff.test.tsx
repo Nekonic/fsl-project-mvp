@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 describe("Users", () => {
-  const me = { user: "operator", approved: true, is_staff: true, site_origin: "" };
+  const me = { user: "operator", approved: true, is_staff: true };
 
   it("offers no disable button on the signed-in account's own row", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {

@@ -5,11 +5,10 @@ import math
 from django.contrib import auth
 from django.contrib.auth import get_user_model, password_validation
 from django.core.exceptions import ValidationError
-from django.http.request import split_domain_port
 from django.middleware.csrf import get_token
 from django.utils import timezone
 
-from cr import config, errors
+from cr import errors
 from users import blocks
 
 SIGN_UPS_PER_ADDRESS_PER_HOUR = 5
@@ -79,11 +78,6 @@ def sign_up(request, username: str, password: str):
     user = users.create_user(username=username, password=password, is_active=False)
     blocks.count_sign_up(request)
     return user
-
-
-def site_origin(asked_host: str) -> str:
-    host, _ = split_domain_port(asked_host)
-    return config.origins().site_for(host)
 
 
 def user(username: str):

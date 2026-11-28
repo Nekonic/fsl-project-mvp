@@ -9,20 +9,10 @@ import { Button, Field, Form, FormErrorLines, Input } from "../ui";
 
 const CREDENTIAL_FIELDS = ["username", "password"];
 
-function onSiteOrigin(next: string, siteOrigin: string | undefined): string | null {
-  if (!siteOrigin) return null;
-  try {
-    const url = new URL(next);
-    return url.origin === new URL(siteOrigin).origin && url.pathname.startsWith("/site/") ? url.href : null;
-  } catch {
-    return null;
-  }
-}
-
-export function safeNext(next: string | null, siteOrigin?: string): string {
+export function safeNext(next: string | null): string {
   if (!next) return to.home();
   if (next.startsWith("/") && !next.startsWith("//") && !next.includes("\\") && !next.startsWith("/login")) return next;
-  return onSiteOrigin(next, siteOrigin) ?? to.home();
+  return to.home();
 }
 
 export function Login(_props: PageProps) {
@@ -31,7 +21,7 @@ export function Login(_props: PageProps) {
   const signIn = useAction("post", "/api/auth/login/");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  useLeaveWhenSignedIn(safeNext(place.search.get("next"), session.me?.site_origin));
+  useLeaveWhenSignedIn(safeNext(place.search.get("next")));
 
   const submit = async () => {
     const signedIn = await signIn.run({ body: { username, password } });

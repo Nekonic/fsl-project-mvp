@@ -111,7 +111,7 @@ def test_the_loopback_guard_reads_a_port_however_compose_lets_it_be_written():
     text = """
 services:
   quoted:
-    ports: ["127.0.0.1:8001:8001", "8002:8002"]
+    ports: ["127.0.0.1:8001:8001", "8004:8004"]
   bare:
     ports:
       - 127.0.0.1:8003:8003
@@ -183,7 +183,6 @@ def test_only_the_platform_and_the_syslog_collector_may_be_published_elsewhere_a
 
     assert chosen == {
         ("platform", "${CR_PUBLISH:-127.0.0.1}:8000:8000"),
-        ("platform", "${CR_PUBLISH:-127.0.0.1}:8002:8002"),
         ("platform", "${CR_PUBLISH:-127.0.0.1}:2222:2222"),
         ("platform", "${CR_PUBLISH:-127.0.0.1}:51820-51919:51820-51919/udp"),
         ("collector", "${CR_SYSLOG_PUBLISH:-127.0.0.1}:5140:5140/udp"),

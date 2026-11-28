@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,7 +28,6 @@ NGINX_RELOAD = "nginx -t 2>&1 && nginx -s reload 2>&1"
 NGINX_PID = "/tmp/nginx.pid"
 RELOAD_SNAPSHOTS = "/var/lib/cr-reloaded"
 SUBSTRATE = "sandbox.openstack.connect"
-ORIGIN = re.compile(r"https?://(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?")
 
 
 @dataclass(frozen=True)
@@ -276,40 +274,5 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
     )
 
 
-@dataclass(frozen=True)
-class OriginsConfig:
-    console: str = ""
-    site: str = ""
-    console_port: int = 8000
-    site_port: int = 8002
-
-    def console_for(self, host: str) -> str:
-        return self.console or f"http://{host}:{self.console_port}"
-
-    def site_for(self, host: str) -> str:
-        return self.site or f"http://{host}:{self.site_port}"
-
-
 def configured() -> Config:
     return build(source=Path(settings.CR_SOURCE))
-
-
-def origin_of(given: str, variable: str) -> str:
-    origin = given.strip().rstrip("/").lower()
-    if origin and not ORIGIN.fullmatch(origin):
-        raise ValueError(f"{variable} must be a scheme, a host and an optional port, as in https://cr.example, not {given!r}")
-    return origin
-
-
-def origins(environ: Mapping[str, str] = os.environ) -> OriginsConfig:
-    return OriginsConfig(console=origin_of(environ.get("CR_CONSOLE_ORIGIN", ""), "CR_CONSOLE_ORIGIN"),
-                         site=origin_of(environ.get("CR_SITE_ORIGIN", ""), "CR_SITE_ORIGIN"))
-
-
-def nginx_origins(given: OriginsConfig) -> str:
-    return (f'map $host $console_origin {{ default "{given.console_for("$host")}"; }}\n'
-            f'map $host $site_origin {{ default "{given.site_for("$host")}"; }}\n')
-
-
-if __name__ == "__main__":
-    print(nginx_origins(origins()), end="")
