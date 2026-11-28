@@ -7,8 +7,8 @@ from domain.types import RESPONSE_ORIGIN, ResponseRecord
 from scoring import baseline as baselines
 from scoring import losses
 from scoring import score as service
-from scoring.models import Objective
-from telemetry.access import OriginRequest
+from scoring.models import ObjectiveLoss
+from telemetry.waf_log import OriginRequest
 from tests import rounds
 from tests.scoring.targets import ROGUE_ADMIN_AT, TRUTH
 from training.attack.actions import origin_record
@@ -57,5 +57,5 @@ def test_a_corp_effect_without_an_action_takes_the_attribution_window(corp_targe
 
     losses.observe_effects(found, corp_target, [])
 
-    stored = Objective.objects.get(round=found)
+    stored = ObjectiveLoss.objects.get(round=found)
     assert (stored.earliest, stored.latest) == (ROGUE_ADMIN_AT - ATTRIBUTION_WINDOW, ROGUE_ADMIN_AT + CLOCK_SKEW)

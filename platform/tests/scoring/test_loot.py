@@ -7,7 +7,7 @@ from django.contrib.auth.hashers import make_password
 from cr import errors
 from scoring import baseline as baselines
 from scoring import losses
-from scoring.models import Objective
+from scoring.models import ObjectiveLoss
 from telemetry import events as log
 from telemetry.events import Viewer
 from tests import rounds
@@ -38,7 +38,7 @@ def test_the_admin_s_exact_stored_hash_loses_the_partial_and_admin_objectives(bo
     assert verdict.lost
     assert [fallen.key for fallen in verdict.fell] == ["board-auth-user-partial", "board-auth-user-admin"]
     assert verdict.objective.key == "board-auth-user-admin"
-    assert sorted(Objective.objects.filter(round=found).values_list("key", flat=True)) == [
+    assert sorted(ObjectiveLoss.objects.filter(round=found).values_list("key", flat=True)) == [
         "board-auth-user-admin", "board-auth-user-partial"]
 
 
@@ -50,7 +50,7 @@ def test_a_cracked_password_or_a_wrong_hash_loses_nothing():
                                          {"username": "jiwoo", "hash": TRUTH["jiwoo"][:-2] + "x="}], at=AT)
 
     assert not verdict.lost and verdict.objective is None
-    assert not Objective.objects.filter(round=found).exists()
+    assert not ObjectiveLoss.objects.filter(round=found).exists()
     assert lost_events(found, Viewer(staff=True)) == []
 
 
@@ -66,7 +66,7 @@ def test_loot_is_judged_against_the_round_s_own_start_snapshot_and_not_a_round_b
     baselines.take_baseline(following, targets.board_target(next_truth))
 
     assert not losses.submit_loot(following, {"admin": first_truth["admin"]}, at=AT + timedelta(minutes=10)).lost
-    assert not Objective.objects.filter(round=following).exists()
+    assert not ObjectiveLoss.objects.filter(round=following).exists()
 
 
 def test_the_same_loot_twice_loses_each_objective_once(board_target):
@@ -77,7 +77,7 @@ def test_the_same_loot_twice_loses_each_objective_once(board_target):
     second = losses.submit_loot(found, taken, at=AT + timedelta(minutes=1))
 
     assert len(first.fell) == 3 and second.fell == ()
-    assert Objective.objects.filter(round=found).count() == 3
+    assert ObjectiveLoss.objects.filter(round=found).count() == 3
     assert len(lost_events(found, Viewer(staff=True))) == 3
 
 
@@ -109,7 +109,7 @@ def test_the_loss_is_attributed_to_the_latest_attack_action_inside_the_window_an
 
     losses.submit_loot(found, {"admin": TRUTH["admin"]}, actions=actions, at=AT)
 
-    stored = Objective.objects.get(round=found, key="board-auth-user-admin")
+    stored = ObjectiveLoss.objects.get(round=found, key="board-auth-user-admin")
     assert stored.attributed_marker == "earlier"
     assert stored.earliest == AT - timedelta(minutes=2) and stored.achieved_at == AT
 
@@ -119,7 +119,7 @@ def test_loot_with_no_attack_action_in_the_window_still_loses_the_objective_unat
 
     losses.submit_loot(found, {"admin": TRUTH["admin"]}, at=AT)
 
-    assert Objective.objects.get(round=found, key="board-auth-user-admin").attributed_marker is None
+    assert ObjectiveLoss.objects.get(round=found, key="board-auth-user-admin").attributed_marker is None
 
 
 def test_every_objective_the_round_put_at_stake_starts_kept_and_shows_lost_once_it_falls(board_target):
@@ -158,4 +158,4 @@ def test_loot_that_holds_no_username_and_hash_pair_is_refused_as_a_format_error(
         losses.submit_loot(found, value, at=AT)
 
     assert (refused.value.code, refused.value.errors[0].path) == ("loot_format", "value")
-    assert not Objective.objects.filter(round=found).exists()
+    assert not ObjectiveLoss.objects.filter(round=found).exists()

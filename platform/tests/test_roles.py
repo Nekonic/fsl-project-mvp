@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from sandbox import definitions as declaration
-from sandbox import fabric as networks
+from sandbox import declaration
+from sandbox import fabric
 from sandbox import stack_plan
 
 WARGAMES = sorted(path.parent.name for path in (Path(__file__).resolve().parents[2] / "wargames").glob("*/compose.yaml"))
@@ -37,7 +37,7 @@ def definition(wargame: str = "board") -> stack_plan.Definition:
     return stack_plan.read(ROOT, wargame)
 
 
-def planned(wargame: str = "board") -> stack_plan.Sandbox:
+def planned(wargame: str = "board") -> stack_plan.Plan:
     return stack_plan.plan(definition(wargame), 1, DECLARED.origins, DECLARED.default_origin, "10.31.0.2")
 
 
@@ -324,7 +324,7 @@ def test_every_line_the_infra_relays_names_a_sender_filebeat_takes_the_slot_from
 
     assert {tag for _, tag in senders} == {"modsecurity", "nginx-access", "nginx-error", "suricata"}
     assert all(filebeat_slot(sender) == str(slot) for sender, _ in senders)
-    assert relay.count(f'Target="10.31.0.2" Port="{networks.COLLECTOR_PORT}" Protocol="udp"') == 4
+    assert relay.count(f'Target="10.31.0.2" Port="{fabric.COLLECTOR_PORT}" Protocol="udp"') == 4
 
 
 @pytest.mark.parametrize("wargame", sorted(WARGAMES))

@@ -61,7 +61,7 @@ class SensorConfig:
 
 @dataclass(frozen=True)
 class WafConfig:
-    role: str = "gateway"
+    role: str = "waf"
     files: tuple[str, ...] = WAF_FILES
     reload: str = NGINX_RELOAD
     pid: str = NGINX_PID
@@ -124,7 +124,7 @@ class KibanaConfig:
 
 @dataclass(frozen=True)
 class GroundTruthConfig:
-    board_url: str = "http://board:8000"
+    board_port: int = 8000
 
 
 @dataclass(frozen=True)
@@ -225,7 +225,7 @@ def sensors(found: Mapping[str, dict], watches: Mapping[str, str]) -> tuple[Sens
 
 
 def waf(found: Mapping[str, dict]) -> WafConfig:
-    _, entry = filling(found, "gateway")
+    _, entry = filling(found, "waf")
     return WafConfig(files=tuple(entry.get("files") or WAF_FILES), reload=entry.get("reload") or NGINX_RELOAD,
                      pid=entry.get("pid") or NGINX_PID)
 
@@ -246,16 +246,16 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
     attacker, _ = filling(found, "attacker")
     proxy, _ = filling(found, "proxy")
     customers, _ = filling(found, "customers")
-    way_in = filling(found, "edge")[0] or filling(found, "gateway")[0]
+    way_in = filling(found, "edge")[0] or filling(found, "waf")[0]
     password = kept_secret(environ.get("CR_OPENSTACK_PASSWORD_FILE") or "/run/secrets/openstack_password")
     openstack = OpenStackConfig(source=str(root), password=password,
                                 **{name: environ.get(variable, "") for name, variable in OPENSTACK_VARIABLES.items()})
     return Config(
-        range=RangeConfig(substrate=environ.get("CR_SUBSTRATE") or SUBSTRATE, source=str(root),
+        range=RangeConfig(substrate=SUBSTRATE, source=str(root),
                           declaration=str(declaration), openstack=openstack),
         elastic=ElasticConfig(url=environ.get("ELASTIC_URL") or ElasticConfig.url,
                               index=environ.get("ELASTIC_INDEX") or ElasticConfig.index,
-                              slot_index=environ.get("ELASTIC_SESSION_INDEX", ElasticConfig.slot_index),
+                              slot_index=environ.get("ELASTIC_SLOT_INDEX", ElasticConfig.slot_index),
                               pipeline_file=str(root / "deploy/elastic/ingest-pipeline.json")),
         sensors=sensors(found, watches),
         waf=waf(found),
@@ -271,7 +271,7 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
                       last_port=int(environ.get("CR_VPN_LAST_PORT") or VpnConfig.last_port),
                       host=environ.get("CR_VPN_HOST") or environ.get("CR_JUMP_HOST", "")),
         kibana=KibanaConfig(url=environ.get("KIBANA_URL", ""), objects=str(root / "deploy/kibana/objects.ndjson")),
-        ground_truth=GroundTruthConfig(board_url=environ.get("BOARD_API_URL") or GroundTruthConfig.board_url),
+        ground_truth=GroundTruthConfig(board_port=int(environ.get("BOARD_PORT") or GroundTruthConfig.board_port)),
         refill=RefillConfig(directory=environ.get("CR_REFILL_DIR") or RefillConfig.directory),
     )
 

@@ -3,7 +3,7 @@ import json
 from django.core.management.base import BaseCommand, CommandError
 
 from cr import errors
-from sandbox import reach
+from sandbox import substrate
 from training.round import allocation as allocations
 
 ANSWER = "cr.platform.answer="
@@ -27,7 +27,7 @@ class Command(BaseCommand):
                 raise CommandError(f"allocation {allocation} is closed, so it holds no slot")
             slot = held.slot
         try:
-            ran = reach.slot_range(slot).runner(role)(json.loads(argv), timeout=timeout)
+            ran = substrate.slot_range(slot).runner(role)(json.loads(argv), timeout=timeout)
         except errors.DomainError as failed:
             raise CommandError(str(failed)) from failed
         self.stdout.write(ANSWER + json.dumps({"exit_code": ran.exit_code, "output": ran.output}))

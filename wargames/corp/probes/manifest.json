@@ -36,6 +36,6 @@
       "tool_case": false
     }
   },
-  "image_digest": "ghcr.io/nekonic/cr-corp",
+  "image": "ghcr.io/nekonic/cr-corp",
   "recorded_at": "2026-11-28T08:23:06.254416+00:00"
 }

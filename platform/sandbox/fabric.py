@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sandbox.definitions import Declaration
+from sandbox.declaration import Declaration
 from sandbox.runner import RangeUnavailable
 
 TAG = "cr.segment.id"

@@ -20,11 +20,12 @@ def problem(wargame: str = "board", objectives: Sequence[str] = ()):
 def opened(found_problem, *, opened_by=None, phase: str = "running", started: datetime | None = None,
            ended: datetime | None = None) -> Round:
     now = datetime.now(timezone.utc)
-    allocation = Allocation.objects.create(wargame_id=found_problem.wargame_id, purpose=found_problem.kind, slot=1,
+    snapshot = content.snapshot(found_problem)
+    allocation = Allocation.objects.create(wargame_id=found_problem.wargame_id, purpose="round", slot=1,
                                  opened_by=opened_by, expires_at=now + timedelta(hours=1))
-    return Round.objects.create(allocation=allocation, problem=found_problem, kind=found_problem.kind,
-                                matchup="pvp", phase=phase,
-                                snapshot=content.snapshot(found_problem), started=started or now, ended=ended)
+    return Round.objects.create(allocation=allocation, problem=found_problem,
+                                matchup=snapshot["round"]["matchups"][0], phase=phase, snapshot=snapshot,
+                                started=started or now, ended=ended)
 
 
 def playing(found: Round, side: str, user=None, bot_name: str = "") -> Player:

@@ -16,7 +16,7 @@ from training.defence import rules
 from training.models import Allocation, Player, Round
 from training.round import allocation as allocations
 from training.round import lifecycle as service
-from users import players as auth
+from training.round import player_tokens
 
 
 CRS_SETUP = "/etc/nginx/modsecurity/crs/crs-setup.conf"
@@ -76,7 +76,7 @@ def test_a_slot_is_not_offered_while_its_stack_is_being_torn_down(db, cloud, mon
     assert refill.standing(sandbox.store(), 1).state == refill.BUILDING
 
 
-def test_closing_an_allocation_ends_its_rounds_and_the_rebuild_job_refills_the_slot(as_operator, cloud, allocation, problem,
+def test_closing_an_allocation_ends_its_rounds_and_the_refill_job_refills_the_slot(as_operator, cloud, allocation,
                                                                            learner, other):
     found = pvp(allocation, other, learner)
     service.start_round(found)
@@ -102,7 +102,7 @@ def test_a_heartbeat_pushes_the_expiry_and_a_closed_allocation_takes_none(as_ope
     refused(as_operator.post(f"/api/allocations/{allocation.pk}/heartbeat/"), 409, "allocation_closed")
 
 
-def test_a_player_heartbeats_the_allocation_but_cannot_close_it_or_end_the_round(browser, allocation, problem, learner, other):
+def test_a_player_heartbeats_the_allocation_but_cannot_close_it_or_end_the_round(browser, allocation, learner, other):
     found = pvp(allocation, other, learner)
     browser.force_authenticate(other)
 
@@ -112,7 +112,7 @@ def test_a_player_heartbeats_the_allocation_but_cannot_close_it_or_end_the_round
     refused(browser.post(url(found, "start/")), 403, "not_operator")
 
 
-def test_the_round_says_whether_the_viewer_operates_its_allocation(as_operator, browser, allocation, problem, learner, other):
+def test_the_round_says_whether_the_viewer_operates_its_allocation(as_operator, browser, allocation, learner, other):
     found = pvp(allocation, other, learner)
     by_operator = as_operator.get(url(found)).json()
     browser.force_authenticate(other)
@@ -122,8 +122,8 @@ def test_the_round_says_whether_the_viewer_operates_its_allocation(as_operator, 
     assert by_player["operated"] is False
 
 
-def test_asking_for_a_slot_closes_an_allocation_past_its_limit_and_starts_rebuilding_its_slot(as_learner, cloud,
-                                                                                            allocation, problem,
+def test_asking_for_a_slot_closes_an_allocation_past_its_limit_and_starts_refilling_its_slot(as_learner, cloud,
+                                                                                            allocation,
                                                                                             learner, other):
     found = pvp(allocation, other, learner)
     service.start_round(found)
@@ -144,7 +144,7 @@ def test_staff_create_a_bot_round_and_see_the_token_once(as_staff, allocation, p
     assert answer.status_code == 201, answer.content
     made = answer.json()
     player = Player.objects.get(round_id=made["round"], side="attack")
-    assert player.client == "bot" and player.token_hash == auth.hashed(made["bot_tokens"]["attack"])
+    assert player.client == "bot" and player.token_hash == player_tokens.hashed(made["bot_tokens"]["attack"])
     assert sorted(one["side"] for one in made["players"]) == ["attack", "defence"]
     assert "bot_tokens" not in as_staff.get(url(Round.objects.get(pk=made["round"]))).json()
 
@@ -161,7 +161,7 @@ def test_a_round_the_problem_or_matchup_does_not_allow_is_refused(as_operator, a
             status, code, path=path)
 
 
-def test_an_inactive_account_cannot_be_a_player(as_operator, allocation, problem, learner):
+def test_an_inactive_account_cannot_be_a_player(as_operator, allocation, learner):
     learner.is_active = False
     learner.save(update_fields=["is_active"])
     refused(as_operator.post(f"/api/allocations/{allocation.pk}/rounds/", {
@@ -180,14 +180,14 @@ def test_players_are_shown_by_username_and_never_by_user_id(as_staff, allocation
     assert all("user" not in player and "user_id" not in player for player in shown.values())
 
 
-def test_one_user_cannot_take_both_players_of_a_round(as_operator, allocation, problem, learner):
+def test_one_user_cannot_take_both_players_of_a_round(as_operator, allocation, learner):
     refused(as_operator.post(f"/api/allocations/{allocation.pk}/rounds/", {
         "matchup": "pvp",
         "players": {"attack": {"username": learner.username}, "defence": {"username": learner.username}}}, format="json"),
         409, "already_playing")
 
 
-def test_a_second_open_round_on_one_allocation_is_refused(allocation, problem, learner, other):
+def test_a_second_open_round_on_one_allocation_is_refused(allocation, learner, other):
     pvp(allocation, other, learner)
 
     with pytest.raises(errors.Conflict) as raised:
@@ -195,7 +195,7 @@ def test_a_second_open_round_on_one_allocation_is_refused(allocation, problem, l
     assert raised.value.code == "round_open"
 
 
-def test_joining_an_open_player_takes_it_once(browser, allocation, problem, learner, other, make_user):
+def test_joining_an_open_player_takes_it_once(browser, allocation, learner, other, make_user):
     found = service.create_round(allocation, None, "pvp", {"attack": {"open": True},
                                                             "defence": {"username": learner.username}}).round
     browser.force_authenticate(other)
@@ -212,7 +212,7 @@ def test_joining_an_open_player_takes_it_once(browser, allocation, problem, lear
     assert kinds(found).count("player.joined") == 2
 
 
-def test_a_round_with_an_open_player_does_not_start(as_operator, allocation, problem, learner):
+def test_a_round_with_an_open_player_does_not_start(as_operator, allocation, learner):
     found = service.create_round(allocation, None, "pvp", {"attack": {"open": True},
                                                             "defence": {"username": learner.username}}).round
 
@@ -250,7 +250,7 @@ def test_a_staff_edit_mid_round_changes_nothing_in_the_running_round(allocation,
     assert found.snapshot["problem"]["title"] == "Placeholder round"
 
 
-def test_a_failed_start_leaves_the_round_created_to_try_again(monkeypatch, allocation, problem, learner, other):
+def test_a_failed_start_leaves_the_round_created_to_try_again(monkeypatch, allocation, learner, other):
     from scoring import baseline as referee
 
     found = pvp(allocation, other, learner)
@@ -266,12 +266,12 @@ def test_a_failed_start_leaves_the_round_created_to_try_again(monkeypatch, alloc
     assert found.phase == "created" and found.started is None
 
 
-def test_an_allocation_where_an_objective_fell_starts_no_new_scored_round(allocation, problem, learner, other):
-    from scoring.models import Objective
+def test_an_allocation_where_an_objective_fell_starts_no_new_scored_round(allocation, learner, other):
+    from scoring.models import ObjectiveLoss
 
     found = pvp(allocation, other, learner)
     service.start_round(found)
-    Objective.objects.create(round=found, key="board-auth-user-admin", name="admin", achieved_at=timezone.now())
+    ObjectiveLoss.objects.create(round=found, key="board-auth-user-admin", name="admin", achieved_at=timezone.now())
     service.end_round(found, "ended_by_operator")
 
     with pytest.raises(errors.Conflict) as raised:
@@ -286,7 +286,7 @@ def test_an_allocation_where_an_objective_fell_starts_no_new_scored_round(alloca
 
 
 @pytest.mark.parametrize("side", ["attack", "defence"])
-def test_a_player_forfeits_and_the_round_ends_by_its_side(browser, allocation, problem, learner, other, side):
+def test_a_player_forfeits_and_the_round_ends_by_its_side(browser, allocation, learner, other, side):
     found = pvp(allocation, other, learner)
     service.start_round(found)
     browser.force_authenticate({"attack": other, "defence": learner}[side])
@@ -299,7 +299,7 @@ def test_a_player_forfeits_and_the_round_ends_by_its_side(browser, allocation, p
     assert (last["kind"], last["body"]["reason"]) == ("round.ended", f"forfeit_{side}")
 
 
-def test_the_operator_ends_a_round_once(as_operator, allocation, problem, learner, other):
+def test_the_operator_ends_a_round_once(as_operator, allocation, learner, other):
     found = pvp(allocation, other, learner)
     service.start_round(found)
 
@@ -328,7 +328,7 @@ def test_rounds_list_what_the_user_holds_and_what_is_joinable(browser, allocatio
     assert mine == []
 
 
-def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, allocation, problem, learner, other, make_user,
+def test_open_rounds_list_only_what_the_user_holds_unless_staff(browser, allocation, learner, other, make_user,
                                                                 staff):
     found = pvp(allocation, other, learner)
     browser.force_authenticate(make_user("stranger"))
@@ -355,7 +355,7 @@ def test_learner_lists_leave_out_rounds_of_unpublished_problems_but_the_staff_op
     assert [one["round"] for one in browser.get("/api/rounds/?mine=1").json()] == [hidden.pk]
 
 
-def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, cloud, allocation, problem, learner, other):
+def test_a_round_ended_while_it_starts_stays_ended(monkeypatch, cloud, allocation, learner, other):
     from training.attack import origins
 
     found = pvp(allocation, other, learner)
@@ -404,7 +404,7 @@ def test_the_next_allocation_request_closes_an_expired_one_and_prunes_old_closed
     assert not Allocation.objects.filter(pk=old.pk).exists()
 
 
-def test_a_request_on_an_expired_allocation_closes_it_and_ends_its_round(as_operator, cloud, allocation, problem,
+def test_a_request_on_an_expired_allocation_closes_it_and_ends_its_round(as_operator, cloud, allocation,
                                                                         learner, other):
     found = service.start_round(pvp(allocation, other, learner))
     Allocation.objects.filter(pk=allocation.pk).update(expires_at=timezone.now() - timedelta(seconds=1))

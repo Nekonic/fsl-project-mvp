@@ -31,7 +31,7 @@ BACKUPS = ROOT / "backups"
 PLATFORM_KEY = "/data/ssh/id_ed25519"
 PLATFORM_UID = 10001
 CHECKOUT = "/opt/cr"
-STORE_SERVICES = "platform rebuild"
+STORE_SERVICES = "platform refill"
 VENV_COMMAND = (
     "exec 9>/tmp/cr-venv.lock && flock 9 && "
     f"/usr/local/bin/uv sync --quiet --frozen --project {CHECKOUT} --python /usr/bin/python3"

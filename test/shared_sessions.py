@@ -15,7 +15,7 @@ from range import ATTACKER, BOARD, log_collector, missing, platform_addresses, r
 CONTROL = "board-sqli-search"
 SECOND_SHAPE = "board-sqli-union-search"
 UNION = "board-sqli-union-search"
-GATEWAY = "gateway"
+WAF = "waf"
 BENIGN_SEARCH = "board-normal-search"
 SQLMAP = "board-sqli-orderby-sqlmap"
 LAST_ATTACK = "board-path-traversal-static"
@@ -129,7 +129,7 @@ def full_run(stack_is_up):
         scored = plays.score_when_ready(played, until=ready)
         return {
             "own_sources": {"127.0.0.1", "::1", *platform_addresses(log_collector(played.allocation)),
-                            *run(GATEWAY, ["hostname", "-I"], allocation=played.allocation).stdout.split()},
+                            *run(WAF, ["hostname", "-I"], allocation=played.allocation).stdout.split()},
             "round": played.round,
             "score": scored,
             "markers": markers,

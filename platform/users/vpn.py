@@ -11,7 +11,7 @@ from cr import errors
 from cr.config import configured
 from sandbox import attacker
 from sandbox import vpn as tunnel
-from sandbox.reach import slot_range
+from sandbox.substrate import slot_range
 from users.models import VpnProfile
 
 ATTACKER = attacker.ATTACKER_ROLE

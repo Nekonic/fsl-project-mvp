@@ -9,7 +9,7 @@ from users import accounts as service
 from users import permissions as users
 from users import serializers
 from users import vpn
-from training.round import access as rounds
+from training.round import auth
 
 ACCOUNTS = ["accounts"]
 VPN_ISSUED = {201: serializers.VpnIssued}
@@ -121,7 +121,7 @@ def vpn_context(request, **more) -> dict:
 
 
 class VpnProfile(APIView):
-    permission_classes = [rounds.Approved]
+    permission_classes = [auth.Approved]
 
     @extend_schema(tags=ACCOUNTS, request=None, responses=VPN_ISSUED, operation_id="vpn_profile_issue")
     def post(self, request):

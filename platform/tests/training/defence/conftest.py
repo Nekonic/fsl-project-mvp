@@ -54,7 +54,7 @@ def recorded(source: Path) -> None:
     probes.mkdir()
     cases = {**RECORDED, **{case: None for case in TOOL_RECORDED}}
     (probes / "manifest.json").write_text(json.dumps({
-        "image_digest": "sha256:placeholder", "recorded_at": "2026-11-20T00:00:00+00:00",
+        "image": "ghcr.io/nekonic/cr-board", "recorded_at": "2026-11-20T00:00:00+00:00",
         "cases": {case: {"marker": f"probe-{case}"} for case in cases}}))
     for case, request in cases.items():
         (probes / f"{case}.pcap").write_bytes(b"\xd4\xc3\xb2\xa1" + case.encode())
@@ -67,7 +67,7 @@ def with_second_sensor(source: Path) -> None:
     for path in sorted(source.glob("wargames/*/topology.yaml")):
         document = yaml.safe_load(path.read_text())
         document["devices"]["cr-ids2"] = dict(SECOND_SENSOR)
-        document["watches"]["sensor2"] = "gateway"
+        document["watches"]["sensor2"] = "waf"
         path.write_text(yaml.safe_dump(document, sort_keys=False))
 
 
@@ -76,7 +76,7 @@ def source(tmp_path, settings, monkeypatch):
     made = copied_source(tmp_path / "source")
     recorded(made)
     settings.CR_SOURCE = made
-    monkeypatch.setenv("CR_SUBSTRATE", "testing.fakerange.connect")
+    monkeypatch.setattr("cr.config.SUBSTRATE", "testing.fakerange.connect")
     monkeypatch.setenv("CR_JUMP_DIR", str(tmp_path / "jump"))
     monkeypatch.setenv("CR_JUMP_HOST", "jump.range.test")
     return made

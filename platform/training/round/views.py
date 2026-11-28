@@ -9,9 +9,9 @@ from rest_framework.response import Response
 from cr import errors
 from sandbox import service as sandbox
 from training.models import RoundRecord
-from training.round import access as auth
+from training.round import auth
 from training.round import allocation as allocations
-from training.round import bots as bot_runs
+from training.round import bot_runs
 from training.round import debrief as debriefs
 from training.round import lifecycle as service
 from training.round import records

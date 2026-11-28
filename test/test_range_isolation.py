@@ -11,8 +11,8 @@ from conftest import STANDING
 from opening import READY
 from range import ATTACKER, BOARD, LOG_SERVER, log_collector, platform_addresses, run, run_side_by_side
 
-GATEWAY = "gateway"
-PROBERS = (ATTACKER, GATEWAY, BOARD)
+WAF = "waf"
+PROBERS = (ATTACKER, WAF, BOARD)
 ROUTER = "121.134.88.42"
 PUBLIC_NAME = "board.com"
 DEFAULT_DEV = re.compile(r"^default via \S+ dev (\S+)", re.M)
@@ -42,7 +42,7 @@ def addresses_of(listed: str) -> list[ipaddress.IPv4Interface]:
 
 
 def waf_side(allocation: int | None = None) -> dict:
-    return run_side_by_side(GATEWAY, {
+    return run_side_by_side(WAF, {
         "addresses": ["ip", "-o", "-4", "addr", "show"],
         "route": ["ip", "-4", "route", "show", "default"],
         "upstreams": ["getent", "hosts", *PAST_THE_WAF],
@@ -63,7 +63,7 @@ def slot_of(allocation: int | None = None) -> str:
 def facts():
     waf = waf_side()
     collector = log_collector()
-    own = {role: addresses_of(run(role, ["ip", "-o", "-4", "addr", "show"]).stdout) for role in (ATTACKER, GATEWAY)}
+    own = {role: addresses_of(run(role, ["ip", "-o", "-4", "addr", "show"]).stdout) for role in (ATTACKER, WAF)}
     control = next(one.network for one in own[ATTACKER] if ipaddress.ip_address(collector) in one.network)
     public = run(ATTACKER, ["getent", "ahostsv4", PUBLIC_NAME]).stdout.split()
     return {
@@ -221,7 +221,7 @@ def test_a_refill_gives_the_next_allocation_a_new_waf_vm_with_nothing_the_last_l
     played = _played_to_plant_in(standing_stack)
     try:
         slot = slot_of(played.allocation)
-        planted = run(GATEWAY, ["sh", "-c", f"printf '%s\\n' {shlex.quote(token)} > {CANARY} && cat {BOOT_ID}"],
+        planted = run(WAF, ["sh", "-c", f"printf '%s\\n' {shlex.quote(token)} > {CANARY} && cat {BOOT_ID}"],
                       allocation=played.allocation)
         assert planted.ok, planted.output
         booted = planted.stdout.strip()
@@ -230,7 +230,7 @@ def test_a_refill_gives_the_next_allocation_a_new_waf_vm_with_nothing_the_last_l
     assert closed.ok, closed.text
 
     settled = _settled_after_close(slot)
-    after = run(GATEWAY, ["sh", "-c", f"cat {BOOT_ID}; cat {CANARY} 2>/dev/null; true"], slot=int(slot))
+    after = run(WAF, ["sh", "-c", f"cat {BOOT_ID}; cat {CANARY} 2>/dev/null; true"], slot=int(slot))
 
     assert (settled.get("refill") or {}).get("state") == READY, (
         f"slot {slot} did not settle after its refill: {settled}")

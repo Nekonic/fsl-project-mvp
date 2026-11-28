@@ -12,7 +12,7 @@ from domain.scoring.objectives import attempts, breaches, tally
 from domain.types import ActionRecord, DetectionRecord, ObjectiveRecord, ResponseRecord
 from scoring.baseline import LOOT_VERIFIED, declared, objective_model
 from scoring.losses import losses
-from scoring.models import Objective, Verdict
+from scoring.models import ObjectiveLoss, Verdict
 from training.models import Round
 
 
@@ -70,7 +70,7 @@ class RoundScore:
         }
 
 
-def record_of(tier: Mapping[str, Any], row: Objective | None, by_loot: bool) -> ObjectiveRecord:
+def record_of(tier: Mapping[str, Any], row: ObjectiveLoss | None, by_loot: bool) -> ObjectiveRecord:
     return ObjectiveRecord(key=tier["key"], name=tier["name"], category=tier.get("category") or "",
                            difficulty=int(tier["difficulty"]), achieved_at=row.achieved_at if row else None,
                            earliest=row.earliest if row else None, latest=row.latest if row else None,
@@ -124,7 +124,7 @@ def settle(found: Round, actions: Sequence[ActionRecord], detections: Sequence[D
            responses: Sequence[ResponseRecord] = ()) -> int:
     settled = {one.key: one for one in score(found, actions, detections, responses=responses).lost}
     changed = 0
-    for objective in Objective.objects.filter(round=found, key__in=settled):
+    for objective in ObjectiveLoss.objects.filter(round=found, key__in=settled):
         now = settled[objective.key]
         if (objective.seen, objective.attributed_marker) != (now.detected, now.attributed_marker):
             objective.seen, objective.attributed_marker = now.detected, now.attributed_marker

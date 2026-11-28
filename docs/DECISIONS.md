@@ -11707,3 +11707,65 @@ unchanged. No problem exported in the backup folder names the case.
 labels on the `mgmt` network and the collector's `hostname: log-server` were read by nothing.
 `log-server` names only the infra VM's log relay. The attacker's target URL is
 `ATTACKER_TARGET_URL` or the default, as before.
+
+## 2026-11-28 — The three `access.py` modules have their own names
+
+`telemetry/access.py`, `sandbox/access.py` and `training/round/access.py` meant three unrelated
+things, and every importer renamed them. They are `telemetry/waf_log.py` (the WAF access and
+error logs: refusals, traffic, origin requests), `sandbox/jump.py` (the platform sshd's jump
+grants and the box accounts' keys; the entrypoint runs `python -m sandbox.jump`) and
+`training/round/auth.py` (player token authentication and the permission classes). The seam
+and import tests hold the new paths.
+
+## 2026-11-28 — `bot_catalog.py`, `bot_runs.py` and `player_tokens.py`
+
+Three modules were called `bots.py`. `domain/bots.py` keeps its name; `training/content/bots.py`
+is `bot_catalog.py` (steps and cards read from files) and `training/round/bots.py` is
+`bot_runs.py` (the `BotRun` queue). `users/players.py` held only the player token helpers for
+`training.models.Player`, and every importer was in `training/round`; it is
+`training/round/player_tokens.py`, layer 3 beside `training/models.py`.
+
+## 2026-11-28 — `sandbox/substrate.py` and `sandbox/declaration.py`
+
+`sandbox/reach.py` builds the substrate, whole or scoped to a slot; it is `sandbox/substrate.py`.
+`sandbox/definitions.py` parsed `declaration.yaml` into a `Declaration` and was imported as
+`declaration`; it is `sandbox/declaration.py`. `stack_plan.Sandbox`, the plan of one slot stack,
+is `stack_plan.Plan`, and the `fabric` module is imported under its own name, not `networks`.
+`CR_SUBSTRATE` is no longer read: the product runs only on OpenStack, so the substrate is
+`cr.config.SUBSTRATE`, which tests replace; the platform VM no longer writes the variable.
+
+## 2026-11-28 — A slot is refilled, by the `refill` service
+
+The same job was a refill in the state module and the API and a rebuild in the compose
+service, the management command and the setting. The compose service is `refill`
+(container `cr-refill`), the command `manage.py refill_slots`, the setting
+`CR_REFILL_EVERY_SECONDS`, and the functions `keep_refilling`, `hold_for_refill` and
+`let_go_of_refill`; a held slot's state is `refilling`. A platform VM built before this keeps
+the `rebuild` service until `bin/cloud up --replace` builds it again.
+
+## 2026-11-28 — The WAF is the `waf` device role
+
+`gateway` was the WAF's device role in each `topology.yaml` and also every network's default
+gateway. The device role is `waf`; the network gateway (`segment.gateway`, the `GATEWAY`
+variable of `slot-boot`) keeps its name. The staff API's `run_on_role` and the acceptance
+tests name the WAF `waf`.
+
+## 2026-11-28 — The WAF shell is `defence/waf/terminal/`
+
+The WAF box's shell was `GET /api/rounds/<round>/defence/terminal/` (`defence_terminal`), beside
+`defence/ids/terminal/`; both are defence terminals. It is `defence/waf/terminal/`
+(`defence_waf_terminal`); the console, the bots' tools and steps and the acceptance driver call
+the new operation. `terminal-auth/defence` and `/vm-terminal/defence/` keep their names.
+
+## 2026-11-28 — Scoring and content names that said something else
+
+The `scoring.Objective` table holds one row per objective lost; the model is `ObjectiveLoss`
+on the same table (`scoring_objective`), reached from a round as `objective_losses`. The
+verdict constraint on (round, action) is `one_verdict_per_action`. `Problem.kind` and
+`Round.kind` allowed only `round` and are gone from the models, the API and the problem
+document; an import of a document exported with `kind` drops it. `ProbeSet` copied
+`probes/manifest.json` into a table nothing read and is gone; the manifest's `image_digest`,
+which held an image name, is `image`. `ELASTIC_SESSION_INDEX` is `ELASTIC_SLOT_INDEX`.
+The board's ground truth is read only from inside the board, so `GroundTruthConfig` holds the
+port (`BOARD_PORT`, default 8000) instead of a compose-era URL. `pool.phase` and two orphan
+test fixtures are gone.

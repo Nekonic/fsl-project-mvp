@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import replace
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +14,8 @@ from cr import errors
 from domain.problems import validate_problem
 from domain.round_rules import Matchup
 from sandbox.crs import editable, refusals
-from training.content import bots, catalog
-from training.models import Posture, ProbeSet, Problem, RoundSetup, Wargame
+from training.content import bot_catalog, catalog
+from training.models import Posture, Problem, RoundSetup, Wargame
 
 DOCUMENT_KEYS = ("problem", "round", "start_posture")
 PROBLEM_DEFAULTS = {"summary": "", "body": "", "published": False}
@@ -40,11 +39,6 @@ def sync_wargames() -> dict[str, catalog.Wargame]:
             "hosts": list(wargame.hosts), "objective_model": wargame.objective_model,
             "case_file": wargame.case_file, "default_traffic": wargame.default_traffic,
         })
-        if wargame.probes:
-            ProbeSet.objects.update_or_create(
-                wargame_id=wargame.id, image_digest=wargame.probes.image_digest,
-                defaults={"recorded_at": datetime.fromisoformat(wargame.probes.recorded_at),
-                          "cases": wargame.probes.cases})
     return declared
 
 
@@ -112,7 +106,7 @@ def setup_of(found: Problem) -> RoundSetup | None:
 
 def exported(found: Problem) -> dict:
     return {
-        "problem": {"kind": found.kind, "wargame": found.wargame_id, "side": found.side, "title": found.title,
+        "problem": {"wargame": found.wargame_id, "side": found.side, "title": found.title,
                     "summary": found.summary, "body": found.body, "published": found.published},
         "round": setup_document(setup_of(found)),
         "start_posture": posture_document(found.start_posture),
@@ -141,7 +135,7 @@ def validate(doc: object) -> list[errors.FieldError]:
         return [errors.FieldError(path="", code="not_an_object")]
     declared = sync_wargames()
     found = list(shown_errors(validate_problem(doc, {
-        key: replace(value.for_validation(), steps=bots.step_ids(), cards=bots.card_ids_for(key))
+        key: replace(value.for_validation(), steps=bot_catalog.step_ids(), cards=bot_catalog.card_ids_for(key))
         for key, value in declared.items()})))
     found += [errors.FieldError(path=key, code="unknown_field") for key in doc if key not in DOCUMENT_KEYS]
     problem_part = doc.get("problem")
@@ -218,12 +212,18 @@ def save_document(doc: Mapping, base_revision: object = None, *, problem_id: int
 
 
 def import_document(doc: Mapping, author=None) -> Problem:
-    return save_document(doc, author=author)
+    return save_document(without_kind(doc), author=author)
+
+
+def without_kind(doc: Mapping) -> Mapping:
+    if not isinstance(doc, Mapping) or not isinstance(doc.get("problem"), Mapping):
+        return doc
+    return {**doc, "problem": {key: value for key, value in doc["problem"].items() if key != "kind"}}
 
 
 def written(found: Problem, doc: Mapping) -> None:
     given = {**PROBLEM_DEFAULTS, **doc["problem"]}
-    found.kind, found.side, found.title = given["kind"], given["side"], given["title"]
+    found.side, found.title = given["side"], given["title"]
     found.summary, found.body, found.published = given["summary"], given["body"], given["published"]
     found.wargame_id = given["wargame"]
     found.start_posture = kept_posture(given["wargame"], doc.get("start_posture"))
@@ -283,7 +283,7 @@ def snapshot(found: Problem) -> dict[str, Any]:
     setup = setup_of(found)
     chosen = set(setup.objectives) if setup and setup.objectives else None
     frozen = {
-        "problem": {"id": found.pk, "kind": found.kind, "side": found.side, "title": found.title,
+        "problem": {"id": found.pk, "side": found.side, "title": found.title,
                     "summary": found.summary, "body": found.body, "revision": found.revision},
         "wargame": wargame_part(declared),
         "start_posture": posture_document(found.start_posture),

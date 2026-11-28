@@ -11,7 +11,7 @@ function json(body: unknown): Response {
 }
 
 const STORED = {
-  problem: { id: 12, revision: 3, kind: "round", wargame: "board", side: "defence", title: "Placeholder round", summary: "", body: "", published: false },
+  problem: { id: 12, revision: 3, wargame: "board", side: "defence", title: "Placeholder round", summary: "", body: "", published: false },
   round: { matchups: ["def_vs_bot"], posture: null, probe_cases: [], objectives: [], benign_every_s: 60, time_limit_s: 900, bot_steps: [], cards: [] },
   start_posture: null,
 };

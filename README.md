@@ -152,7 +152,7 @@ flowchart TB
     pnet --- pvm
     subgraph pvm["VM cr-platform"]
       platform["platform: API, 채점, ssh 점프"]
-      rebuild["rebuild: 반납된 슬롯 스택 재생성"]
+      refill["refill: 반납된 슬롯 스택 재생성"]
       elk["Elasticsearch, Kibana"]
       collector["collector"]
     end
@@ -208,7 +208,7 @@ flowchart TB
   붙어 af-packet으로 WAF와 대상 사이의 트래픽을 봅니다. WAF가 막은 요청은 센서에 닿지 않고 WAF 로그에 남습니다.
 - 센서가 보는 요청의 출발지는 WAF입니다. 수집할 때 같은 요청의 X-Forwarded-For 주소를 알림의 출발지로 씁니다.
 - 격리는 Neutron 보안 그룹과 port security가 맡습니다. Kali나 WAF의 root 셸로는 바꿀 수 없습니다.
-- 플랫폼 VM의 `rebuild` 서비스(같은 이미지의 `manage.py rebuild_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
+- 플랫폼 VM의 `refill` 서비스(같은 이미지의 `manage.py refill_slots`)는 반납된 슬롯의 스택을 다시 만드는 일만
   합니다. `bots` 서비스(`cr-bots`)는 대기 중인 봇 실행을 REST API로 가져가 실행마다 Claude Code를 하나 띄웁니다
   (`bots/README.md`). 방어 봇은 라운드가 끝날 때까지 같은 세션에 남고, 런처가 난이도 단계의 주기(`steps.yaml`의
   `watch_s`)마다 새 알림, 새 차단, 처음 보는 출발지를 넣어 줍니다.
@@ -463,7 +463,7 @@ npm run build && npx vitest run
 DB는 플랫폼 VM의 `cr-postgres` 컨테이너(PostgreSQL 18.4, `cr_storedata` 볼륨)입니다. 계정, 할당, 라운드,
 플레이어, 출발지, 공격 기록, 도구 실행, 탐지 기록, 고객 요청, 목표, 룰셋, 룰 테스트가 들어 있습니다.
 Elasticsearch 데이터는 백업하지 않습니다. `cr-postgres`는 `store` 네트워크(외부로 나가지 않는 내부 네트워크)에만
-붙고, 거기에는 `platform`과 `rebuild`만 함께 있습니다. 비밀번호는 cloud-init이 만든 `/opt/cr/store-password`
+붙고, 거기에는 `platform`과 `refill`만 함께 있습니다. 비밀번호는 cloud-init이 만든 `/opt/cr/store-password`
 (0640, uid 10001, gid 999)를 compose secret으로 읽습니다.
 
 ```bash
@@ -479,13 +479,13 @@ CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-po
 복원(DB 내용 전체를 한 트랜잭션으로 바꿉니다):
 
 ```bash
-ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose stop platform rebuild'
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose stop platform refill'
 CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-postgres bash -s" \
   bin/backup --restore backups/store-20261126T110000+0900.pgdump
-ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose start platform rebuild'
+ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose start platform refill'
 ```
 
-`platform`과 `rebuild`를 먼저 멈춥니다. 연결이 남아 있으면 복원이 그 잠금을 기다립니다.
+`platform`과 `refill`을 먼저 멈춥니다. 연결이 남아 있으면 복원이 그 잠금을 기다립니다.
 
 SQLite 백업(`db-<UTC+9 시각>.sqlite3`)을 PostgreSQL로 옮기기(`up --replace`가 이 경우 알아서 합니다):
 
@@ -493,10 +493,10 @@ SQLite 백업(`db-<UTC+9 시각>.sqlite3`)을 PostgreSQL로 옮기기(`up --repl
 scp -i ~/.ssh/fsl_claude backups/db-20261125T042248Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS
 cd /opt/cr
-sudo docker compose stop platform rebuild
+sudo docker compose stop platform refill
 sudo docker compose run --rm --no-deps -T -v /opt/cr/backups:/backups:ro --entrypoint gosu platform \
   cr python manage.py load_sqlite_store /backups/db-20261125T042248Z.sqlite3
-sudo docker compose start platform rebuild
+sudo docker compose start platform refill
 ```
 
 `load_sqlite_store`는 백업 파일을 읽기만 합니다. 복사본을 지금 코드의 마이그레이션까지 올린 뒤 PostgreSQL을
@@ -528,7 +528,7 @@ sudo docker compose start platform rebuild
 | 8002의 대상 사이트 | 콘솔 쿠키를 지운 뒤 대상에 넘기고, 대상의 `Set-Cookie`는 브라우저로 보내지 않음 |
 | Elasticsearch, Kibana | 9200, 5601은 플랫폼 VM loopback에만 열림. 인증은 켜지 않음. space 안의 Kibana API 호출은 nginx가 플랫폼의 `/kibana-gate/`로 넘김. Discover가 쓰지 않는 호출(개발 도구, `bsearch`, ES\|QL 등)은 그 게이트가 한국어 안내와 함께 403으로 거절 |
 | 프로젝트 비밀번호 | `/opt/cr/openstack-password`(0600)를 compose secret으로 읽기 전용 마운트. 컨테이너 환경 변수에는 없음 |
-| DB | `cr-postgres`는 포트를 열지 않고 내부 `store` 네트워크에만 붙음. 거기에는 `platform`과 `rebuild`만 있고 `bots`는 없음. 비밀번호는 `/opt/cr/store-password`(0640)를 compose secret으로 읽음 |
+| DB | `cr-postgres`는 포트를 열지 않고 내부 `store` 네트워크에만 붙음. 거기에는 `platform`과 `refill`만 있고 `bots`는 없음. 비밀번호는 `/opt/cr/store-password`(0640)를 compose secret으로 읽음 |
 | 플랫폼 VM 인바운드 | ssh, 2222, 8000, 8002, 51820-51919/udp는 `cloud.yaml`의 `network.allowed`에서만. 기본값 `[0.0.0.0/0]` |
 | 훈련 환경 VM | 학습자는 Kali에서 root(`NOPASSWD:ALL`). 그래서 소진된 출발지는 학습자가 손댈 수 없는 infra 라우터에서 떨어뜨림. 스택 사이, 스택과 플랫폼 사이의 격리는 VM 밖의 Neutron 보안 그룹과 port security가 맡음 |
 | Docker 소켓 | 플랫폼 VM의 어떤 서비스에도 마운트하지 않음 |

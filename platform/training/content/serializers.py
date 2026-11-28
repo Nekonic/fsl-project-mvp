@@ -1,8 +1,8 @@
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from training.content import bots as bot_catalog
-from training.models import PROBLEM_KINDS, PROBLEM_SIDES
+from training.content import bot_catalog
+from training.models import PROBLEM_SIDES
 
 MATCHUPS = ["def_vs_bot", "atk_vs_bot"]
 
@@ -26,7 +26,6 @@ class InlinePosture(serializers.Serializer):
 
 
 class ProblemFields(serializers.Serializer):
-    kind = serializers.ChoiceField(choices=PROBLEM_KINDS)
     wargame = serializers.CharField()
     side = serializers.ChoiceField(choices=PROBLEM_SIDES)
     title = serializers.CharField()
@@ -63,7 +62,6 @@ class Validation(serializers.Serializer):
 
 class StaffProblem(serializers.Serializer):
     id = serializers.IntegerField()
-    kind = serializers.CharField()
     wargame = serializers.CharField(source="wargame_id")
     side = serializers.CharField()
     title = serializers.CharField()
@@ -125,7 +123,6 @@ class LearnerWargame(serializers.Serializer):
 
 class LearnerProblemSummary(serializers.Serializer):
     id = serializers.IntegerField()
-    kind = serializers.CharField()
     wargame = serializers.CharField(source="wargame_id")
     side = serializers.CharField()
     title = serializers.CharField()

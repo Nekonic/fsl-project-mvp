@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from telemetry import access
+from telemetry import waf_log
 from testing.fakes import FakeElastic
 from tests import rounds
 from training.models import Action, Origin
@@ -36,11 +36,11 @@ def test_rows_from_the_round_s_attacker_origins_become_origin_requests_and_nothi
     es.add("after", logged(900, CURRENT))
 
     with patch("telemetry.elastic.requests.post", es.post):
-        found_requests = access.origin_requests(found)
+        found_requests = waf_log.origin_requests(found)
 
     assert found_requests == (
-        access.OriginRequest(id="tunnelled", at=START + timedelta(seconds=10), ip=CURRENT, method="GET",
+        waf_log.OriginRequest(id="tunnelled", at=START + timedelta(seconds=10), ip=CURRENT, method="GET",
                              host="board.com", path="/search/?q=x"),
-        access.OriginRequest(id="from-spent", at=START + timedelta(seconds=20), ip=SPENT, method="POST",
+        waf_log.OriginRequest(id="from-spent", at=START + timedelta(seconds=20), ip=SPENT, method="POST",
                              host="board.com", path="/accounts/login/"))
     assert [one.marker for one in found_requests] == ["log:tunnelled", "log:from-spent"]

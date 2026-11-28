@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from cr import errors
 from cr.config import configured
-from sandbox import reach, refill
+from sandbox import refill, substrate
 
 RETRY_AFTER = 30
 
@@ -79,13 +79,13 @@ def unavailable() -> errors.Unavailable:
     return errors.Unavailable(code="range_unavailable", params={"retry_after": RETRY_AFTER})
 
 
-def hold_for_reset(slot: int | None) -> bool:
-    return bool(slot) and refill.hold_for_reset(store(), slot)
+def hold_for_refill(slot: int | None) -> bool:
+    return bool(slot) and refill.hold_for_refill(store(), slot)
 
 
-def let_go_of_reset(slot: int | None) -> None:
+def let_go_of_refill(slot: int | None) -> None:
     if slot:
-        refill.let_go_of_reset(store(), slot)
+        refill.let_go_of_refill(store(), slot)
 
 
 def refill_slot(slot: int | None, wargame: str) -> None:
@@ -93,7 +93,7 @@ def refill_slot(slot: int | None, wargame: str) -> None:
         return
     kept = store()
     try:
-        replaced = tuple(ident for _, ident in reach.slot_range(slot).reset_slot())
+        replaced = tuple(ident for _, ident in substrate.slot_range(slot).reset_slot())
     except Exception as failed:
         refill.failed(kept, slot, str(failed) or type(failed).__name__)
         if not isinstance(failed, errors.DomainError):
@@ -103,13 +103,13 @@ def refill_slot(slot: int | None, wargame: str) -> None:
 
 
 def slots(holders: dict[int, int]) -> list[SlotLine]:
-    whole, kept = reach.whole_range(), store()
+    whole, kept = substrate.whole_range(), store()
     return [SlotLine(slot=number, wargame=assigned(whole, number), allocation=holders.get(number),
                      refill=refill.standing(kept, number).shown()) for number in numbers(whole)]
 
 
 def cloud_range():
-    whole = reach.whole_range()
+    whole = substrate.whole_range()
     if not hasattr(whole, "ensure_fabric"):
         raise errors.Conflict(code="range_not_cloud")
     return whole
@@ -156,19 +156,19 @@ def empty_pool() -> list[Removed]:
 
 
 def advance_refills() -> list[refill.Refill]:
-    kept, whole = store(), reach.whole_range()
+    kept, whole = store(), substrate.whole_range()
     return [refill.advance(kept, clock, whole.in_slot(owed.slot) if hasattr(whole, "in_slot") else whole)
             for owed in refill.owed(kept)]
 
 
-def keep_rebuilding(every: float, rounds: int | None = None, pause: Callable[[float], None] = time.sleep) -> int:
+def keep_refilling(every: float, rounds: int | None = None, pause: Callable[[float], None] = time.sleep) -> int:
     done = 0
     while rounds is None or done < rounds:
         started = time.monotonic()
         try:
             advance_refills()
         except Exception:
-            logger.exception("advancing the slot rebuilds failed")
+            logger.exception("advancing the slot refills failed")
         done += 1
         if rounds is None or done < rounds:
             pause(max(0.0, every - (time.monotonic() - started)))

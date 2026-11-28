@@ -17,9 +17,9 @@ from urllib.parse import quote
 import requests
 
 from cr.config import OpenStackConfig, SensorConfig
-from sandbox import fabric as networks
+from sandbox import fabric
 from sandbox import pool, stack_plan, suricata, wiring
-from sandbox.definitions import Declaration, Host
+from sandbox.declaration import Declaration, Host
 from sandbox.runner import Drifted, Node, Ran, RangeUnavailable, Segment, Sensor, Shape, execute, reported, reporting
 
 NETWORKS = "GET {neutron}/v2.0/networks?project_id={project}&tags-any={tags}"
@@ -79,7 +79,7 @@ SHARED_CONNECTIONS = "/tmp/cr-ssh-%C"
 SHARED_FOR = 60
 NOVA_MICROVERSION = "2.1"
 SUBJECT_TOKEN = "X-Subject-Token"
-SEGMENT_TAG = networks.TAG
+SEGMENT_TAG = fabric.TAG
 ATTACKER_ROLE = "attacker"
 CUSTOMERS_ROLE = "customers"
 SCORER_ROLE = "scorer"
@@ -138,11 +138,11 @@ def stack_name(slot: int) -> str:
     return STACK.format(slot=slot)
 
 
-def _tags(plan: stack_plan.Sandbox, **marks: str) -> list[str]:
+def _tags(plan: stack_plan.Plan, **marks: str) -> list[str]:
     return [SLOT_TAG.format(slot=plan.slot), *(f"cr.{key}={value}" for key, value in marks.items())]
 
 
-def _lan_rules(plan: stack_plan.Sandbox, lan: stack_plan.Lan) -> list[dict]:
+def _lan_rules(plan: stack_plan.Plan, lan: stack_plan.Lan) -> list[dict]:
     if lan.name == plan.logged:
         return [{"direction": "ingress", "protocol": "tcp", "port_range_min": stack_plan.SHIPPED_PORT,
                  "port_range_max": stack_plan.SHIPPED_PORT, "remote_ip_prefix": cidr} for cidr in lan.cidrs]
@@ -151,12 +151,12 @@ def _lan_rules(plan: stack_plan.Sandbox, lan: stack_plan.Lan) -> list[dict]:
             for cidr in ((stack_plan.EVERYWHERE,) if foreign else lan.cidrs)]
 
 
-def lan_groups(plan: stack_plan.Sandbox) -> dict[str, tuple[str, list[dict]]]:
+def lan_groups(plan: stack_plan.Plan) -> dict[str, tuple[str, list[dict]]]:
     grouped = {}
     for lan in plan.lans:
         rules = _lan_rules(plan, lan)
         digest = hashlib.sha256(json.dumps(rules, sort_keys=True).encode()).hexdigest()[:12]
-        grouped[lan.name] = (f"{networks.LAN_GROUP_PREFIX}{digest}", rules)
+        grouped[lan.name] = (f"{fabric.LAN_GROUP_PREFIX}{digest}", rules)
     return grouped
 
 
@@ -164,14 +164,14 @@ def _port_name(port: stack_plan.Port) -> str:
     return f"port_{port.node}_{port.lan}"
 
 
-def _subnet_of(plan: stack_plan.Sandbox, port: stack_plan.Port) -> str:
+def _subnet_of(plan: stack_plan.Plan, port: stack_plan.Port) -> str:
     lan = next(lan for lan in plan.lans if lan.name == port.lan)
     at = next(at for at, cidr in enumerate(lan.cidrs)
               if ipaddress.ip_address(port.address) in ipaddress.ip_network(cidr))
     return f"subnet_{lan.name}_{at}"
 
 
-def template(plan: stack_plan.Sandbox, availability_zone: str = "") -> dict:
+def template(plan: stack_plan.Plan, availability_zone: str = "") -> dict:
     prefix = stack_name(plan.slot)
     roles = sorted({node.role for node in plan.nodes})
     parameters = {name: {"type": "string"} for name in STACK_PARAMETERS}
@@ -226,7 +226,7 @@ def stack_digest(rendered: dict, parameters: dict) -> str:
     return hashed.hexdigest()[:16]
 
 
-def stack_body(plan: stack_plan.Sandbox, rendered: dict, parameters: dict, digest: str, timeout_minutes: int) -> dict:
+def stack_body(plan: stack_plan.Plan, rendered: dict, parameters: dict, digest: str, timeout_minutes: int) -> dict:
     return {"stack_name": stack_name(plan.slot), "template": rendered, "parameters": parameters,
             "tags": ",".join([STACK_TAG, SLOT_TAG.format(slot=plan.slot), WARGAME_TAG + plan.wargame,
                               DIGEST_TAG + digest]),
@@ -422,7 +422,7 @@ def _send(verb: str, url: str, token: str | None, body, timeout: float):
         raise EndpointGone(f"could not reach {url}: {exc}") from exc
 
 
-def _subnet_body(subnet: "networks.Subnet", network_id: str) -> dict:
+def _subnet_body(subnet: "fabric.Subnet", network_id: str) -> dict:
     body = {
         "network_id": network_id, "name": subnet.name, "cidr": subnet.cidr,
         "ip_version": 4, "enable_dhcp": subnet.dhcp, "dns_nameservers": [NO_RESOLVER],
@@ -443,7 +443,7 @@ def _detached(port: dict) -> bool:
 
 def _on_management(shape: Shape, host: str) -> str:
     for segment in shape.segments:
-        if segment.id != networks.MANAGEMENT:
+        if segment.id != fabric.MANAGEMENT:
             continue
         for node in segment.nodes:
             if node.name == host:
@@ -622,9 +622,9 @@ class OpenStack:
         return _metadata(server, SLOT_KEY) in ("", str(self.slot))
 
     def _read(self) -> Shape:
-        carriers = networks.carried(self.declared)
+        carriers = fabric.carried(self.declared)
         wanted = ",".join(f"{SEGMENT_TAG}={carrier}" for carrier in carriers)
-        bound = networks.bound(self.declared, self._all(NETWORKS, "networks", tags=wanted))
+        bound = fabric.bound(self.declared, self._all(NETWORKS, "networks", tags=wanted))
         servers = [server for server in self._all(SERVERS, "servers") if self._mine(server)]
         self._generations = _generations(servers)
         definition = self._definition(self.wargame)
@@ -682,7 +682,7 @@ class OpenStack:
             return held.addresses[host]
         address = _on_management(self.describe(), host)
         if not address:
-            raise RangeUnavailable(f"{host} stands on no {networks.MANAGEMENT} address this platform can reach")
+            raise RangeUnavailable(f"{host} stands on no {fabric.MANAGEMENT} address this platform can reach")
         return address
 
     def _placed(self, role: str) -> tuple[str, str]:
@@ -833,19 +833,19 @@ class OpenStack:
         threading.Thread(target=_tidied, args=(piped, scratch), daemon=True).start()
         return ours
 
-    def plan_fabric(self) -> networks.Plan:
+    def plan_fabric(self) -> fabric.Plan:
         standing_networks, subnets, keypairs, groups = self._fabric_standing()
-        return networks.plan(self.declared, standing_networks, subnets, keypairs, self._public_key(),
+        return fabric.plan(self.declared, standing_networks, subnets, keypairs, self._public_key(),
                            groups, self._reached(standing_networks), self.build.inside)
 
-    def ensure_fabric(self) -> networks.Plan:
+    def ensure_fabric(self) -> fabric.Plan:
         public_key = self._public_key(make=True)
         standing_networks, subnets, keypairs, groups = self._fabric_standing()
-        plan = networks.plan(self.declared, standing_networks, subnets, keypairs, public_key,
+        plan = fabric.plan(self.declared, standing_networks, subnets, keypairs, public_key,
                            groups, self._reached(standing_networks), self.build.inside)
         if plan.drifted:
             raise Drifted("; ".join(plan.drifted))
-        carriers = {segment: network["id"] for segment, network in networks.bound(self.declared, standing_networks).items()}
+        carriers = {segment: network["id"] for segment, network in fabric.bound(self.declared, standing_networks).items()}
         carriers.update({segment: self._make_network(segment) for segment in plan.networks})
         if plan.subnets:
             self.get(self._call(CREATE_SUBNETS), {"subnets": [
@@ -853,49 +853,49 @@ class OpenStack:
             ]})
         if plan.keypair:
             self.get(self._call(IMPORT_KEYPAIR), {
-                "keypair": {"name": networks.KEYPAIR, "public_key": public_key}
+                "keypair": {"name": fabric.KEYPAIR, "public_key": public_key}
             })
         held = {group["name"]: group for group in groups}
         named = {group["name"]: group["id"] for group in groups}
         for name in plan.groups:
             held[name] = self.get(self._call(CREATE_GROUP), {"security_group": {"name": name}})["security_group"]
             named[name] = held[name]["id"]
-            if name == networks.MANAGEMENT_GROUP:
+            if name == fabric.MANAGEMENT_GROUP:
                 self.get(self._call(CREATE_RULE), {"security_group_rule": {
                     "security_group_id": named[name], "direction": "ingress",
-                    "ethertype": "IPv4", "remote_group_id": named[networks.REACH_GROUP],
+                    "ethertype": "IPv4", "remote_group_id": named[fabric.REACH_GROUP],
                 }})
         if plan.ntp:
-            self.get(self._call(CREATE_RULE), {"security_group_rule": networks.ntp_rule(
-                named[networks.REACH_GROUP], named[networks.MANAGEMENT_GROUP])})
+            self.get(self._call(CREATE_RULE), {"security_group_rule": fabric.ntp_rule(
+                named[fabric.REACH_GROUP], named[fabric.MANAGEMENT_GROUP])})
         if plan.collector:
-            self.get(self._call(CREATE_RULE), {"security_group_rule": networks.collector_rule(
-                named[networks.REACH_GROUP], named[networks.SENDERS_GROUP])})
-        for name in networks.CONFINED_GROUPS:
+            self.get(self._call(CREATE_RULE), {"security_group_rule": fabric.collector_rule(
+                named[fabric.REACH_GROUP], named[fabric.SENDERS_GROUP])})
+        for name in fabric.CONFINED_GROUPS:
             if name in plan.confine or name in plan.groups:
-                self._confine(held[name], named[networks.REACH_GROUP])
+                self._confine(held[name], named[fabric.REACH_GROUP])
         if plan.reach:
-            self._attach(carriers[networks.MANAGEMENT], named[networks.REACH_GROUP])
+            self._attach(carriers[fabric.MANAGEMENT], named[fabric.REACH_GROUP])
         self._shape = None
         return plan
 
     def _confine(self, group: dict, reach: str) -> None:
-        for rule in networks.stray_egress(group, reach):
+        for rule in fabric.stray_egress(group, reach):
             self.get(self._call(DELETE_RULE, rule=rule))
-        for rule in networks.missing_egress(group, reach):
+        for rule in fabric.missing_egress(group, reach):
             self.get(self._call(CREATE_RULE), {"security_group_rule": rule})
 
     def _reached(self, standing_networks: list) -> bool:
         if not self.build.platform:
             return True
-        management = networks.bound(self.declared, standing_networks).get(networks.MANAGEMENT)
+        management = fabric.bound(self.declared, standing_networks).get(fabric.MANAGEMENT)
         return management is not None and any(
             port.get("device_id") == self.build.platform
             for port in self._all(PORTS, "ports", network=management["id"])
         )
 
     def _attach(self, network: str, group: str) -> None:
-        name = f"{networks.KEYPAIR}.{networks.MANAGEMENT}"
+        name = f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"
         left = [port["id"] for port in self._all(PORTS, "ports", network=network)
                 if port.get("name") == name and _detached(port)]
         for extra in left[1:]:
@@ -916,7 +916,7 @@ class OpenStack:
         standing_networks, subnets, keypairs, groups = self._fabric_standing()
         own = []
         for network in standing_networks:
-            if networks.segment_of(network) is None:
+            if fabric.segment_of(network) is None:
                 continue
             ports = self._all(PORTS, "ports", network=network["id"])
             servers = [port for port in ports if str(port.get("device_owner") or "").startswith("compute:")]
@@ -928,7 +928,7 @@ class OpenStack:
                     f"{len(standing)} server port(s) still stand on "
                     f"{network['name']}; delete those servers first"
                 )
-        steps = own + networks.teardown(self.declared, standing_networks, subnets, keypairs, groups)
+        steps = own + fabric.teardown(self.declared, standing_networks, subnets, keypairs, groups)
         for kind, ident in steps:
             self.get(self._call(DELETES[kind], **{kind: ident}))
         self._shape = None
@@ -936,11 +936,11 @@ class OpenStack:
 
     def _make_network(self, segment: str) -> str:
         created = self.get(self._call(CREATE_NETWORK), {
-            "network": {"name": networks.network_name(segment)}
+            "network": {"name": fabric.network_name(segment)}
         })["network"]
         try:
             self.get(self._call(TAG_NETWORK, network=created["id"]), {
-                "tags": networks.network_tags(segment)
+                "tags": fabric.network_tags(segment)
             })
         except RangeUnavailable:
             self.get(self._call(DELETE_NETWORK, network=created["id"]))
@@ -965,7 +965,7 @@ class OpenStack:
             private.parent.mkdir(parents=True, exist_ok=True)
             made = subprocess.run(
                 ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C",
-                 networks.KEYPAIR, "-f", str(private)],
+                 fabric.KEYPAIR, "-f", str(private)],
                 capture_output=True, text=True,
             )
             if made.returncode != 0:
@@ -980,7 +980,7 @@ class OpenStack:
 
     def _collector(self, servers: list[dict]) -> str:
         scorer = self.declared.roles.get(SCORER_ROLE, "")
-        network = networks.network_name(networks.MANAGEMENT)
+        network = fabric.network_name(fabric.MANAGEMENT)
         for server in servers:
             if server.get("id") == self.build.platform or known_as(server) == scorer:
                 for entry in (server.get("addresses") or {}).get(network, []):
@@ -988,17 +988,17 @@ class OpenStack:
                         return entry["addr"]
         return ""
 
-    def _sandbox(self, wargame: str, collector: str) -> stack_plan.Sandbox:
+    def _sandbox(self, wargame: str, collector: str) -> stack_plan.Plan:
         return stack_plan.plan(self._definition(wargame), self.slot, self.declared.origins,
                             self.declared.default_origin, collector, (self._reaching().ssh_user, self._public_key()),
                             self.build.target_tag)
 
-    def _chosen(self, plan: stack_plan.Sandbox) -> dict[str, str]:
+    def _chosen(self, plan: stack_plan.Plan) -> dict[str, str]:
         roles = sorted({node.role for node in plan.nodes})
         return {**{f"image_{role}": self.build.image(role) for role in roles},
                 **{f"flavor_{role}": self.build.flavor_of(role) for role in roles}}
 
-    def _rendered(self, wargame: str, collector: str) -> tuple[stack_plan.Sandbox, dict, str]:
+    def _rendered(self, wargame: str, collector: str) -> tuple[stack_plan.Plan, dict, str]:
         plan = self._sandbox(wargame, collector)
         rendered = template(plan, self.build.availability_zone)
         return plan, rendered, stack_digest(rendered, self._chosen(plan))
@@ -1007,7 +1007,7 @@ class OpenStack:
         if server["id"] in _set_up:
             return pool.ACTIVE
         address = next((entry["addr"] for entry in
-                        (server.get("addresses") or {}).get(networks.network_name(networks.MANAGEMENT), [])
+                        (server.get("addresses") or {}).get(fabric.network_name(fabric.MANAGEMENT), [])
                         if entry.get(FIXED) == "fixed"), "")
         if not address:
             return pool.SETTING_UP
@@ -1024,7 +1024,7 @@ class OpenStack:
     def _unbootable(self, collector: str) -> list[str]:
         reasons = []
         if not collector:
-            reasons.append(f"the platform stands on no {networks.network_name(networks.MANAGEMENT)} address, so a "
+            reasons.append(f"the platform stands on no {fabric.network_name(fabric.MANAGEMENT)} address, so a "
                            f"slot's logs and clock would reach nothing; build the fabric first")
         if not self.declared.wargames:
             reasons.append("no wargame has a topology.yaml, so a slot has nothing to run")
@@ -1064,7 +1064,7 @@ class OpenStack:
             return
         if held is not None and held.stack == stack:
             return
-        network = networks.network_name(networks.MANAGEMENT)
+        network = fabric.network_name(fabric.MANAGEMENT)
         addresses = {known_as(server): entry["addr"] for server in servers
                      for entry in (server.get("addresses") or {}).get(network, [])
                      if entry.get(FIXED) == "fixed" and entry.get("version", 4) == 4}
@@ -1106,7 +1106,7 @@ class OpenStack:
         parameters = {**self._chosen(plan), **self._fabric_ids(), **self._lan_group_ids(plan)}
         self.get(self._call(CREATE_STACK), stack_body(plan, rendered, parameters, digest, STACK_TIMEOUT_MINUTES))
 
-    def _lan_group_ids(self, plan: stack_plan.Sandbox) -> dict[str, str]:
+    def _lan_group_ids(self, plan: stack_plan.Plan) -> dict[str, str]:
         with _lan_groups_made:
             named = {group["name"]: group["id"] for group in self._all(SECURITY_GROUPS, "security_groups")}
             for name, rules in lan_groups(plan).values():
@@ -1121,14 +1121,14 @@ class OpenStack:
 
     def _fabric_ids(self) -> dict[str, str]:
         standing_networks, _, _, groups = self._fabric_standing()
-        management = networks.bound(self.declared, standing_networks).get(networks.MANAGEMENT)
+        management = fabric.bound(self.declared, standing_networks).get(fabric.MANAGEMENT)
         named = {group["name"]: group["id"] for group in groups}
-        missing = [name for name in (networks.MANAGEMENT_GROUP, networks.SENDERS_GROUP) if name not in named]
+        missing = [name for name in (fabric.MANAGEMENT_GROUP, fabric.SENDERS_GROUP) if name not in named]
         if management is None or missing:
-            raise Drifted(f"the fabric has no {networks.MANAGEMENT} network or no security group "
+            raise Drifted(f"the fabric has no {fabric.MANAGEMENT} network or no security group "
                           f"{', '.join(missing) or '-'}; build the fabric first")
-        return {"key_name": networks.KEYPAIR, "control_network": management["id"],
-                "control_group": named[networks.MANAGEMENT_GROUP], "senders_group": named[networks.SENDERS_GROUP]}
+        return {"key_name": fabric.KEYPAIR, "control_network": management["id"],
+                "control_group": named[fabric.MANAGEMENT_GROUP], "senders_group": named[fabric.SENDERS_GROUP]}
 
     def _delete(self, stack: str) -> None:
         _held.pop(self._key, None)
@@ -1187,9 +1187,9 @@ class OpenStack:
         found += [("server", server["id"], f"{server['name']}: an image builder")
                   for server in servers if BUILDS in (server.get("metadata") or {})]
         standing_networks, subnets, _, groups = self._fabric_standing()
-        retired = {network["id"] for network in standing_networks if networks.retired(network)}
-        carried = {network["id"] for network in standing_networks if networks.segment_of(network) and not networks.retired(network)}
-        platform_port = f"{networks.KEYPAIR}.{networks.MANAGEMENT}"
+        retired = {network["id"] for network in standing_networks if fabric.retired(network)}
+        carried = {network["id"] for network in standing_networks if fabric.segment_of(network) and not fabric.retired(network)}
+        platform_port = f"{fabric.KEYPAIR}.{fabric.MANAGEMENT}"
         found += [("port", port["id"], f"{port.get('name') or port['id']}: a port the range host left")
                   for port in self._all(PROJECT_PORTS, "ports")
                   if port.get("network_id") in retired
@@ -1199,7 +1199,7 @@ class OpenStack:
         found += [("network", network["id"], f"{network['name']}: carried a segment no slot carries")
                   for network in standing_networks if network["id"] in retired]
         found += [("group", group["id"], f"{group['name']}: a security group of an earlier range")
-                  for group in groups if group["name"] in networks.RETIRED_GROUPS]
+                  for group in groups if group["name"] in fabric.RETIRED_GROUPS]
         found += [("image", image["id"], f"{image.get('name')}: a role image of the VM range")
                   for image in self._own_images() if OLD_BUNDLE in image]
         return found

@@ -4,7 +4,7 @@ from importlib import import_module
 from pathlib import Path
 
 from cr.config import Config, RangeConfig, configured
-from sandbox import definitions
+from sandbox import declaration
 
 
 def factory(dotted: str):
@@ -12,8 +12,8 @@ def factory(dotted: str):
     return getattr(import_module(module), name)
 
 
-def substrate(config: RangeConfig, declared: definitions.Declaration | None = None):
-    declared = declared or definitions.read(Path(config.declaration), Path(config.source))
+def substrate(config: RangeConfig, declared: declaration.Declaration | None = None):
+    declared = declared or declaration.read(Path(config.declaration), Path(config.source))
     return factory(config.substrate)(config.openstack, declared)
 
 

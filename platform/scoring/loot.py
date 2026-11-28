@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 import json
-import urllib.error
-import urllib.parse
-import urllib.request
 from typing import Any
 
 from cr.config import GroundTruthConfig
@@ -18,15 +15,20 @@ class GroundTruthUnavailable(Unavailable):
     code = "ground_truth_unavailable"
 
 
-def ground_truth(read_path: str, config: GroundTruthConfig, inside=None) -> dict[str, str]:
-    if inside is not None:
-        return _from_inside(read_path, config, inside)
-    url = config.board_url.rstrip("/") + read_path
+def ground_truth(read_path: str, config: GroundTruthConfig, inside) -> dict[str, str]:
+    if inside is None:
+        raise GroundTruthUnavailable("the board's ground truth can only be read from inside the board")
+    url = f"http://127.0.0.1:{config.board_port}{read_path}"
     try:
-        with urllib.request.urlopen(url, timeout=TIMEOUT) as response:
-            body = json.load(response)
-    except (urllib.error.URLError, OSError, ValueError) as exc:
-        raise GroundTruthUnavailable(f"could not read ground truth from {url}: {exc}") from exc
+        ran = inside(["python", "-c", READ_INSIDE, url, str(TIMEOUT)], timeout=TIMEOUT + 30)
+    except (Unavailable, OSError) as exc:
+        raise GroundTruthUnavailable(f"could not reach the board to read {url}: {exc}") from exc
+    if not ran.ok:
+        raise GroundTruthUnavailable(f"the board could not read {url} (exit {ran.exit_code}): {ran.output[-300:]}")
+    try:
+        body = json.loads(ran.output)
+    except ValueError as exc:
+        raise GroundTruthUnavailable(f"{url} inside the board answered no JSON: {exc}") from exc
     return _mapped(body, url)
 
 
@@ -46,22 +48,6 @@ def rotate(secret: dict[str, Any], passwords: dict[str, str], inside) -> None:
         raise GroundTruthUnavailable(f"could not reach the board to set its passwords: {exc}") from exc
     if not ran.ok:
         raise GroundTruthUnavailable(f"the board could not set its passwords (exit {ran.exit_code}): {ran.output[-300:]}")
-
-
-def _from_inside(read_path: str, config: GroundTruthConfig, inside) -> dict[str, str]:
-    port = urllib.parse.urlsplit(config.board_url).port or 80
-    url = f"http://127.0.0.1:{port}{read_path}"
-    try:
-        ran = inside(["python", "-c", READ_INSIDE, url, str(TIMEOUT)], timeout=TIMEOUT + 30)
-    except (Unavailable, OSError) as exc:
-        raise GroundTruthUnavailable(f"could not reach the board to read {url}: {exc}") from exc
-    if not ran.ok:
-        raise GroundTruthUnavailable(f"the board could not read {url} (exit {ran.exit_code}): {ran.output[-300:]}")
-    try:
-        body = json.loads(ran.output)
-    except ValueError as exc:
-        raise GroundTruthUnavailable(f"{url} inside the board answered no JSON: {exc}") from exc
-    return _mapped(body, url)
 
 
 def _mapped(body, url: str) -> dict[str, str]:

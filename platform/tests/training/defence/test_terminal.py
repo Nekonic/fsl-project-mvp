@@ -4,11 +4,11 @@ import pytest
 from django.core.management import CommandError, call_command
 
 from cr import config as service
-from sandbox import access as jump
+from sandbox import jump
 from testing.fakerange import SENSOR_MANAGEMENT, WAF_MANAGEMENT
 from training.round import lifecycle as match
 
-BASE = "/api/rounds/{round}/defence/terminal/"
+BASE = "/api/rounds/{round}/defence/waf/terminal/"
 IDS = "/api/rounds/{round}/defence/ids/terminal/"
 
 

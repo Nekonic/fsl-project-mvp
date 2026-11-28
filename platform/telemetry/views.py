@@ -1,11 +1,11 @@
 from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
-from telemetry import access as access_log
+from telemetry import waf_log
 from telemetry import alerts as alert_feed
 from telemetry import events as log
 from telemetry import serializers
-from training.round import access as auth
+from training.round import auth
 from training.round.views_catch_up import ALERTS_READ, CatchingUpView
 
 
@@ -54,4 +54,4 @@ class Traffic(DefenceView):
                    operation_id="defence_traffic")
     def get(self, request, round_id: int):
         asked = given(serializers.TrafficQuery, request.query_params)
-        return Response(serializers.Traffic(access_log.traffic(request.round, asked["after"])).data)
+        return Response(serializers.Traffic(waf_log.traffic(request.round, asked["after"])).data)

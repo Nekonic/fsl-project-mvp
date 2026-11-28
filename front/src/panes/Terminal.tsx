@@ -7,7 +7,7 @@ import type { PaneProps } from "./types";
 
 const TERMINAL_PATH = {
   attack: "/api/rounds/{round_id}/attack/terminal/",
-  waf: "/api/rounds/{round_id}/defence/terminal/",
+  waf: "/api/rounds/{round_id}/defence/waf/terminal/",
   ids: "/api/rounds/{round_id}/defence/ids/terminal/",
 } as const;
 

@@ -7,12 +7,12 @@ from pathlib import Path
 from cr import config, errors
 from cr.config import configured
 from domain.round_rules import Phase
-from sandbox import definitions as declaration
+from sandbox import declaration
 from sandbox import kibana
 from training.models import Round, Player
 
 DEFENCE = "defence"
-GATEWAY_ROLE = "gateway"
+WAF_ROLE = "waf"
 DISCOVER = "{base}/s/{space}/app/discover"
 FORBIDDEN, BAD_GATEWAY = 403, 502
 
@@ -33,13 +33,13 @@ def index_of(found: Round, cfg: config.Config) -> str:
     return cfg.elastic.index_of(found.allocation.slot or 0)
 
 
-def gateway_name(cfg: config.Config) -> str:
-    return declaration.read(Path(cfg.range.declaration), Path(cfg.range.source)).roles.get(GATEWAY_ROLE, "")
+def waf_name(cfg: config.Config) -> str:
+    return declaration.read(Path(cfg.range.declaration), Path(cfg.range.source)).roles.get(WAF_ROLE, "")
 
 
 def prepare_kibana(found: Round, again: bool = True) -> bool:
     cfg = configured()
-    return kibana.session_view_ready(index_of(found, cfg), gateway_name(cfg), cfg.kibana, again=again)
+    return kibana.session_view_ready(index_of(found, cfg), waf_name(cfg), cfg.kibana, again=again)
 
 
 def kibana_space(found: Round) -> dict:

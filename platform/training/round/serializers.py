@@ -2,7 +2,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from training.models import MATCHUPS, NOTE_KINDS, PHASES, PLAYER_SIDES, REASONS, RUN_STATES
-from training.round import bots as bot_runs
+from training.round import bot_runs
 
 STATES = [("", ""), ("open", "open"), ("joinable", "joinable")]
 CORRELATIONS = [("marker", "marker"), ("window", "window")]
@@ -38,7 +38,6 @@ class RoundLine(serializers.Serializer):
     wargame = serializers.CharField(source="allocation.wargame_id")
     problem = serializers.IntegerField(source="problem_id", allow_null=True)
     problem_title = serializers.CharField(source="problem.title", allow_null=True)
-    kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
     players = PlayerLine(many=True, source="players.all")
@@ -133,7 +132,6 @@ class RoundShown(serializers.Serializer):
     allocation = serializers.IntegerField(source="allocation_id")
     wargame = serializers.CharField(source="allocation.wargame_id")
     problem = serializers.IntegerField(source="problem_id", allow_null=True)
-    kind = serializers.CharField()
     matchup = serializers.CharField()
     phase = serializers.ChoiceField(choices=PHASES)
     players = PlayerLine(many=True, source="players.all")

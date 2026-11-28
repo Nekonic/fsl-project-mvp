@@ -1,11 +1,9 @@
-from unittest.mock import patch
-
 import pytest
 
 from cr.config import GroundTruthConfig
 from scoring import loot
 
-BOARD = GroundTruthConfig(board_url="http://board:8000")
+BOARD = GroundTruthConfig(board_port=8000)
 READ = "/internal/auth-users"
 
 TRUTH = {
@@ -55,36 +53,16 @@ def test_the_tiers_fired_follow_what_was_taken(taken, keys, share):
     assert coverage == pytest.approx(share)
 
 
-def test_ground_truth_reads_the_declared_read_path():
-    class Fake:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return b'{"admin": "h1"}'
-
-    with patch("scoring.loot.urllib.request.urlopen", return_value=Fake()) as opened:
-        assert loot.ground_truth(READ, BOARD) == {"admin": "h1"}
-    assert opened.call_args.args[0].endswith("/internal/auth-users")
-
-
 def test_ground_truth_rejects_a_body_that_is_not_a_username_map():
-    class Fake:
-        def __enter__(self):
-            return self
+    from sandbox.runner import Ran
 
-        def __exit__(self, *a):
-            return False
+    with pytest.raises(loot.GroundTruthUnavailable):
+        loot.ground_truth(READ, BOARD, inside=lambda argv, stdin=None, timeout=60.0: Ran(0, '[{"username": "admin"}]'))
 
-        def read(self):
-            return b'[{"username": "admin"}]'
 
-    with patch("scoring.loot.urllib.request.urlopen", return_value=Fake()):
-        with pytest.raises(loot.GroundTruthUnavailable):
-            loot.ground_truth(READ, BOARD)
+def test_without_a_way_inside_the_board_there_is_no_ground_truth():
+    with pytest.raises(loot.GroundTruthUnavailable):
+        loot.ground_truth(READ, BOARD, inside=None)
 
 
 def test_on_the_range_host_the_ground_truth_is_read_inside_the_board_s_own_container():

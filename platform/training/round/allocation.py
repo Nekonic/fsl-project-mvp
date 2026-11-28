@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from cr import errors
 from domain.round_rules import Phase
-from sandbox import reach
+from sandbox import substrate
 from sandbox import service as sandbox
 from training.content import problems as content
 from training.models import Allocation, Round
@@ -36,7 +36,7 @@ def open_allocation(user, wargame_id: str, purpose: str = ROUND) -> Allocation:
         raise errors.Invalid(code="unknown_wargame", path="wargame")
     expire()
     retention.prune()
-    whole = reach.whole_range()
+    whole = substrate.whole_range()
     with choosing:
         number = sandbox.free_slot(whole, wargame_id, held_slots())
         if number is None:
@@ -77,13 +77,13 @@ def keeping_open(held: Allocation):
 def close_allocation(held: Allocation, reason: str = "ended_by_operator") -> Allocation:
     for found in Round.objects.filter(allocation=held).exclude(phase=ENDED):
         lifecycle.end_round(found, reason)
-    holding = sandbox.hold_for_reset(held.slot)
+    holding = sandbox.hold_for_refill(held.slot)
     closed = Allocation.objects.filter(pk=held.pk, closed=None).update(closed=timezone.now())
     held.refresh_from_db()
     if closed:
         sandbox.refill_slot(held.slot, held.wargame_id)
     elif holding:
-        sandbox.let_go_of_reset(held.slot)
+        sandbox.let_go_of_refill(held.slot)
     return held
 
 

@@ -6,8 +6,7 @@ from dataclasses import dataclass, field
 from domain.round_rules import ALLOWED_MATCHUPS, Matchup, Side
 from domain.types import FieldError
 
-KINDS = ("round",)
-PROBLEM_FIELDS = ("kind", "wargame", "side", "title", "summary", "body", "published")
+PROBLEM_FIELDS = ("wargame", "side", "title", "summary", "body", "published")
 STORED_STAMPS = ("id", "revision", "author", "updated")
 ROUND_FIELDS = ("matchups", "posture", "probe_cases", "objectives", "traffic", "benign_every_s",
                 "time_limit_s", "bot_steps", "cards")
@@ -55,8 +54,6 @@ def unknown_fields(given: Mapping, known: tuple[str, ...], at: str) -> list[Fiel
 
 def _problem(problem: Mapping, catalog: Mapping[str, WargameCatalog]) -> list[FieldError]:
     errors = unknown_fields(problem, PROBLEM_FIELDS + STORED_STAMPS, "problem")
-    if problem.get("kind") not in KINDS:
-        errors.append(FieldError("problem.kind", "not_a_choice", (("choices", KINDS),)))
     if problem.get("side") not in tuple(Side):
         errors.append(FieldError("problem.side", "not_a_choice", (("choices", tuple(Side)),)))
     if not _named_in(problem.get("wargame"), catalog):

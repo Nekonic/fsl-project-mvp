@@ -5,8 +5,8 @@ from dataclasses import asdict, dataclass
 from cr import config, errors
 from cr.config import configured
 from domain.round_rules import Phase
-from sandbox import access as jump
-from sandbox import reach
+from sandbox import jump
+from sandbox import substrate
 from training.models import Round, Player
 
 DEFENCE = "defence"
@@ -22,7 +22,7 @@ class Box:
 
 
 def box_of(found: Round, which: str, cfg: config.Config) -> Box:
-    reached = reach.range_of(found, cfg)
+    reached = substrate.range_of(found, cfg)
     if which == WAF:
         return Box(reached.address(cfg.waf.role), reached.runner(cfg.waf.role))
     if not cfg.sensors:

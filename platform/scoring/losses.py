@@ -13,7 +13,7 @@ from domain.scoring.objectives import ATTRIBUTION_WINDOW, CLOCK_SKEW, Attempt, a
 from domain.types import ActionRecord
 from scoring import effect, loot
 from scoring.baseline import EFFECT_OBSERVED, LOOT_VERIFIED, Reach, declared, objective_model, secret, tiers
-from scoring.models import Objective
+from scoring.models import ObjectiveLoss
 from telemetry import events as log
 from training.models import Round
 
@@ -58,7 +58,7 @@ def lose(found: Round, fired: Iterable[Mapping[str, Any]], at: datetime, earlies
     fell = []
     with transaction.atomic():
         for tier in fired:
-            _, created = Objective.objects.get_or_create(round=found, key=tier["key"], defaults={
+            _, created = ObjectiveLoss.objects.get_or_create(round=found, key=tier["key"], defaults={
                 "name": tier["name"], "achieved_at": at, "earliest": earliest, "latest": latest,
                 "attributed_marker": marker})
             if created:
@@ -115,11 +115,11 @@ def observe_effects(found: Round, reach: Reach, actions: Sequence[ActionRecord] 
 
 
 def fallen_on(allocation_id: int) -> bool:
-    return Objective.objects.filter(round__allocation_id=allocation_id).exists()
+    return ObjectiveLoss.objects.filter(round__allocation_id=allocation_id).exists()
 
 
-def losses(found: Round) -> dict[str, Objective]:
-    return {objective.key: objective for objective in Objective.objects.filter(round=found)}
+def losses(found: Round) -> dict[str, ObjectiveLoss]:
+    return {objective.key: objective for objective in ObjectiveLoss.objects.filter(round=found)}
 
 
 def objectives(found: Round) -> tuple[ObjectiveState, ...]:

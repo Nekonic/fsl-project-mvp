@@ -44,7 +44,7 @@ devices:
   cr-customers: {node: cr-infra, roles: [customers]}
   cr-waf:
     node: cr-waf
-    roles: [gateway]
+    roles: [waf]
     names: [board.com, corp.com]
     files:
       - /etc/nginx/modsecurity/crs/crs-setup.conf
@@ -61,4 +61,4 @@ devices:
   board-db: {node: cr-target, container: board-db, roles: [board-db]}
 
 watches:
-  sensor: gateway
+  sensor: waf

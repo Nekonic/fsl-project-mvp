@@ -13,7 +13,7 @@ from django.db import connection
 from django.utils import timezone
 
 from cr import errors
-from sandbox.reach import slot_range
+from sandbox.substrate import slot_range
 from scoring import baseline as referee
 from training.attack import actions as attack
 from training.content import problems as content
@@ -141,7 +141,7 @@ def recorded(allocation: Allocation, declared) -> None:
                     continue
                 with guard:
                     held[allocation.pk].done.append(case["name"])
-            written(folder, "manifest.json", {"image_digest": declared.image, "cases": listed,
+            written(folder, "manifest.json", {"image": declared.image, "cases": listed,
                                               "recorded_at": timezone.now().isoformat()})
             moved(allocation.pk, state=DONE)
         except (errors.DomainError, OSError) as failed:

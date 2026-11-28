@@ -24,12 +24,12 @@ from domain.types import (
     ActionRecord,
     CommandRecord,
 )
-from sandbox import access as jump
+from sandbox import jump
 from sandbox import attacker as box
 from sandbox import customers, edge
-from sandbox.reach import allocation_range, range_of
+from sandbox.substrate import allocation_range, range_of
 from scoring import losses as referee
-from telemetry import access as waf_log
+from telemetry import waf_log
 from telemetry import events as log
 from telemetry.models import AccessCursor
 from training.attack import cases as firing

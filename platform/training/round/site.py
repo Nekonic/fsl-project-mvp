@@ -13,7 +13,7 @@ from cr import errors
 from training.attack import actions as attack
 from training.attack import origins
 from training.models import Round, Player
-from training.round import access as auth
+from training.round import auth
 
 KEPT_PER_ROUND = 200
 PASSED_ON = ("Accept", "Accept-Language", "Content-Type", "User-Agent")

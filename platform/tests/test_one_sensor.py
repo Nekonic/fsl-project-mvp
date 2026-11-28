@@ -1,6 +1,6 @@
 import pathlib
 
-from sandbox import definitions as declaration
+from sandbox import declaration
 from sandbox import stack_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]

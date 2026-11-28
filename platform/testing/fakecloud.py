@@ -8,8 +8,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from sandbox import definitions as declaration
-from sandbox import fabric as networks
+from sandbox import declaration
+from sandbox import fabric
 from sandbox import openstack
 from sandbox.runner import EXIT_MARK
 
@@ -38,12 +38,12 @@ class Cloud:
         return f"{kind}-{next(self.counter)}"
 
     def fabric(self):
-        net = {"id": "net-mgmt", "name": networks.network_name(networks.MANAGEMENT),
-               "tags": [f"{networks.TAG}={networks.MANAGEMENT}"], "project_id": "cr"}
+        net = {"id": "net-mgmt", "name": fabric.network_name(fabric.MANAGEMENT),
+               "tags": [f"{fabric.TAG}={fabric.MANAGEMENT}"], "project_id": "cr"}
         self.networks.append(net)
         self.subnets.append({"id": "sub-mgmt", "network_id": "net-mgmt", "cidr": MANAGEMENT_CIDR,
                              "enable_dhcp": True, "gateway_ip": None, "name": "cr-mgmt", "ip_version": 4})
-        self.groups += [{"id": f"g-{name}", "name": name, "security_group_rules": []} for name in networks.GROUPS]
+        self.groups += [{"id": f"g-{name}", "name": name, "security_group_rules": []} for name in fabric.GROUPS]
         self.servers.append({"id": PLATFORM, "name": "cr-platform", "status": "ACTIVE", "metadata": {},
                              openstack.LAUNCHED: "2026-11-18T00:00:00.000000",
                              "addresses": {net["name"]: [{"addr": "10.31.0.2", openstack.FIXED: "fixed",
@@ -285,7 +285,7 @@ class Cloud:
 
     def control_address(self, slot: int, node: str) -> str:
         server = self.nodes_of(slot)[node]
-        return server["addresses"][networks.network_name(networks.MANAGEMENT)][0]["addr"]
+        return server["addresses"][fabric.network_name(fabric.MANAGEMENT)][0]["addr"]
 
 
 def serving(cloud: Cloud):

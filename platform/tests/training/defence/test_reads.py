@@ -12,7 +12,7 @@ from tests import rounds
 from tests.training.defence.conftest import SEARCH_RULE
 from training.defence import rules as service
 from training.models import Round
-from users.players import issue_token
+from training.round.player_tokens import issue_token
 
 BASE = "/api/rounds/{round}/defence/"
 HTTP = "/etc/nginx/defence/http.conf"
@@ -148,7 +148,7 @@ def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_def
 def test_traffic_counts_requests_and_refusals_by_origin_from_the_access_log(as_defender, board_round, cyber_range,
                                                                            es, at, monkeypatch):
     clock = [at + timedelta(seconds=elastic.SETTLE_SECONDS + 3.5)]
-    monkeypatch.setattr("telemetry.access.read_now", lambda: clock[0])
+    monkeypatch.setattr("telemetry.waf_log.read_now", lambda: clock[0])
     es.add("a1", access(stamp(at), 200)).add("a2", access(stamp(at, 1), 403)).add("a3", access(stamp(at, 2), 200,
                                                                                                ip=CUSTOMER))
     es.add("s1", suricata(stamp(at, 3)))
@@ -166,7 +166,7 @@ def test_traffic_counts_requests_and_refusals_by_origin_from_the_access_log(as_d
 
 def test_the_traffic_cursor_stays_one_timestamp_however_many_requests_share_a_second(as_defender, board_round,
                                                                                      cyber_range, es, at, monkeypatch):
-    monkeypatch.setattr("telemetry.access.read_now", lambda: at + timedelta(minutes=1))
+    monkeypatch.setattr("telemetry.waf_log.read_now", lambda: at + timedelta(minutes=1))
     for n in range(400):
         es.add(f"busy{n}", access(stamp(at), 200))
 

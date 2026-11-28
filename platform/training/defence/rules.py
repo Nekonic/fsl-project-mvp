@@ -14,9 +14,9 @@ from django.utils import timezone
 from cr import config, errors
 from cr.config import configured
 from domain.types import ACTION_CASE, ENGINE_IDS, ENGINE_WAF, ENGINES, RESPONSE_VERSION, ResponseRecord
-from sandbox import crs, reach, suricata
+from sandbox import crs, substrate, suricata
 from scoring import losses as referee
-from telemetry import access as waf_log
+from telemetry import waf_log
 from telemetry import events as log
 from telemetry.models import Detection
 from training.content import problems as content
@@ -41,7 +41,7 @@ def wired(found: Round, cfg: config.Config | None = None) -> ruletest.Wired:
 
 def allocation_wired(allocation: Allocation, cfg: config.Config | None = None) -> ruletest.Wired:
     cfg = cfg or configured()
-    reached = reach.allocation_range(allocation, cfg)
+    reached = substrate.allocation_range(allocation, cfg)
     return ruletest.Wired(
         sensors=tuple(ruletest.Sensor(config=sensor, runner=reached.runner(sensor.role),
                                       node=reached.node_runner(sensor.role)) for sensor in cfg.sensors),
@@ -136,7 +136,7 @@ def first_sensor(found: Round, cfg: config.Config | None = None):
     if not cfg.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     sensor = cfg.sensors[0]
-    return reach.range_of(found, cfg).runner(sensor.role), sensor
+    return substrate.range_of(found, cfg).runner(sensor.role), sensor
 
 
 def sensor_node(found: Round, cfg: config.Config | None = None):
@@ -144,7 +144,7 @@ def sensor_node(found: Round, cfg: config.Config | None = None):
     if not cfg.sensors:
         raise errors.Unavailable(code="sensor_unavailable")
     sensor = cfg.sensors[0]
-    return reach.range_of(found, cfg).node_runner(sensor.role), sensor
+    return substrate.range_of(found, cfg).node_runner(sensor.role), sensor
 
 
 def ids_reload_at(found: Round) -> float | None:
@@ -167,7 +167,7 @@ def ids_rules(found: Round) -> dict:
 
 def gateway_of(found: Round, cfg: config.Config | None = None):
     cfg = cfg or configured()
-    return reach.range_of(found, cfg).runner(cfg.waf.role), cfg.waf
+    return substrate.range_of(found, cfg).runner(cfg.waf.role), cfg.waf
 
 
 def waf_files(found: Round) -> dict:

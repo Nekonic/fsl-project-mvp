@@ -8,7 +8,7 @@ from django.db import connection
 
 BACKUP = Path(__file__).resolve().parents[3] / "bin" / "backup"
 ROUND_RECORDS = ("training.Allocation", "training.Round", "training.Player", "training.Action", "telemetry.Detection",
-                 "scoring.Objective", "telemetry.Event")
+                 "scoring.ObjectiveLoss", "telemetry.Event")
 
 
 def listed_tables() -> list[str]:

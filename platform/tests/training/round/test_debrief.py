@@ -4,7 +4,7 @@ import pytest
 
 from domain.types import DetectionRecord
 from telemetry import events as log
-from telemetry.access import OriginRequest
+from telemetry.waf_log import OriginRequest
 from telemetry.models import Detection
 from tests import rounds
 from training.attack.actions import origin_record

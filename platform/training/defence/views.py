@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from training.defence import kibana_gate, serializers
 from training.defence import rules as service
 from training.defence import terminal as defence_terminal
-from training.round import access as auth
+from training.round import auth
 from training.round.views_catch_up import CatchingUpView
 
 TAGS = ["defence"]
@@ -123,10 +123,10 @@ class WafApply(DefenceView):
         return Response(serializers.WafApplied(applied.rule_set).data)
 
 
-class Terminal(DefenceView):
+class WafTerminal(DefenceView):
     reads_logs = False
 
-    @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
+    @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_waf_terminal")
     def get(self, request, round_id: int):
         shown = defence_terminal.terminal(request.round, request.player)
         return Response(serializers.DefenceTerminal(auth.with_jump_host(request, shown)).data)

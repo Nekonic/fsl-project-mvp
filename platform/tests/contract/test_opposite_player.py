@@ -5,15 +5,15 @@ import yaml
 
 from telemetry import events as log
 from tests.shape import refused
-from tests.training.round.conftest import cloud, allocation, other, problem, pvp
+from tests.training.round.conftest import cloud, allocation, other, pvp
 from training.round import lifecycle as service
 
 SCHEMA = Path(__file__).resolve().parents[3] / "openapi" / "schema.yaml"
 ROUND = "/api/rounds/{round_id}/"
 SIDES = ("attack", "defence")
 SHARED = {
-    ROUND: {"allocation", "end_reason", "ended", "ends_at", "kind", "matchup", "phase", "players", "problem", "round",
-            "started", "wargame"},
+    ROUND: {"allocation", "end_reason", "ended", "ends_at", "matchup", "operated", "phase", "players", "problem",
+            "round", "started", "wargame"},
     f"{ROUND}events/": {"events", "next"},
     f"{ROUND}score/": {"errors"},
     f"{ROUND}debrief/": {"errors"},
@@ -26,7 +26,7 @@ SHARED = {
 HELD_BACK = ("snapshot", "baseline", "read_of", "attributed_marker")
 FILLED = {"run_id": "1", "test_id": "1", "sid": "9000001", "version": "1"}
 
-__all__ = ["cloud", "allocation", "other", "problem"]
+__all__ = ["cloud", "allocation", "other"]
 
 
 def round_gets() -> list[str]:
@@ -53,7 +53,7 @@ def defender(make_user):
 
 
 @pytest.fixture
-def running(allocation, problem, other, defender):
+def running(allocation, other, defender):
     return service.start_round(pvp(allocation, other, defender))
 
 

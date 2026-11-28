@@ -101,7 +101,7 @@ def test_the_password_never_enters_the_user_data():
     )
 
 def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_its_attacker():
-    from sandbox import definitions as declaration
+    from sandbox import declaration
 
     lines = written_credentials()["content"].splitlines()
     names = {line.split("=", 1)[0] for line in lines if line}
@@ -110,8 +110,7 @@ def test_boot_writes_every_setting_the_adapter_requires_for_the_cloud_range_and_
     assert names == {
         variable for name, variable in SETTINGS.items()
         if name not in ("password", "platform", "source", "image_tag", "sideloaded")
-    } | {"CR_SUBSTRATE", "DJANGO_ALLOWED_HOSTS", "CR_TOOL_IMAGE"}, names
-    assert "CR_SUBSTRATE=sandbox.openstack.connect" in lines
+    } | {"DJANGO_ALLOWED_HOSTS", "CR_TOOL_IMAGE"}, names
     assert f"CR_TOOL_IMAGE={attacker}" in lines, (
         "the OpenStack launcher runs a tool only on the attacker host the range "
         "declares and refuses any other image; without this the harness asks for "

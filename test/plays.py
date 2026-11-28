@@ -145,7 +145,7 @@ class Setup:
 def round_document(setup: Setup) -> dict:
     posture = f"posture for {setup.title}"
     return {
-        "problem": {"kind": "round", "wargame": setup.wargame, "side": setup.side, "title": setup.title,
+        "problem": {"wargame": setup.wargame, "side": setup.side, "title": setup.title,
                     "summary": "Live acceptance round", "body": "Driven by test/ through the schema",
                     "published": False},
         "round": {"matchups": list(setup.matchups), "posture": posture, "probe_cases": list(setup.probe_cases),
@@ -515,11 +515,11 @@ def traffic(played: Played) -> dict:
     return done("defence_traffic", played.defence, round_id=played.round)
 
 
-def defence_terminal_grant(played: Played) -> Answer:
-    return ask("defence_terminal", played.defence, round_id=played.round)
+def defence_waf_terminal_grant(played: Played) -> Answer:
+    return ask("defence_waf_terminal", played.defence, round_id=played.round)
 
 
-TERMINALS = {"attack": "attack_terminal", "defence": "defence_terminal", "ids": "defence_ids_terminal"}
+TERMINALS = {"attack": "attack_terminal", "defence": "defence_waf_terminal", "ids": "defence_ids_terminal"}
 
 
 def in_shell(played: Played, terminal: str, command: str) -> dict:

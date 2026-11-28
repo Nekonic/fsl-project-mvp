@@ -6,7 +6,6 @@ from django.db import models
 from domain.round_rules import BOT, END_REASONS, HUMAN, Matchup, Phase
 from domain.types import ACTION_KINDS, CORRELATION_STRATEGIES, ENGINES
 
-PROBLEM_KINDS = [("round", "round")]
 PROBLEM_SIDES = [("attack", "attack"), ("defence", "defence"), ("both", "both")]
 
 
@@ -36,7 +35,6 @@ class Posture(models.Model):
 
 
 class Problem(models.Model):
-    kind = models.CharField(max_length=8, choices=PROBLEM_KINDS)
     wargame = models.ForeignKey(Wargame, on_delete=models.PROTECT, related_name="problems")
     side = models.CharField(max_length=8, choices=PROBLEM_SIDES)
     title = models.CharField(max_length=200)
@@ -66,19 +64,7 @@ class RoundSetup(models.Model):
     cards = models.JSONField(default=list)
 
 
-class ProbeSet(models.Model):
-    wargame = models.ForeignKey(Wargame, on_delete=models.CASCADE, related_name="probe_sets")
-    image_digest = models.CharField(max_length=100)
-    recorded_at = models.DateTimeField()
-    cases = models.JSONField(default=dict)
-
-    class Meta:
-        ordering = ["-recorded_at"]
-        constraints = [models.UniqueConstraint(fields=["wargame", "image_digest"], name="one_probe_set_per_image")]
-
-
 PURPOSES = [(purpose, purpose) for purpose in ("round", "probe")]
-ROUND_KINDS = [("round", "round")]
 MATCHUPS = [(matchup.value, matchup.value) for matchup in Matchup]
 PHASES = [(phase.value, phase.value) for phase in Phase]
 PLAYER_SIDES = [(side, side) for side in ("attack", "defence")]
@@ -104,7 +90,6 @@ class Allocation(models.Model):
 class Round(models.Model):
     allocation = models.ForeignKey(Allocation, on_delete=models.CASCADE, related_name="rounds")
     problem = models.ForeignKey(Problem, on_delete=models.PROTECT, null=True, blank=True, related_name="+")
-    kind = models.CharField(max_length=8, choices=ROUND_KINDS)
     matchup = models.CharField(max_length=16, choices=MATCHUPS, blank=True, default="")
     phase = models.CharField(max_length=8, choices=PHASES, default=Phase.CREATED.value)
     snapshot = models.JSONField(default=dict)

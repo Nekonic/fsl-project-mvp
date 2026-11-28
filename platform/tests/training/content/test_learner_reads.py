@@ -17,7 +17,7 @@ def test_a_learner_lists_only_published_problems(stored, as_learner):
     shown, _ = stored
 
     assert as_learner.get("/api/problems/").json() == [
-        {"id": shown, "kind": "round", "wargame": "board", "side": "defence", "title": "Placeholder round",
+        {"id": shown, "wargame": "board", "side": "defence", "title": "Placeholder round",
          "summary": "Placeholder summary", "matchups": ["def_vs_bot"], "bot_steps": []}]
 
 

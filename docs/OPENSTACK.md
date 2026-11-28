@@ -37,8 +37,8 @@ Words used in this file:
 - **Store**: the platform's PostgreSQL database (compose service `postgres`,
   container `cr-postgres`, volume `cr_storedata`). Until 2026-11-25 it was a
   SQLite file, `db.sqlite3` in the `cr_platformdata` volume.
-- **Substrate**: what the platform builds the range on (`CR_SUBSTRATE`); here
-  `sandbox.openstack.connect`.
+- **Substrate**: what the platform builds the range on (`cr.config.SUBSTRATE`);
+  `sandbox.openstack.connect`, which only tests replace.
 
 Facts marked **(this cloud)** come from the cloud the product has run on since
 2026-10-20: Kolla-Ansible on three nodes, `con01` (10.0.0.11), `com01`
@@ -101,7 +101,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 3. The script then drives the platform's staff range API in this order:
    `POST fabric/`; `DELETE leftovers/`, which removes what the ranges before
    this one left (§5.5); `POST pool/`, which owes every slot no allocation holds a
-   refill that the `rebuild` service carries out (create the stack if it is
+   refill that the `refill` service carries out (create the stack if it is
    missing, stale or failed, wait for its nodes, seed its sensor with the
    baseline rules). Then it waits until `GET /api/staff/range/` shows every
    slot's refill `idle`, and stops on one that `failed`.
@@ -118,7 +118,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | `bin/platform-rebuild`: replace the VM without losing data (store and range key carried over), driven by `cloud.yaml` | done (2026-10-15, `bin/cloud up --replace --sideload` twice, 28 and 55 min with a 6 GB store) | §5 |
 | `bin/cloud up`, `bin/cloud down` | done (2026-10-11); since 2026-10-20 `up` after `down` restores the newest backup that holds rows (run live 2026-10-20) | §5 |
 | Fabric via `POST /api/staff/range/fabric/` | done on the old tree (`POST /api/range/fabric/`); the side split's route has not run on a cloud | §6 |
-| Range stacks `cr-slot-<n>`, a pool per wargame, replaced at close | live since 2026-11-18 on the old tree (`POST /api/range/slot/`): the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them. The side split's `POST /api/staff/range/pool/` and the `rebuild` service's refill have not run on a cloud | §6 |
+| Range stacks `cr-slot-<n>`, a pool per wargame, replaced at close | live since 2026-11-18 on the old tree (`POST /api/range/slot/`): the first pool fill created the four stacks (§6.1), and two full `bin/verify` runs ran on them. The side split's `POST /api/staff/range/pool/` and the `refill` service's refill have not run on a cloud | §6 |
 | Acceptance on the OpenStack substrate | runs on the Heat range; the latest full run and its open failures are in `docs/state/now.md` | §7 |
 
 Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
@@ -129,8 +129,7 @@ Steps below are tagged **[one-click]** where `bin/cloud up` does them for you,
 
 The platform builds the range as one Heat stack per allocation, `cr-slot-<n>`,
 each four Nova servers on Neutron networks of the stack's own (§6). It creates them
-as a member user. cloud-init writes `CR_SUBSTRATE=sandbox.openstack.connect` on
-the platform VM to select this. The range's design was
+as a member user. The range's design was
 `docs/superpowers/specs/2026-11-18-heat-range-design.md` (archived; git keeps
 it); the side split keeps it and adds the edge sets, the WAF access log, the
 scratch CRS instance and `analyst` (§3.7,
@@ -578,7 +577,7 @@ for the range VM roles if it has no `dba.small`; name it in `compute.flavors`.
 | `cr-lan-<digest>` | the platform, before it creates a range stack | one per distinct LAN rule set, shared by every stack; `<digest>` is the first 12 hex of the rules' SHA-256. Three for board and corp alike: all IPv4 in (`internet`, `dmz`), all in from 10.30.128.0/24 (`web-outer`, `web-inner`), tcp 514 from 172.29.0.0/24 (`mgmt`) (§6) |
 
 Neutron gives a new group an allow-all egress rule for IPv4 and IPv6. For
-`cr-mgmt` and `cr-senders` (`networks.CONFINED_GROUPS`) `POST fabric/` deletes
+`cr-mgmt` and `cr-senders` (`fabric.CONFINED_GROUPS`) `POST fabric/` deletes
 every egress rule but the two above and adds whichever of the two is
 missing, on groups it creates and on groups already standing, so the next
 `bin/cloud up` fixes a cloud whose groups were made before. DHCP on
@@ -608,12 +607,12 @@ openstack security group rule create --protocol tcp --dst-port 8002 cr-platform
 
 Port 2222 is the jump for a player's own ssh to its box: an sshd that
 `platform/entrypoint.sh` starts inside the platform container, beside ttyd,
-from `sandbox/access.py`'s config (`python -m sandbox.access`). It takes only the
+from `sandbox/jump.py`'s config (`python -m sandbox.jump`). It takes only the
 user `jump`, by public key, with no shell, no TTY and only local forwarding;
 each key's line is
 `restrict,port-forwarding,permitopen="<the box's control address>:22"`.
 `GET /api/rounds/<round>/attack/terminal/` issues the attack player a key for
-Kali's `kali` user, and `GET /api/rounds/<round>/defence/terminal/` the
+Kali's `kali` user, and `GET /api/rounds/<round>/defence/waf/terminal/` the
 defence player a key for the WAF's `analyst` (§3.7), who may write only the defence's WAF files, and
 `GET /api/rounds/<round>/defence/ids/terminal/` a second key for the infra's `analyst` (§3.10), who may write
 only the sensor's rule file; each answer
@@ -882,10 +881,10 @@ left running there included.
 
 **The `analyst` account** (`deploy/roles/waf/analyst.sh`), which the defence
 player's terminal and its jump grant log in as (when the round ends and the
-grant is revoked, `sandbox.access.end_account` clears its crontab and `at` jobs,
+grant is revoked, `sandbox.jump.end_account` clears its crontab and `at` jobs,
 disables its linger, ends its logind sessions and kills its processes):
 
-- can: log in by the per-player key `sandbox/access.py` writes into its
+- can: log in by the per-player key `sandbox/jump.py` writes into its
   `authorized_keys` (bash, password field `*`); read `/etc/nginx` (the vhosts,
   `modsecurity.conf`, the CRS tree) and, through group `adm`,
   `/var/log/nginx` and `/var/log/modsecurity`; write the six defence files
@@ -1218,7 +1217,7 @@ there.
 
 #### 5.1.1 The `bots` service
 
-`compose.yaml` runs a third service beside `platform` and `rebuild`: `bots`
+`compose.yaml` runs a third service beside `platform` and `refill`: `bots`
 (image `cr-bots`, `python -m bots.launcher`). It polls the platform over the
 compose network `mgmt` (`http://platform:8000`) with the launcher key, claims
 each queued bot run and starts one relay and one Claude Code child per run;
@@ -1287,8 +1286,8 @@ It asks the platform's API every 5 s while it waits (`POLL`), and
    left in the project (§5.5), servers first, since a leftover server holds
    quota the range VMs need, and prints what it removed.
 7. It sends `POST pool/`, which owes every slot no allocation holds a refill
-   (`sandbox/refill.py`) and answers each slot's refill state. The `rebuild`
-   service (`manage.py rebuild_slots`) carries the refills out in its loop: for a slot with no stack it
+   (`sandbox/refill.py`) and answers each slot's refill state. The `refill`
+   service (`manage.py refill_slots`) carries the refills out in its loop: for a slot with no stack it
    creates `cr-slot-<n>` (§6); a stack that is stale, because what the
    platform renders now has another digest than the one it was created with
    (§6, §5.3), that failed, or that runs another wargame than the pool
@@ -1373,7 +1372,7 @@ This command replaces the platform VM without losing data. It does these steps:
 6. It starts the `cr-platform` container on the new VM if it is stopped, then
    writes the kept key to `/data/ssh/id_ed25519` through `docker exec`.
 7. It restores the store with both services that open it, `platform` and
-   `rebuild`, stopped. On 2026-11-24 only `platform` was stopped: `cr-rebuild`
+   `refill`, stopped. On 2026-11-24 only `platform` was stopped: `cr-rebuild` (the refill container's old name)
    kept its WAL connection to the store the restore replaced, its lock on the
    file made every write of the new platform answer `database is locked`, and
    `bin/cloud up --replace` stopped at the first sign-in (500). A
@@ -1390,7 +1389,7 @@ This command replaces the platform VM without losing data. It does these steps:
    file keeps mode 0600 and its owner. It drops a `CR_OPENSTACK_PASSWORD` line
    an older hand-over left in `/opt/cr/openstack.env` and writes the
    `CR_SIDELOADED` line there when the run sideloads; that file keeps every
-   other line and mode 0600. It recreates the `platform` and `rebuild`
+   other line and mode 0600. It recreates the `platform` and `refill`
    containers, which read the password file at start.
 9. It waits for `/api/auth/csrf/`, which answers before anyone signs in.
 
@@ -1493,7 +1492,7 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
 - `bin/backup --restore ARCHIVE` sends the same way in a program followed by the
   archive; inside the container `pg_restore` turns it into SQL, and `psql
   --single-transaction` drops the `public` schema and loads it, so a broken
-  archive leaves the store as it was. Stop `platform` and `rebuild` first.
+  archive leaves the store as it was. Stop `platform` and `refill` first.
 - `bin/backup --sqlite` backs up a platform from before 2026-11-25 the old way:
   a compacted copy made with SQLite's `VACUUM INTO` inside `cr-platform`
   (`CR_PLATFORM_EXEC`), kept as `backups/db-<UTC+9 time>.sqlite3` after
@@ -1510,7 +1509,7 @@ their rounds, records and events, one per transaction
 (`platform/cr/settings.py`, set in `compose.yaml`, overridden in
 `/opt/cr/.env`). It never touches open allocations. A backup therefore carries
 about an hour of closed allocations plus the open ones.
-The store is copied back with `scp` and put in place while `platform` and `rebuild` are
+The store is copied back with `scp` and put in place while `platform` and `refill` are
 stopped.
 
 **An unpushed commit (`--sideload NAME=TARBALL`).** Sideloading means loading a
@@ -1763,7 +1762,7 @@ staff session calls it (`training/round/views.py`, tag `staff`).
   it and its refill state; `GET pool/` each slot stack's servers, what
   blocks it and its failures.
 - `POST` makes the cloud match the plan: `fabric/` at once, `pool/` by
-  owing each free slot a refill the `rebuild` service carries out.
+  owing each free slot a refill the `refill` service carries out.
 - `DELETE` tears down. A range not built through OpenStack answers
   `409 range_not_cloud`.
 
@@ -1816,7 +1815,7 @@ Notes:
   `SETTING_UP` until one of the two exists. `GET pool/` names
   `/var/log/cloud-init-output.log` under `failures` for a node that failed,
   and a stack Heat reports `CREATE_FAILED` with Heat's reason. A refill
-  (`sandbox/refill.py`, advanced by the `rebuild` service) calls `ensure_slot` in
+  (`sandbox/refill.py`, advanced by the `refill` service) calls `ensure_slot` in
   `platform/sandbox/openstack.py`, which deletes a failed or stale stack, or
   one that runs another wargame than the pool assigns, and creates it again,
   then `configure_slot`, which seeds the sensor. A refill that is blocked,
@@ -1974,16 +1973,16 @@ under one lock. When there is none it answers `503 range_unavailable` with
 
 Closing an allocation, by its operator or because no heartbeat came for
 `CR_ALLOCATION_IDLE_MINUTES` (30), ends its open rounds, deletes its stack and
-owes the slot a refill: the `rebuild` service creates the stack again for the same
+owes the slot a refill: the `refill` service creates the stack again for the same
 wargame, off the learner's path, and seeds its sensor. Every VM of the next
 allocation is new, booted from the baked images, with the target's pristine data;
 what a round disabled or applied went with the old stack. Acceptance checks
 that after a close the stack's WAF has another boot id and lacks the file the
 last learner wrote.
 
-A restart of the platform or the `rebuild` service does not lose a refill: its state
+A restart of the platform or the `refill` service does not lose a refill: its state
 is a file per slot under `CR_REFILL_DIR` (`/data/refill`, `slot-N.json`),
-and the `rebuild` service picks every running one up on its next pass. A refill whose
+and the `refill` service picks every running one up on its next pass. A refill whose
 stack is not created and set up within 30 minutes reads `failed` with the
 reason in `GET /api/staff/range/`; `POST pool/` owes it again.
 
@@ -2011,7 +2010,7 @@ any more. Nova leaves the pre-created `cr-platform.mgmt` port standing when it
 deletes a platform VM; the next `POST fabric/` attaches that port to the new
 platform VM, so the platform keeps its `cr-mgmt` address, and deletes any
 further detached port of that name. `DELETE $P/fabric/` deletes the `cr-lan-`
-groups after the stacks (`networks.LAN_GROUP_PREFIX`), and the groups `cr-range`
+groups after the stacks (`fabric.LAN_GROUP_PREFIX`), and the groups `cr-range`
 and `cr-build` if they are still there.
 
 ### 6.3 Keypair drift
@@ -2052,7 +2051,7 @@ standing platform:
 
 ```bash
 sed -i 's/^CR_OPENSTACK_POOL=.*/CR_OPENSTACK_POOL=board=3 corp=2/' /opt/cr/openstack.env
-docker compose up -d --force-recreate platform rebuild
+docker compose up -d --force-recreate platform refill
 curl -s -b jar -H "X-CSRFToken: $T" -X POST $P/pool/   # owes every free slot a refill; slot 5 is built for corp
 curl -s -b jar $P/                                     # slots[].refill.state idle
 ```

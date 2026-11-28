@@ -21,8 +21,8 @@ from domain import round_rules
 from domain.round_rules import BOT, HUMAN, AllocationState, Matchup, Phase, RoundState
 from sandbox import service as sandbox
 from sandbox import topology
-from sandbox.definitions import read as read_declaration
-from sandbox.reach import slot_range
+from sandbox.declaration import read as read_declaration
+from sandbox.substrate import slot_range
 from scoring import baseline as baselines
 from scoring import losses
 from scoring import score as referee
@@ -30,21 +30,20 @@ from telemetry import alerts as alert_feed
 from telemetry import events as log
 from training.attack import actions as attack
 from training.attack import origins
-from training.content import bots as bot_catalog
+from training.content import bot_catalog
 from training.content import probes
 from training.content import problems as content
 from training.defence import kibana_gate
 from training.defence import rules as defence
 from training.defence import terminal as defence_terminal
 from training.models import Allocation, Problem, Round, Player
-from training.round import access as auth
-from training.round import bots as bot_runs
+from training.round import auth
+from training.round import bot_runs
 from training.round import site
 from training.traffic import customers
-from users import players as player_tokens
+from training.round import player_tokens
 from users import vpn as tunnels
 
-ROUND = "round"
 SIDES = ("attack", "defence")
 ENDED = Phase.ENDED.value
 RUNNING = Phase.RUNNING.value
@@ -124,7 +123,7 @@ def problem_of(held: Allocation, problem_id: int | None, matchup: str) -> Proble
     if problem_id is None:
         raise errors.Invalid(code="required", path="problem")
     problem = content.problem(problem_id)
-    if problem.wargame_id != held.wargame_id or problem.kind != ROUND:
+    if problem.wargame_id != held.wargame_id:
         raise errors.Invalid(code="invalid_choice", path="problem")
     return problem
 
@@ -145,7 +144,7 @@ def create_round(held: Allocation, problem_id: int | None, matchup: str, players
         raise errors.Conflict(code="already_playing")
     tokens: dict[str, str] = {}
     with transaction.atomic():
-        found = Round.objects.create(allocation=held, problem=problem, kind=ROUND, matchup=matchup)
+        found = Round.objects.create(allocation=held, problem=problem, matchup=matchup)
         made = [player_of(found, side.value, client, dict(players.get(side.value) or {}), setup, by)
                 for side, client in round_rules.PLAYERS[Matchup(matchup)].items()]
         for player in made:
@@ -177,7 +176,7 @@ def rounds_for(user, mine: bool = False, state: str = "") -> list[Round]:
     if state == "open":
         found = found.exclude(phase=ENDED)
     elif state == "joinable":
-        found = found.filter(phase=CREATED, kind=ROUND, players__client=HUMAN, players__user=None).distinct()
+        found = found.filter(phase=CREATED, players__client=HUMAN, players__user=None).distinct()
     return list(found[:100])
 
 
@@ -219,8 +218,7 @@ def start_round(found: Round) -> Round:
         raise errors.Conflict(code="allocation_closed")
     if Player.objects.filter(round=found, client=HUMAN, user=None).exists():
         raise errors.Conflict(code="players_open")
-    if found.kind == ROUND:
-        refuse_fallen(found.allocation)
+    refuse_fallen(found.allocation)
     if not sandbox.slot_ready(found.allocation.slot):
         raise sandbox.unavailable()
     if not Round.objects.filter(pk=found.pk, phase=CREATED).update(phase=STARTING):

@@ -10,9 +10,9 @@ from django.utils import timezone
 
 from cr import errors
 from domain.round_rules import BOT, Phase
-from training.content import bots as catalog
+from training.content import bot_catalog
 from training.models import BotNote, BotRun, Player, Round
-from users import players as player_tokens
+from training.round import player_tokens
 
 QUEUED, RUNNING, FINISHED, FAILED = "queued", "running", "finished", "failed"
 OVER = (FINISHED, FAILED)
@@ -37,7 +37,7 @@ class Claimed:
 
 def step_lines() -> list[dict[str, Any]]:
     return [{"id": step.id, "label": step.label, "attack": step.attack.shown(), "defence": step.defence.shown()}
-            for step in catalog.steps()]
+            for step in bot_catalog.steps()]
 
 
 def launched(player: Player) -> bool:
@@ -45,7 +45,7 @@ def launched(player: Player) -> bool:
 
 
 def queue(found: Round) -> list[BotRun]:
-    return [BotRun.objects.create(player=player, model=catalog.play(player.step, player.side).model)
+    return [BotRun.objects.create(player=player, model=bot_catalog.play(player.step, player.side).model)
             for player in Player.objects.filter(round=found, client=BOT).exclude(step="")]
 
 
@@ -89,8 +89,8 @@ def end_with_round(found: Round, at: datetime) -> None:
 
 
 def stance_of(player: Player) -> dict[str, Any] | None:
-    card = catalog.card(player.card) if player.card else None
-    return None if card is None else {**card.shown(), "notice": catalog.notice(), "stance": card.stance()}
+    card = bot_catalog.card(player.card) if player.card else None
+    return None if card is None else {**card.shown(), "notice": bot_catalog.notice(), "stance": card.stance()}
 
 
 def claim(restarted: bool = False, launcher: Mapping | None = None) -> Claimed | None:
@@ -108,7 +108,7 @@ def claim(restarted: bool = False, launcher: Mapping | None = None) -> Claimed |
             token = player_tokens.issue_token(player)
         card = stance_of(player) if player.side == "attack" else None
         return Claimed(run=run.pk, round=player.round_id, side=player.side, step=player.step, token=token,
-                       play=catalog.play(player.step, player.side).shown(), card=card,
+                       play=bot_catalog.play(player.step, player.side).shown(), card=card,
                        prompt={"side": SIDE_PROMPTS[player.side], "stance": card["stance"] if card else None})
     return None
 

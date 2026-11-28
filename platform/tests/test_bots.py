@@ -476,7 +476,7 @@ def ssh(monkeypatch):
 
 def test_each_side_has_a_shell_tool_only_while_the_schema_grants_its_terminal():
     schema = json.loads(json.dumps(tools.contract()))
-    del schema["paths"]["/api/rounds/{round_id}/defence/terminal/"]
+    del schema["paths"]["/api/rounds/{round_id}/defence/waf/terminal/"]
 
     assert tools.shell_spec("defence") in tools.specs("defence")
     assert tools.SHELL in tools.offered("attack")
@@ -486,7 +486,7 @@ def test_each_side_has_a_shell_tool_only_while_the_schema_grants_its_terminal():
 
 def test_the_defence_shell_opens_the_human_terminal_grant_once_and_runs_each_command_over_its_jump(platform, ssh):
     ran, _ = ssh
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/",
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/waf/terminal/",
                 body={"ws_url": f"/vm-terminal/defence/{ROUND}/", "ssh": SSH_GRANT})
     player = defence_player(platform)
 
@@ -495,7 +495,7 @@ def test_the_defence_shell_opens_the_human_terminal_grant_once_and_runs_each_com
 
     assert first == {"operation": "shell", "ok": True, "exit_code": 0, "stdout": "ok\n", "stderr": ""}
     assert second["ok"] is True
-    assert [seen["path"] for seen in platform.seen] == [f"/api/rounds/{ROUND}/defence/terminal/"]
+    assert [seen["path"] for seen in platform.seen] == [f"/api/rounds/{ROUND}/defence/waf/terminal/"]
     assert platform.seen[0]["authorization"] == f"Bearer {TOKEN}"
     argv = ran[0]["argv"]
     assert argv[0] == "ssh" and argv[-2:] == ["analyst@10.20.0.5", "sudo nginx -t"]
@@ -507,7 +507,7 @@ def test_the_defence_shell_opens_the_human_terminal_grant_once_and_runs_each_com
 
 def test_the_defence_ids_shell_opens_the_sensor_grant_apart_from_the_waf_one(platform, ssh):
     ran, _ = ssh
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/waf/terminal/", body={"ssh": SSH_GRANT})
     platform.on("GET", f"/api/rounds/{ROUND}/defence/ids/terminal/",
                 body={"ws_url": f"/vm-terminal/ids/{ROUND}/", "ssh": {**SSH_GRANT, "target_host": "10.20.0.9"}})
     player = defence_player(platform)
@@ -518,7 +518,7 @@ def test_the_defence_ids_shell_opens_the_sensor_grant_apart_from_the_waf_one(pla
 
     assert ids == {"operation": "ids_shell", "ok": True, "exit_code": 0, "stdout": "ok\n", "stderr": ""}
     assert [seen["path"] for seen in platform.seen] == [f"/api/rounds/{ROUND}/defence/ids/terminal/",
-                                                       f"/api/rounds/{ROUND}/defence/terminal/"]
+                                                       f"/api/rounds/{ROUND}/defence/waf/terminal/"]
     assert [one["argv"][-2] for one in ran] == ["analyst@10.20.0.9", "analyst@10.20.0.5", "analyst@10.20.0.9"]
     assert tools.shell_spec("defence", "ids_shell") in tools.specs("defence")
     assert "ids_shell" not in tools.offered("attack")
@@ -527,7 +527,7 @@ def test_the_defence_ids_shell_opens_the_sensor_grant_apart_from_the_waf_one(pla
 def test_an_ssh_failure_drops_the_grant_so_the_next_command_asks_for_a_new_one(platform, ssh):
     ran, answers = ssh
     answers.extend([(255, "", "Permission denied"), (0, "", "")])
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/waf/terminal/", body={"ssh": SSH_GRANT})
     player = defence_player(platform)
 
     failed = calls.call(player, "shell", {"command": "id"})
@@ -540,7 +540,7 @@ def test_an_ssh_failure_drops_the_grant_so_the_next_command_asks_for_a_new_one(p
 def test_a_refused_terminal_is_the_shell_answer_and_nothing_runs(platform, ssh):
     ran, _ = ssh
     refusal = {"errors": [{"path": "", "code": "round_not_started"}]}
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", status=409, body=refusal)
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/waf/terminal/", status=409, body=refusal)
 
     told = calls.call(defence_player(platform), "shell", {"command": "id"})
 
@@ -551,7 +551,7 @@ def test_a_refused_terminal_is_the_shell_answer_and_nothing_runs(platform, ssh):
 def test_a_command_that_outlasts_its_timeout_is_reported_with_what_it_printed(platform, ssh):
     _, answers = ssh
     answers.append("late")
-    platform.on("GET", f"/api/rounds/{ROUND}/defence/terminal/", body={"ssh": SSH_GRANT})
+    platform.on("GET", f"/api/rounds/{ROUND}/defence/waf/terminal/", body={"ssh": SSH_GRANT})
 
     told = calls.call(defence_player(platform), "shell", {"command": "sleep 900", "timeout": 1})
 
@@ -588,7 +588,7 @@ def test_pace_waits_for_the_window_and_the_gap():
 
 def test_pace_counts_every_write_and_delete_and_the_terminal_grants_but_no_other_read_no_forfeit_no_heartbeat():
     assert counted("POST", "attack_fire_case") and counted("DELETE", "attack_stop_tool")
-    assert counted("GET", "attack_terminal") and counted("GET", "defence_terminal")
+    assert counted("GET", "attack_terminal") and counted("GET", "defence_waf_terminal")
     assert counted("GET", "defence_ids_terminal")
     assert not counted("GET", "round_events") and not counted("GET", "defence_alerts")
     assert not counted("POST", "attack_forfeit") and not counted("POST", "allocation_heartbeat")

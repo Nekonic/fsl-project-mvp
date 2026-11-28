@@ -12,7 +12,7 @@ from django.utils import timezone
 from cr import errors
 from domain.round_rules import Phase
 from training.models import Player, Round, RoundRecord
-from training.round import bots as bot_runs
+from training.round import bot_runs
 from training.round import debrief
 from training.round import lifecycle
 

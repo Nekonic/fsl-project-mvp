@@ -9,9 +9,9 @@ import pytest
 
 from cr import config as config_module
 from cr.config import OpenStackConfig, RangeConfig
-from sandbox import definitions as declaration
+from sandbox import declaration
 from sandbox import openstack
-from sandbox import reach as substrate
+from sandbox import substrate
 from sandbox.runner import RangeUnavailable
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
@@ -104,7 +104,7 @@ class Cloud:
                     return self._send(200, {"subnets": allocated(self.path.rsplit("=", 1)[1])})
                 if "/servers/detail" in self.path:
                     return self._send(200, {"servers": [
-                        standing("proxy", 5), standing("gateway", 4),
+                        standing("proxy", 5), standing("waf", 4),
                     ]})
                 self._send(404, {"error": self.path})
 

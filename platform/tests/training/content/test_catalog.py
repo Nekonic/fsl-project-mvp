@@ -5,7 +5,7 @@ from cr.config import WafConfig
 from tests.shape import refused
 from tests.training.content.conftest import RECORDED, REPO
 from training.content import catalog
-from training.content import bots as bot_catalog
+from training.content import bot_catalog
 
 
 def test_every_wargame_folder_declares_its_wargame_yaml():

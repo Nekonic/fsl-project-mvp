@@ -9,7 +9,7 @@ RETAIN_CLOSED_MINUTES = int(os.environ.get("CR_RETAIN_CLOSED_MINUTES") or 60)
 READ_EVERY_SECONDS = float(os.environ.get("CR_READ_EVERY_SECONDS") or 5)
 READ_IN_BACKGROUND = os.environ.get("CR_READ_IN_BACKGROUND", "") == "1"
 JUDGE_AFTER_SECONDS = float(os.environ.get("CR_JUDGE_AFTER_SECONDS") or 30)
-REBUILD_EVERY_SECONDS = float(os.environ.get("CR_REBUILD_EVERY_SECONDS") or 5)
+REFILL_EVERY_SECONDS = float(os.environ.get("CR_REFILL_EVERY_SECONDS") or 5)
 PVP_TIME_LIMIT_SECONDS = int(os.environ.get("CR_PVP_TIME_LIMIT_SECONDS") or 900)
 RETAIN_RECORDS_DAYS = int(os.environ.get("CR_RETAIN_RECORDS_DAYS") or 90)
 BOT_ROUND_USERS = frozenset(name.strip() for name in os.environ.get("CR_BOT_ROUND_USERS", "").split(",") if name.strip())
@@ -138,8 +138,7 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "POSTPROCESSING_HOOKS": ["drf_spectacular.hooks.postprocess_schema_enums", "cr.schema.error_shape"],
-    "ENUM_NAME_OVERRIDES": {"ProblemKindEnum": "training.models.PROBLEM_KINDS",
-                            "ProblemSideEnum": "training.models.PROBLEM_SIDES",
+    "ENUM_NAME_OVERRIDES": {"ProblemSideEnum": "training.models.PROBLEM_SIDES",
                             "VerdictEnum": "training.defence.serializers.VERDICTS",
                             "MatchupEnum": "training.models.MATCHUPS",
                             "PlayerSideEnum": "training.models.PLAYER_SIDES", "RoundPhaseEnum": "training.models.PHASES",

@@ -93,18 +93,18 @@ describe("RoundLobby rounds", () => {
   }
 
   it("names an unpublished problem by the title on the round line and offers no second seat to a seated player", async () => {
-    lobbyWith([{ round: 70, wargame: "board", problem: 9, problem_title: "Draft problem", kind: "round", matchup: "atk_vs_bot", phase: "created", players: [human("attack", null), human("defence", "learner-one")] }]);
+    lobbyWith([{ round: 70, wargame: "board", problem: 9, problem_title: "Draft problem", matchup: "atk_vs_bot", phase: "created", players: [human("attack", null), human("defence", "learner-one")] }]);
     expect(await screen.findByText("Draft problem")).toBeTruthy();
     expect(screen.queryByText(t("player.join"))).toBeNull();
   });
 
   it("names a pvp round by its wargame", async () => {
-    lobbyWith([{ round: 73, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "created", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
+    lobbyWith([{ round: 73, wargame: "board", problem: null, problem_title: null, matchup: "pvp", phase: "created", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
     expect(await screen.findByText(wargameName("board"))).toBeTruthy();
   });
 
   it("links a running round to the console of the player's own seat", async () => {
-    lobbyWith([{ round: 71, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "running", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
+    lobbyWith([{ round: 71, wargame: "board", problem: null, problem_title: null, matchup: "pvp", phase: "running", players: [human("attack", "learner-two"), human("defence", "learner-one")] }]);
     const link = (await screen.findByText(t("page.defence"))).closest("a");
     expect(link?.getAttribute("href")).toBe("/rounds/71/defence");
     expect(screen.queryByText(t("page.attack"))).toBeNull();
@@ -119,8 +119,8 @@ describe("RoundLobby problem body", () => {
       if (url.includes("/events/")) return json({ events: [], next: 0 });
       if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
       if (url.startsWith("/api/bot-steps/")) return json([]);
-      if (url === "/api/problems/7/") return json({ id: 7, kind: "round", wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["def_vs_bot"], bot_steps: [], body });
-      if (url.startsWith("/api/problems/")) return json([{ id: 7, kind: "round", wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["def_vs_bot"], bot_steps: [] }]);
+      if (url === "/api/problems/7/") return json({ id: 7, wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["def_vs_bot"], bot_steps: [], body });
+      if (url.startsWith("/api/problems/")) return json([{ id: 7, wargame: "board", side: "both", title: "Board problem", summary: "Short summary", matchups: ["def_vs_bot"], bot_steps: [] }]);
       return json({ allocation: 65, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [] });
     }));
     render(<RoundLobby params={{ allocation: "65" }} />);
@@ -156,7 +156,7 @@ describe("RoundLobby create", () => {
 describe("RoundLobby start", () => {
   it("says the round is starting while the start call runs", async () => {
     let started: (value: Response) => void = () => undefined;
-    const round = { round: 81, wargame: "board", problem: null, problem_title: null, kind: "round", matchup: "pvp", phase: "created",
+    const round = { round: 81, wargame: "board", problem: null, problem_title: null, matchup: "pvp", phase: "created",
       players: [{ side: "attack", client: "human", username: "a", bot_name: "", step: "", bot_run: null, left_of_round_s: null },
         { side: "defence", client: "human", username: "b", bot_name: "", step: "", bot_run: null, left_of_round_s: null }] };
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -186,7 +186,7 @@ describe("bot stopped early", () => {
       if (url.endsWith("/heartbeat/")) return json({ expires_at: "2026-01-01T00:30:00Z" });
       if (url.startsWith("/api/problems/") || url.startsWith("/api/bot-steps/")) return json([]);
       const players = [{ ...bot, left_of_round_s: 600 }, { side: "defence", client: "human", username: "learner-one", bot_name: "", step: "", bot_run: null }];
-      return json({ allocation: 64, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [{ round: 72, problem: 9, problem_title: "Problem", kind: "round", matchup: "pve", phase: "running", players }] });
+      return json({ allocation: 64, wargame: "board", slot: 1, ready: true, expires_at: "2026-01-01T00:30:00Z", closed: null, rounds: [{ round: 72, problem: 9, problem_title: "Problem", matchup: "pve", phase: "running", players }] });
     }));
     render(<RoundLobby params={{ allocation: "64" }} />);
     expect(await screen.findByText(`${tFor("bot_run", "finished")} · ${t("bot.stopped_early")}`)).toBeTruthy();
@@ -291,7 +291,7 @@ describe("result of a round the viewer only played", () => {
       const url = String(input);
       asked.push(url);
       if (url === "/api/rounds/81/") {
-        return json({ round: 81, allocation: 9, wargame: "board", problem: null, kind: "round", matchup: "pvp", phase: "ended", players: [],
+        return json({ round: 81, allocation: 9, wargame: "board", problem: null, matchup: "pvp", phase: "ended", players: [],
           started: null, ends_at: null, ended: null, end_reason: "ended_by_operator", operated: false });
       }
       if (url.startsWith("/api/rounds/81/events/")) return json({ events: [], next: 0 });

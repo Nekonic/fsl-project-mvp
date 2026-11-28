@@ -13,8 +13,8 @@ from domain.round_rules import Phase
 from domain.types import ENGINE_WAF, RESPONSE_ORIGIN, ResponseRecord
 from sandbox import attacker as box
 from sandbox import crs, customers, edge
-from sandbox.reach import range_of
-from telemetry import access as access_log
+from sandbox.substrate import range_of
+from telemetry import waf_log
 from telemetry import events as log
 from telemetry.models import AccessCursor
 from training.models import Origin, Round, RuleSet
@@ -198,9 +198,9 @@ def warned_once(found: Round, held: AccessCursor, key: str, kind: str, body: dic
     held.save(update_fields=["cursor"])
 
 
-def counted(found: Round, refusal: access_log.Refusal, held: AccessCursor,
+def counted(found: Round, refusal: waf_log.Refusal, held: AccessCursor,
             versions: Sequence[tuple[datetime, crs.LimitZones]]) -> bool:
-    if refusal.by == access_log.DENY:
+    if refusal.by == waf_log.DENY:
         return True
     zones = zones_at(versions, refusal.at)
     if refusal.zone in zones.shared:
@@ -233,11 +233,11 @@ def spent_by_log(found: Round) -> list[Origin]:
     versions: list[tuple[datetime, crs.LimitZones]] | None = None
     fallen: list[Origin] = []
     for _ in range(ERROR_PAGES):
-        found_refusals, moved = access_log.refusals(found, cursor)
+        found_refusals, moved = waf_log.refusals(found, cursor)
         for refusal in found_refusals:
             if refusal.ip not in open_ips or not within(found, refusal.at):
                 continue
-            if refusal.by == access_log.LIMIT_REQ and versions is None:
+            if refusal.by == waf_log.LIMIT_REQ and versions is None:
                 versions = waf_versions(found)
             if not counted(found, refusal, held, versions or []):
                 continue

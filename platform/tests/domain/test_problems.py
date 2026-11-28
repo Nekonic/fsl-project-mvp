@@ -16,7 +16,7 @@ CATALOG = {
 }
 
 ROUND = {
-    "problem": {"kind": "round", "wargame": "board", "side": "defence", "title": "Hold the board",
+    "problem": {"wargame": "board", "side": "defence", "title": "Hold the board",
                 "summary": "s", "body": "b", "published": False},
     "round": {"matchups": ["def_vs_bot"], "probe_cases": ["board-sqli"], "objectives": ["db-dump"],
               "benign_every_s": 30, "time_limit_s": None},
@@ -43,8 +43,7 @@ def test_the_document_must_carry_a_problem():
 
 @pytest.mark.parametrize("edit, expected", [
     (lambda d: d["problem"].update(wargame="nowhere"), ("problem.wargame", "unknown_wargame")),
-    (lambda d: d["problem"].update(kind="scenario"), ("problem.kind", "not_a_choice")),
-    (lambda d: d["problem"].update(kind="lesson"), ("problem.kind", "not_a_choice")),
+    (lambda d: d["problem"].update(kind="round"), ("problem.kind", "unknown_field")),
     (lambda d: d["problem"].update(side="red"), ("problem.side", "not_a_choice")),
     (lambda d: d["problem"].update(title=" "), ("problem.title", "required")),
     (lambda d: d["problem"].update(published="yes"), ("problem.published", "not_a_boolean")),

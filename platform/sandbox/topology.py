@@ -48,7 +48,7 @@ def shape(described, declared=None) -> dict:
         ),
     }
 
-TRANSIT = ("edge", "gateway", "wargames")
+TRANSIT = ("edge", "waf", "wargames")
 DATABASE_SUFFIX = "-db"
 BACKEND_SUFFIX = "-backend"
 LOG_STORE = "cr-elasticsearch"
@@ -81,7 +81,7 @@ class Learner:
         return {name for name, held in self.kinds.items() if held == kind}
 
 def domains(declared) -> dict[str, str]:
-    gateway = declared.hosts.get(declared.roles.get("gateway", ""))
+    gateway = declared.hosts.get(declared.roles.get("waf", ""))
     return {name.split(".")[0]: name for name in (gateway.names if gateway else ())}
 
 def _parts(wargame: str, domain: str) -> set[str]:
@@ -99,7 +99,7 @@ def learner(declared, wargame: str) -> Learner:
 
     put(roles.get("attacker", ""), ATTACKER)
     put(roles.get("edge", ""), ROUTER)
-    put(roles.get("gateway", ""), WAF)
+    put(roles.get("waf", ""), WAF)
     for real in (compose.get(wargame, ""), roles.get(wargame, "")):
         put(real, sites[wargame])
     for real in (compose.get(database, ""), roles.get(database, "")):
@@ -138,7 +138,7 @@ def learner(declared, wargame: str) -> Learner:
 
 def route(learner, site: str, start: str = ATTACKER, wiring=None) -> list[str]:
     passed = [learner.roles[role] for role in TRANSIT if role in learner.roles]
-    gateway = learner.roles.get("gateway")
+    gateway = learner.roles.get("waf")
     if wiring is not None and gateway in passed and _sensed(learner, wiring)[1]:
         passed.insert(passed.index(gateway) + 1, INLINE_SENSOR)
     return list(dict.fromkeys([start, *passed, site]))
@@ -222,7 +222,7 @@ def _link(source: str, zone: str, address: str, more: int = 0) -> dict:
             **({"more": more} if more else {})}
 
 def _sensed(learner, wiring) -> tuple[dict[str, list[str]], dict[str, str]]:
-    gateway = learner.roles.get("gateway", "")
+    gateway = learner.roles.get("waf", "")
     sensors, wires = {}, {}
     for container in wiring.containers:
         if not container.sniffs:

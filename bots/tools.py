@@ -89,7 +89,7 @@ DESCRIPTIONS = {
     "defence_waf_apply": "Write WAF files, run nginx -t and reload, rolling back if nginx refuses them. "
                          "`base_version` must be the version you read. Refused with not_tested unless a passing "
                          "defence_waf_test of this round named the same files.",
-    "defence_terminal": "Get a short-lived shell on the WAF as analyst: a web terminal URL and an SSH jump grant. "
+    "defence_waf_terminal": "Get a short-lived shell on the WAF as analyst: a web terminal URL and an SSH jump grant. "
                         "The WAF files are writable there, with sudo nginx -t and an nginx reload; the reload "
                         "loads only files a passing defence_waf_test named, and is recorded as the next WAF "
                         "version on the next request.",
@@ -105,13 +105,13 @@ SHELL = "shell"
 IDS_SHELL = "ids_shell"
 LONGEST_SHELL_SECONDS = 600
 SHELL_TERMINALS = {"attack": {SHELL: "attack_terminal"},
-                   "defence": {SHELL: "defence_terminal", IDS_SHELL: "defence_ids_terminal"}}
+                   "defence": {SHELL: "defence_waf_terminal", IDS_SHELL: "defence_ids_terminal"}}
 SHELL_DESCRIPTIONS = {
     ("attack", SHELL): "Run one shell command on the attacker box as the learner, over the same SSH grant a human "
                        "attacker's terminal uses (attack_terminal). Each call is a new login, so cd and variables do "
                        "not carry over. Traffic from the shell can spend an origin like any other.",
     ("defence", SHELL): "Run one shell command on the WAF as analyst, over the same SSH grant a human defender's "
-                        "terminal uses (defence_terminal). Each call is a new login, so cd and variables do not carry "
+                        "terminal uses (defence_waf_terminal). Each call is a new login, so cd and variables do not carry "
                         "over. The WAF files are writable there, with sudo nginx -t, sudo nginx -T and sudo systemctl "
                         "reload nginx; the reload loads only files a passing defence_waf_test named, and is recorded "
                         "as the next WAF version on the next request.",

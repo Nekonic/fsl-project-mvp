@@ -14,7 +14,7 @@ HTTP = ("*/views*.py", "*/serializers.py", "*/urls.py", "cr/urls.py", "cr/handle
 HTTP_LAYER = 10
 COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
-                "training/content/probes.py", "training/round/bots.py", "training/round/records.py",
+                "training/content/probes.py", "training/round/bot_runs.py", "training/round/records.py",
                 "training/round/debrief.py", "training/round/reading.py")
 LAYERS = (
     (HTTP_LAYER, HTTP),
@@ -23,12 +23,12 @@ LAYERS = (
          "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py", "scoring/effect.py",
          "testing/*")),
     (2, ("users/*",)),
-    (3, ("training/models.py",)),
+    (3, ("training/models.py", "training/round/player_tokens.py")),
     (4, ("telemetry/*",)),
     (5, ("scoring/*",)),
     (8, COORDINATORS),
-    (6, ("training/round/access.py", "training/content/catalog.py", "training/content/problems.py",
-         "training/content/bots.py")),
+    (6, ("training/round/auth.py", "training/content/catalog.py", "training/content/problems.py",
+         "training/content/bot_catalog.py")),
     (7, ("training/attack/actions.py", "training/attack/origins.py", "training/defence/*")),
 )
 FRAMEWORKS = ("django", "rest_framework", "drf_spectacular")
@@ -114,10 +114,10 @@ def test_every_module_under_platform_is_assigned_a_layer():
 
 def test_the_seams_exist_where_the_design_puts_them():
     expected = ["cr/config.py", "cr/errors.py", "telemetry/elastic.py", "sandbox/suricata.py", "sandbox/crs.py",
-                "sandbox/openstack.py", "sandbox/cloud_config.py", "sandbox/stack_plan.py", "sandbox/definitions.py",
+                "sandbox/openstack.py", "sandbox/cloud_config.py", "sandbox/stack_plan.py", "sandbox/declaration.py",
                 "sandbox/fabric.py", "sandbox/wiring.py", "sandbox/topology.py", "sandbox/pool.py",
-                "sandbox/refill.py", "sandbox/runner.py", "sandbox/reach.py",
-                "sandbox/edge.py", "sandbox/access.py", "sandbox/attacker.py", "sandbox/customers.py",
+                "sandbox/refill.py", "sandbox/runner.py", "sandbox/substrate.py",
+                "sandbox/edge.py", "sandbox/jump.py", "sandbox/attacker.py", "sandbox/customers.py",
                 "sandbox/kibana.py",
                 "sandbox/service.py", "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py",
                 "scoring/effect.py"]
@@ -199,17 +199,17 @@ def test_the_checker_sees_a_framework_import_an_app_import_and_a_relative_import
 APPS = ("users", "telemetry", "training", "scoring")
 TRAINING_PARTS = ("content", "round", "traffic", "attack", "defence")
 SURFACES = {
-    "users": {"users/accounts.py", "users/permissions.py", "users/players.py", "users/vpn.py"},
-    "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/access.py"},
+    "users": {"users/accounts.py", "users/permissions.py", "users/vpn.py"},
+    "telemetry": {"telemetry/events.py", "telemetry/alerts.py", "telemetry/waf_log.py"},
     "scoring": set(SCORING_SURFACE),
-    "training/content": {"training/content/problems.py", "training/content/probes.py", "training/content/bots.py"},
-    "training/round": {"training/round/lifecycle.py", "training/round/allocation.py", "training/round/access.py"},
+    "training/content": {"training/content/problems.py", "training/content/probes.py", "training/content/bot_catalog.py"},
+    "training/round": {"training/round/lifecycle.py", "training/round/allocation.py", "training/round/auth.py"},
     "training/traffic": {"training/traffic/customers.py"},
     "training/attack": {"training/attack/actions.py", "training/attack/origins.py"},
     "training/defence": {"training/defence/rules.py", "training/defence/terminal.py",
                          "training/defence/kibana_gate.py"},
 }
-SHARED_TO_VIEWS = {"cr/errors.py", "training/round/access.py", "training/round/views_catch_up.py", "users/permissions.py",
+SHARED_TO_VIEWS = {"cr/errors.py", "training/round/auth.py", "training/round/views_catch_up.py", "users/permissions.py",
                    "users/accounts.py"}
 SERVER_LINES = {"training/defence/views_kibana.py": {"cr/strings.py"}}
 STAFF_RANGE_VIEWS = {"training/round/views.py": {"sandbox/service.py"}}
@@ -406,12 +406,12 @@ def test_rule_15_reads_forward_relations_and_skips_the_reverse_accessors_django_
         return SimpleNamespace(_meta=SimpleNamespace(label=label, app_label=label.split(".")[0]))
 
     upward = SimpleNamespace(name="objective", is_relation=True, auto_created=False,
-                             related_model=meta("scoring.Objective"))
+                             related_model=meta("scoring.ObjectiveLoss"))
     allocation = SimpleNamespace(_meta=SimpleNamespace(label="training.Allocation", app_label="training",
                                                   get_fields=lambda: [upward]))
 
     assert upward_relations([Round], {}, "auth") == []
-    assert upward_relations([allocation], {}, "auth") == ["training.Allocation.objective -> scoring.Objective"]
+    assert upward_relations([allocation], {}, "auth") == ["training.Allocation.objective -> scoring.ObjectiveLoss"]
 
 
 def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_auth():
@@ -423,17 +423,17 @@ def test_rule_15_sees_the_round_records_point_down_to_the_training_records_and_a
                  if field.is_relation and field.many_to_one and field.related_model}
 
     assert {("training.Allocation", "training.Wargame"), ("training.Round", "training.Problem"),
-            ("training.Player", "auth.User"), ("scoring.Objective", "training.Round"),
+            ("training.Player", "auth.User"), ("scoring.ObjectiveLoss", "training.Round"),
             ("telemetry.Detection", "training.Round")} <= relations
 
 
-ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/access.py", "sandbox/reach.py",
+ATTACK_REACHES = {"cr/config.py", "cr/errors.py", "sandbox/edge.py", "sandbox/jump.py", "sandbox/substrate.py",
                   "sandbox/runner.py", "sandbox/attacker.py", "sandbox/customers.py", "sandbox/crs.py",
-                  "telemetry/access.py",
+                  "telemetry/waf_log.py",
                   "telemetry/events.py",
-                  "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/access.py",
+                  "telemetry/models.py", "scoring/losses.py", "training/models.py", "training/round/auth.py",
                   "training/round/views_catch_up.py"}
-ATTACK_VIEWS_ONLY = {"training/round/access.py", "training/round/views_catch_up.py"}
+ATTACK_VIEWS_ONLY = {"training/round/auth.py", "training/round/views_catch_up.py"}
 
 
 def attack_strays(path: str, reached: set[str]) -> list[str]:
@@ -449,10 +449,10 @@ def test_attack_reaches_only_what_its_owner_row_names(path):
 
 
 def test_the_checker_sees_attack_reaching_past_its_owner_row():
-    reached = {"sandbox/suricata.py", "training/round/lifecycle.py", "training/round/access.py", "sandbox/edge.py",
+    reached = {"sandbox/suricata.py", "training/round/lifecycle.py", "training/round/auth.py", "sandbox/edge.py",
                "domain/traffic.py"}
 
-    assert attack_strays("training/attack/actions.py", reached) == ["sandbox/suricata.py", "training/round/access.py",
+    assert attack_strays("training/attack/actions.py", reached) == ["sandbox/suricata.py", "training/round/auth.py",
                                                                     "training/round/lifecycle.py"]
     assert attack_strays("training/attack/views.py", reached) == ["sandbox/suricata.py",
                                                                   "training/round/lifecycle.py"]
@@ -475,7 +475,7 @@ def test_rule_3_attack_and_defence_never_import_each_other(path):
 
 
 def test_the_checker_sees_a_side_reaching_the_other():
-    reached = {"training/attack/actions.py", "training/defence/ruletest.py", "sandbox/access.py",
+    reached = {"training/attack/actions.py", "training/defence/ruletest.py", "sandbox/jump.py",
                "scoring/losses.py"}
 
     assert other_side_reached("training/defence/rules.py", reached) == ["training/attack/actions.py"]

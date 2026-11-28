@@ -72,7 +72,7 @@ keeps the blocking call.
 
 Each side has a `shell` tool beside its API tools, offered only while the schema has that side's terminal
 operation; the defence also has `ids_shell`, over `defence_ids_terminal`, on the Suricata sensor's host. It
-is the shell a human player gets: the first call asks `attack_terminal`, `defence_terminal` or
+is the shell a human player gets: the first call asks `attack_terminal`, `defence_waf_terminal` or
 `defence_ids_terminal` for the SSH grant (a key for the platform's jump host and the box behind it), and each
 command then runs as `ssh -o ProxyCommand="ssh -W %h:%p jump@<jump>" <account>@<box> <command>`, the learner
 account on the attacker box or `analyst` on the WAF or the sensor's host. The answer is `{operation, ok, exit_code, stdout, stderr}`, or `timed_out` when

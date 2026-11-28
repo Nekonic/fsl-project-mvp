@@ -18,14 +18,14 @@ def pulled_images():
     ]
 
 
-def test_the_rebuild_job_runs_the_platform_s_own_image_and_its_wiring():
+def test_the_refill_job_runs_the_platform_s_own_image_and_its_wiring():
     services = composed.services()
-    platform, rebuild = services["platform"], services["rebuild"]
+    platform, refill = services["platform"], services["refill"]
 
-    assert rebuild["image"] == platform["image"] and "build" not in rebuild
-    assert rebuild["entrypoint"][-2:] == ["manage.py", "rebuild_slots"]
-    assert rebuild["volumes"] == platform["volumes"] and not rebuild.get("ports")
-    assert {key: value for key, value in rebuild["environment"].items() if key in platform["environment"]} == \
+    assert refill["image"] == platform["image"] and "build" not in refill
+    assert refill["entrypoint"][-2:] == ["manage.py", "refill_slots"]
+    assert refill["volumes"] == platform["volumes"] and not refill.get("ports")
+    assert {key: value for key, value in refill["environment"].items() if key in platform["environment"]} == \
         platform["environment"]
 
 def test_every_image_is_pinned_to_something_that_cannot_move():
@@ -166,7 +166,7 @@ def test_the_store_is_reached_only_by_the_services_that_hold_it():
     services = composed.services()
     on_store = sorted(name for name, service in services.items() if "store" in (service.get("networks") or {}))
 
-    assert on_store == ["platform", "postgres", "rebuild"], "a bot that reached the store could rewrite its score"
+    assert on_store == ["platform", "postgres", "refill"], "a bot that reached the store could rewrite its score"
     assert not services["postgres"].get("ports")
     assert composed.networks()["store"].get("internal") is True
     assert re.fullmatch(r"postgres:\d+\.\d+", services["postgres"]["image"])

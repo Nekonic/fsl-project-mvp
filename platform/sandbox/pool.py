@@ -12,7 +12,6 @@ SETTING_UP = "SETTING_UP"
 SETUP_FAILED = "SETUP_FAILED"
 
 COMPLETE = "CREATE_COMPLETE"
-SETUP_LOG = "/var/log/cloud-init-output.log"
 
 
 @dataclass(frozen=True)
@@ -70,29 +69,3 @@ def server_status(stack: str, server: str, provisioned: str) -> str:
         return stack_state(stack)
     return provisioned if server == ACTIVE else server or BUILDING
 
-
-def phase(plan: Plan, held, resetting: dict, checks: dict, running: str = "running", failed: str = "failed") -> tuple[str, list[str]]:
-    if held is not None:
-        return "IN_USE", [f"allocation {held} holds this slot"]
-    if resetting["state"] == running:
-        return "RESETTING", [
-            "the slot is refilling after an allocation closed (its stack deleted and created again, its sensor "
-            "back on the baseline rules)"
-        ]
-    if resetting["state"] == failed:
-        return "RESET_FAILED", [
-            f"the slot refill after the last allocation failed: {resetting['reason']}"
-        ]
-    if plan.boot or plan.blocked:
-        return "NOT_STANDING", list(plan.blocked) or [f"{name} is not standing" for name in plan.boot]
-    if plan.stale:
-        return "STALE", [f"{name} was created from another template or other parameters than the platform's" for name in plan.stale]
-    if plan.failures or any(status == SETUP_FAILED for _, _, status in plan.standing):
-        return SETUP_FAILED, list(plan.failures) or [
-            f"{host} failed its setup; {SETUP_LOG} on it says why"
-            for host, _, status in plan.standing if status == SETUP_FAILED]
-    if not plan.active:
-        return "REBUILDING", [f"{host} is {status}" for host, _, status in plan.standing if status != ACTIVE]
-    if not (checks.get("ground_truth") and checks.get("rules_baseline")):
-        return "CHECKING", []
-    return "READY", []

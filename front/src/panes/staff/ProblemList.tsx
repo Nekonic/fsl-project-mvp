@@ -25,7 +25,7 @@ export function ProblemList({ current, version }: ProblemListProps) {
       id: problem.id,
       no: problem.id,
       title: problem.title,
-      sub: [`${tFor("kind", problem.kind)} · ${tFor("side", problem.side)}`],
+      sub: [`${t("kind.round")} · ${tFor("side", problem.side)}`],
       badge: problem.published ? { tone: "ok" as const, text: t("staff.published") } : { tone: "muted" as const, text: t("staff.unpublished") },
       href: to.staffProblem(problem.id),
       current: problem.id === current,

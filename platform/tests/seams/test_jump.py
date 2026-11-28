@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from cr.config import JumpConfig
-from sandbox import access as jump
+from sandbox import jump
 from sandbox.runner import Ran, RangeUnavailable
 from testing.fakes import FakeRunner
 

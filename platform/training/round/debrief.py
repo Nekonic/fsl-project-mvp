@@ -9,9 +9,9 @@ from typing import Any
 from domain.types import ACTION_ORIGIN_REQUEST, ENGINE_WAF, ActionRecord, DetectionRecord
 from telemetry import alerts as alert_feed
 from telemetry import events as log
-from training.content import bots as catalog
+from training.content import bot_catalog
 from training.models import Action, Player, Round
-from training.round import bots as bot_runs
+from training.round import bot_runs
 from training.round import lifecycle
 
 ATTACK, DEFENCE, BOTH = "attack", "defence", "both"
@@ -155,8 +155,8 @@ def bot_lines(found: Round) -> list[dict]:
 
 def card_of(found: Round) -> dict[str, Any] | None:
     attacker = Player.objects.filter(round=found, side=ATTACK).exclude(card="").first()
-    card = catalog.card(attacker.card) if attacker else None
-    return None if card is None else {**card.shown(), "notice": catalog.notice()}
+    card = bot_catalog.card(attacker.card) if attacker else None
+    return None if card is None else {**card.shown(), "notice": bot_catalog.notice()}
 
 
 def objective_marks(score: dict) -> list[dict]:

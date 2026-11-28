@@ -80,9 +80,9 @@ def test_an_error_carries_only_its_errors(as_attacker, attacker):
 
 def test_a_bot_player_token_reaches_its_attack_routes(browser, attack_round):
     from tests import rounds
-    from users import players as auth
+    from training.round import player_tokens
 
-    token = auth.issue_token(rounds.playing(attack_round, "attack", bot_name="claude"))
+    token = player_tokens.issue_token(rounds.playing(attack_round, "attack", bot_name="claude"))
 
     answer = browser.get(url(attack_round, "state/"), HTTP_AUTHORIZATION=f"Bearer {token}")
 

@@ -39,7 +39,7 @@ class DefenceRange:
     slots: list[int] = field(default_factory=list)
 
     def runner(self, role: str, segment_id: str = ""):
-        if role == "gateway":
+        if role == "waf":
             return self.gateway
         return self.sensors.setdefault(role, Sensor())
 
@@ -47,7 +47,7 @@ class DefenceRange:
         return self.nodes.setdefault(role, SensorNode(sensor=self.sensors.setdefault(role, Sensor())))
 
     def address(self, role: str) -> str:
-        return {"gateway": WAF_MANAGEMENT, "sensor": SENSOR_MANAGEMENT}.get(role, "")
+        return {"waf": WAF_MANAGEMENT, "sensor": SENSOR_MANAGEMENT}.get(role, "")
 
     def in_slot(self, number: int) -> "DefenceRange":
         self.slots.append(number)

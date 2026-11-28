@@ -52,7 +52,7 @@ def test_the_state_names_the_brief_the_target_the_objectives_and_every_origin(as
 
     state = as_attacker.get(url(looted_round, "state/")).json()
 
-    assert (state["round"], state["phase"], state["matchup"]) == (looted_round.pk, "running", "pvp")
+    assert (state["round"], state["phase"], state["matchup"]) == (looted_round.pk, "running", "def_vs_bot")
     assert state["brief"]["title"] == "Placeholder round"
     assert state["target"] == {"public_url": "http://board.com", "hosts": ["board.com"]}
     shown = {objective["key"]: objective["state"] for objective in state["objectives"]}

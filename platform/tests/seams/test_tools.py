@@ -105,6 +105,8 @@ def test_sqlmap_s_conclusions_are_its_verdict_lines_without_the_clock():
     assert all(not line.startswith("[0") for line in dumped)
     assert missing == ["[CRITICAL] host 'nowhere' does not exist"]
     assert conclusions("") == []
+    for refused in sorted(fixtures.glob("sqlmap-waf-*.out")):
+        assert any("do not appear to be injectable" in line for line in conclusions(refused.read_text())), refused.name
 
 def test_a_free_tool_is_one_the_box_offers_and_a_marker_rides_on_curl_and_sqlmap():
     assert free_argv("curl", ["-s", "http://board.com/"], "action-3") == [

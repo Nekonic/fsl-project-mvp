@@ -3,7 +3,7 @@ import pathlib
 
 import pytest
 
-from sandbox import definitions as declaration
+from sandbox import declaration
 from sandbox import openstack, stack_plan, topology, wiring
 from testing import fakecloud
 from tests import docker_networks

@@ -2,7 +2,7 @@ import pathlib
 
 import yaml
 
-from sandbox import fabric as networks
+from sandbox import fabric
 from telemetry import elastic
 
 FILEBEAT = pathlib.Path(__file__).resolve().parents[2] / "deploy/filebeat/filebeat.yml"
@@ -26,7 +26,7 @@ def syslog_inputs():
 def test_the_range_vms_ship_by_syslog_to_one_udp_input_on_the_collector_port():
     [heard] = syslog_inputs()
 
-    assert heard["host"] == f"0.0.0.0:{networks.COLLECTOR_PORT}"
+    assert heard["host"] == f"0.0.0.0:{fabric.COLLECTOR_PORT}"
     assert next(iter(heard["processors"][0])) == "syslog"
 
 def test_suricata_modsecurity_and_access_lines_are_decoded_and_the_error_log_is_kept_as_its_message():

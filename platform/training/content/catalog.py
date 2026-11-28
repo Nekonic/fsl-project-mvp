@@ -17,7 +17,7 @@ CASES = "cases"
 DECLARED = "wargame.yaml"
 FIELDS = ("id", "title", "image", "public_url", "hosts", "objective_model", "case_file", "default_traffic")
 OBJECTIVE_MODELS = ("loot_verified", "effect_observed")
-GATEWAY = "gateway"
+WAF = "waf"
 TIER_FIELDS = ("key", "name", "category", "difficulty")
 
 
@@ -49,7 +49,7 @@ class Objective:
 
 @dataclass(frozen=True)
 class Probes:
-    image_digest: str
+    image: str
     recorded_at: str
     cases: dict[str, Any]
 
@@ -111,9 +111,9 @@ def read(root: Path, wargame_id: str) -> Wargame:
     if declared["objective_model"] not in OBJECTIVE_MODELS:
         raise CatalogBroken(f"{folder / DECLARED} objective_model must be one of {OBJECTIVE_MODELS}")
     hosts = tuple(declared["hosts"] or ())
-    served = gateway_names(folder)
+    served = waf_names(folder)
     if not hosts or not set(hosts) <= served:
-        raise CatalogBroken(f"{folder / DECLARED} hosts {hosts} are not all served by the topology's gateway")
+        raise CatalogBroken(f"{folder / DECLARED} hosts {hosts} are not all served by the topology's WAF")
     profiles = traffic_profiles(folder)
     if declared["default_traffic"] is not None and declared["default_traffic"] not in profiles:
         raise CatalogBroken(f"{folder / DECLARED} default_traffic {declared['default_traffic']!r} is not a profile")
@@ -133,9 +133,9 @@ def loaded(path: Path) -> Any:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
-def gateway_names(folder: Path) -> set[str]:
+def waf_names(folder: Path) -> set[str]:
     devices = (loaded(folder / "topology.yaml") or {}).get("devices") or {}
-    return {name for device in devices.values() if GATEWAY in (device.get("roles") or [])
+    return {name for device in devices.values() if WAF in (device.get("roles") or [])
             for name in device.get("names") or []}
 
 
@@ -189,7 +189,7 @@ def read_probes(folder: Path) -> Probes | None:
         return None
     try:
         declared = json.loads(manifest.read_text(encoding="utf-8"))
-        return Probes(image_digest=declared["image_digest"], recorded_at=declared["recorded_at"],
+        return Probes(image=declared["image"], recorded_at=declared["recorded_at"],
                       cases=dict(declared.get("cases") or {}))
     except (KeyError, TypeError, ValueError) as broken:
         raise CatalogBroken(f"{manifest} is malformed: {broken!r}") from broken

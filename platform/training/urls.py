@@ -39,7 +39,7 @@ defence_urls = [
     path(f"{DEFENCE}waf/test/", defence.WafTest.as_view()),
     path(f"{DEFENCE}waf/tests/<int:test_id>/", defence.WafTestResult.as_view()),
     path(f"{DEFENCE}waf/apply/", defence.WafApply.as_view()),
-    path(f"{DEFENCE}terminal/", defence.Terminal.as_view()),
+    path(f"{DEFENCE}waf/terminal/", defence.WafTerminal.as_view()),
     path(f"{DEFENCE}ids/terminal/", defence.IdsTerminal.as_view()),
     path(f"{DEFENCE}kibana/", defence.Kibana.as_view()),
 ]

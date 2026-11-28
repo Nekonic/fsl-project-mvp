@@ -40,8 +40,8 @@
 | `users/` | `users` | 계정, 로그인·가입·승인, 차단, 플레이어 토큰 | `SignInBlock` |
 | `sandbox/` | `sandbox`(모델 없음) | 훈련 환경: 풀, Heat 스택, 에지, 점프 접속, 바깥 장치를 아는 파일 전부 | 없음 |
 | `telemetry/` | `telemetry` | Elasticsearch, 이벤트, 알림, WAF 접근·오류 로그 | `Event`, `Detection`, `AlertCursor`, `AccessCursor` |
-| `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `ProbeSet`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet` |
-| `scoring/` | `scoring` | 대상의 정답 데이터, baseline, 목표, 케이스 판정, 점수 | `Objective`, `Verdict` |
+| `training/` | `training` | 문제, 할당, 라운드, 고객 트래픽, 공격 API, 방어 API, 레슨 자리 | `Wargame`, `Posture`, `Problem`, `RoundSetup`, `Allocation`, `Round`, `Player`, `CustomerRequest`, `Action`, `ToolRun`, `Origin`, `RuleTest`, `RuleSet` |
+| `scoring/` | `scoring` | 대상의 정답 데이터, baseline, 목표, 케이스 판정, 점수 | `ObjectiveLoss`, `Verdict` |
 
 함께 쓰는 것: `cr/`(설정, 오류, URL, 스키마), `domain/`(Django 없는 규칙 함수), `testing/`(가짜 클라우드, 가짜
 훈련 환경, 문제 팩토리). `training/`은 앱 하나이고 그 안이 `content/`, `round/`, `traffic/`, `attack/`, `defence/`,
@@ -61,9 +61,9 @@
 | L3 훈련 기록 | `training/models.py` |
 | L4 | `telemetry/*` |
 | L5 | `scoring/*` |
-| L6 | `training/round/access.py`, `training/content/catalog.py`, `training/content/problems.py`, `training/content/bots.py` |
+| L6 | `training/round/auth.py`, `training/content/catalog.py`, `training/content/problems.py`, `training/content/bot_catalog.py` |
 | L7 양쪽 | `training/attack/actions.py`, `training/attack/origins.py`, `training/defence/*` |
-| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py`, `training/round/reading.py` |
+| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bot_runs.py`, `training/round/records.py`, `training/round/debrief.py`, `training/round/reading.py` |
 | HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
 주요 규칙(번호는 테스트 이름의 번호):
@@ -71,7 +71,7 @@
 1. `domain/`은 표준 라이브러리와 `domain`만 import합니다.
 2. L1은 Django, DRF, 앱을 import하지 않고 서드파티는 `requests`, `yaml`만 씁니다. 예외는 설정을 읽어 frozen
    dataclass를 만드는 `cr/config.py` 하나입니다. 원격 실행은 주입받은 runner(`sandbox/runner.py`,
-   `sandbox/reach.py`)로 합니다.
+   `sandbox/substrate.py`)로 합니다.
 3. `training/attack`과 `training/defence`는 서로 import하지 않습니다.
 4. 대상의 정답 데이터(`scoring/loot.py`, `scoring/effect.py`)와 `scoring/models.py`는 `scoring/` 안에서만 씁니다.
    다른 단위는 `scoring/baseline.py`, `losses.py`, `score.py`만 씁니다.
@@ -82,7 +82,7 @@
    않습니다.
 9. 단위나 `training/`의 부분 경계를 넘을 때는 그쪽의 공개 모듈(테스트의 `SURFACES`)이나 낮은 계층의 모델만
    import합니다.
-10. view와 serializer는 자기 부분, DRF, `cr.errors`, `training/round/access.py`, `training/round/views_catch_up.py`,
+10. view와 serializer는 자기 부분, DRF, `cr.errors`, `training/round/auth.py`, `training/round/views_catch_up.py`,
     `users/permissions.py`, `users/accounts.py`만 import합니다. 스태프 range view만 `sandbox/service.py`를 씁니다.
 11. `objective.lost` 이벤트는 `scoring/`에서만 남깁니다(종류 선언은 `telemetry/events.py`).
 12. `bots/`, `test/`, `bin/`, `front/`는 `platform/`을 import하지 않습니다. `/api/`의 클라이언트입니다.
@@ -117,7 +117,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                bots.py(난이도·공격 카드, 카드 추첨)
                scoring/  correlate.py  metrics.py(판정 시점 decided 포함)  corroborate.py  objectives.py
   users/       accounts.py(로그인·가입·승인)  permissions.py(SessionAuthentication, CsrfChecked, IsStaff)
-               players.py(플레이어 토큰 해시·발급·회수)  blocks.py(로그인 차단, SignInBlock)
+               blocks.py(로그인 차단, SignInBlock)
                vpn.py(계정마다 VPN 프로필 하나, VpnProfile: 발급·조회·폐기, 라운드 kali에 붙이고 떼기, 포트 맵 쓰기)
                management/commands/  vpn_relay(포트 맵을 DB에서 다시 쓰고 UDP 중계 시작)
                스태프 계정 API, 초기 계정 admin(마이그레이션 0002)
@@ -130,32 +130,33 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                             터미널 reload 스냅샷 읽기, 임시 인스턴스 검사·테스트, 통과한 테스트 목록 쓰기·비우기
                kibana.py    경계: Kibana API, space, 거부 규칙, 초기 설정, 로그 인덱스 패턴
                edge.py      경계: infra nftables pool·spent 집합, conntrack 정리
-               access.py    경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
+               jump.py      경계: 플랫폼 sshd 점프 권한(플레이어·박스마다 하나), 키 생성, 박스 계정의 authorized_keys
                attacker.py  경계: 공격 박스(출발지, set-origin, set-peer, 명령 기록, 도구 이미지, 실행 중지)
                vpn.py       경계: WireGuard(키 쌍, 프로필 텍스트, 계정별 UDP 포트 맵, 플랫폼 컨테이너의 UDP 중계)
                customers.py 경계: infra VM의 고객 프로그램(cr-customers.service)과 고객 주소
-               cloud_config.py  stack_plan.py  definitions.py(+declaration.yaml)  fabric.py
+               cloud_config.py  stack_plan.py  declaration.py(+declaration.yaml)  fabric.py
                wiring.py(배선 파싱)  topology.py(학습자용 이름, 쪽별 필터)  pool.py  refill.py
-               runner.py  reach.py(runner 묶음, 훈련 환경 전체·슬롯·할당별 범위)
+               runner.py  substrate.py(runner 묶음, 훈련 환경 전체·슬롯·할당별 범위)
                service.py   다른 단위가 쓰는 풀, fabric, 슬롯 호출
-               management/commands/  rebuild_slots(rebuild 서비스)  run_on_role
+               management/commands/  refill_slots(refill 서비스)  run_on_role
   telemetry/   Event, Detection, AlertCursor, AccessCursor
                events.py    종류별 스키마와 보는 쪽, append, after
                elastic.py   경계: 커서 읽기(늦게 색인된 문서를 30초까지 되돌아 읽음, 트래픽은 15초 전까지만), 접근·오류 로그, 정규화, ingest 파이프라인 등록
                alerts.py    AlertCursor로 알림 수집과 읽기
-               access.py    WAF 접근 로그(트래픽), 오류 로그의 deny·limit_req 줄
+               waf_log.py   WAF 접근 로그(트래픽), 오류 로그의 deny·limit_req 줄
                views.py     이벤트 피드, 방어 쪽 알림·트래픽 API   management/commands/  register_pipeline
   training/    Django 앱 하나. models.py에 Wargame부터 RuleTest까지 모든 훈련 기록
     content/   catalog.py(wargames/와 cases/ 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
                내보내기·가져오기, posture)  probes.py(probes 만들기)  스태프 문제 API, 학습자 읽기 API
-               bots.py(steps.yaml 난이도 3단계, cards.yaml ATT&CK 공격 카드 A1~A8 읽기)
+               bot_catalog.py(steps.yaml 난이도 3단계, cards.yaml ATT&CK 공격 카드 A1~A8 읽기)
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
                lifecycle.py   라운드 만들기, 참가, 시작, catch_up(READS), 케이스 판정, 종료, 기권, 점수
-               access.py      PlayerTokenAuthentication, IsPlayer(side), InRound, IsOperator, OnAllocation
+               auth.py        PlayerTokenAuthentication, IsPlayer(side), InRound, IsOperator, OnAllocation
+               player_tokens.py  플레이어 토큰 해시·발급·회수
                views_catch_up.py  CatchingUpView: 요청마다 reading.catch_up을 부름
                reading.py     할당 만료 확인과 catch_up(CR_READ_IN_BACKGROUND면 별도 스레드, 라운드마다 하나)
                site.py(사이트 패널 프록시)  retention.py  views.py(라운드, 할당, 스태프 range API)
-               bots.py        봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
+               bot_runs.py    봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
                records.py     라운드 기록(점수·복기 고정, 90일 보관)
                debrief.py     끝난 라운드의 복기: 공격 봇 카드, 봇 의도, 두 갈래 타임라인
     traffic/   customers.py   정상 케이스와 고객 트래픽, 라운드마다 새로 만드는 고객 비밀번호
@@ -248,14 +249,14 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 훈련 환경 노드 이름(`cr-kali`, `cr-waf`, `cr-infra`, `cr-target`) | 없음(설정으로 넘김) | `cr/config.py`의 기본값. `platform/entrypoint.sh`가 `vm-terminal.sh cr-kali attack`, `vm-terminal.sh cr-waf defence`, `vm-terminal.sh cr-infra ids`를 띄움 |
 | OpenStack API와 실제 배선 | `sandbox/openstack.py`(파싱 `sandbox/wiring.py`, 이름 `sandbox/topology.py`) | 없음 |
 | infra 라우터의 nftables 집합 | `sandbox/edge.py` | `deploy/roles/infra/edge.nft`가 `pool`, `spent` 집합을 선언 |
-| 플랫폼 점프 호스트와 박스 계정 키 | `sandbox/access.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
+| 플랫폼 점프 호스트와 박스 계정 키 | `sandbox/jump.py` | `platform/entrypoint.sh`가 점프 호스트의 `authorized_keys`를 만듦 |
 | 공격 박스 | `sandbox/attacker.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
 | WireGuard(키, 프로필, 중계) | `sandbox/vpn.py` | 없음. kali 쪽 `deploy/roles/kali/set-peer`는 `sandbox/attacker.py`만 부름 |
 | 고객 박스(infra VM의 `cr-customers` 유닛, 계정, 기록) | `sandbox/customers.py` | 없음 |
 | 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_sessions.py`, `test/test_board_exfil.py` |
 
 - 바깥 장치를 아는 파일은 모두 `sandbox/`에 있고 `telemetry/elastic.py`, `scoring/loot.py`, `scoring/effect.py`만
-  예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/access.py`)을 쓰고,
+  예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/jump.py`)을 쓰고,
   `training/attack`과 `training/defence`는 서로 import하지 않으므로 공용 경계가 어느 한쪽에 있으면 안 됩니다.
   박스 주소, runner, 계정은 호출하는 쪽이 넘깁니다.
 - `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 그 슬롯 워게임의
@@ -318,8 +319,8 @@ sequenceDiagram
   바로 `judged_at`을 적습니다. 다른 요청이 읽는 중이면
   그 읽기가 끝나거나 버려질 때까지 기다렸다가 읽습니다. 요청은 할당 만료를 보기 전에
   라운드부터 읽으므로, 제한 시간이 지난 라운드는 할당이 만료됐어도 `time_limit`으로 끝납니다.
-- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `rebuild` 서비스
-  (`manage.py rebuild_slots`, `sandbox.service.keep_rebuilding`)가 다시 만듭니다.
+- 만료된 할당은 다음 할당 요청이나 그 할당에 들어온 요청이 닫습니다. 반납된 슬롯의 스택은 `refill` 서비스
+  (`manage.py refill_slots`, `sandbox.service.keep_refilling`)가 다시 만듭니다.
 
 ## API
 
@@ -345,8 +346,8 @@ sequenceDiagram
 권한:
 
 - 사람은 세션 쿠키와 CSRF, 봇은 `Authorization: Bearer <플레이어 토큰>`입니다. 토큰은 해시로만 저장합니다
-  (`users/players.py`).
-- `IsPlayer(side)`(`training/round/access.py`)가 요청의 플레이어를 찾습니다. GET이 아닌 요청은 라운드가 `running`이 아니면 `409 round_not_started`
+  (`training/round/player_tokens.py`).
+- `IsPlayer(side)`(`training/round/auth.py`)가 요청의 플레이어를 찾습니다. GET이 아닌 요청은 라운드가 `running`이 아니면 `409 round_not_started`
   또는 `409 round_closed`입니다.
 - 터미널 경로는 nginx `auth_request`로 `terminal-auth/<attack|defence|ids>/`에 묻습니다(`ids`는 방어 플레이어). `auth_request`는 2xx, 401, 403 말고는
   모두 500으로 바꾸므로, `terminal-auth`가 거부 코드를 `X-Error-Code` 헤더에 싣고 nginx의 `@terminal-refused`가
@@ -423,7 +424,7 @@ sequenceDiagram
   - 할당·엔진마다 한 번에 하나만 돌고, 두 번째는 `409 test_busy`입니다.
 - `apply/`(WAF만): `base_version`이 최신이 아니면 `409 stale_version`. 같은 파일로 통과한 테스트가 없으면
   `409 not_tested`이고, 있으면 그 테스트를 붙여 `same_as_tested`로 기록합니다.
-- `GET terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`. 방어 파일만 쓸 수 있고 `sudo nginx -t`,
+- `GET waf/terminal/`: cr-waf 관리 주소로 가는 점프 권한, 계정 `analyst`. 방어 파일만 쓸 수 있고 `sudo nginx -t`,
   `-T`, `-s reload`, `systemctl reload nginx`만 root로 돌리며, 네트워크는 loopback만 닿습니다(`curl`로 WAF를 거쳐
   사이트를 시험).
 - `GET ids/terminal/`: 첫 센서가 있는 노드(cr-infra) 관리 주소로 가는 두 번째 점프 권한, 계정 `analyst`(키 이름
@@ -432,7 +433,7 @@ sequenceDiagram
   프로그램과 기록, docker, `nft`에는 닿지 않고 네트워크는 `127.0.0.0/8`과 `::1`만 닿습니다. 이 박스의 로그 중계가
   자기 주소의 514번에서 받은 로그를 WAF 로그로 넘기기 때문에, 자기 주소로 가는 패킷(이것도 `lo`로 나갑니다)도 막습니다.
 - 두 권한 모두 라운드가 끝나면 회수하고,
-  `sandbox.access.end_account`가 그 박스의 `analyst` crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
+  `sandbox.jump.end_account`가 그 박스의 `analyst` crontab과 `at` 작업을 지우고 linger를 끄고 로그인 세션을 끝낸 뒤
   남은 프로세스를 모두 죽입니다. `nohup`, cron, `at`, `systemd --user`로 띄운 것이 다음 라운드까지 남지 않습니다.
 - 터미널에서 reload한 내용은 다음 요청의 읽기(`training.defence.rules.record_terminal_reload`)에서 기록됩니다.
   `analyst`가 sudo로 돌리는 reload는 래퍼(WAF는 `/usr/local/sbin/nginx`, 센서는 `/usr/local/bin/suricatasc`)를
@@ -474,7 +475,7 @@ sequenceDiagram
 - `outcomes`: 선언된 케이스와 플랫폼이 보낸 정상 케이스만. 케이스 하나는 결정 하나입니다.
 - `free_actions`: 자유 행동을 출발지별로. TP/FP/FN/TN에 들어가지 않습니다.
 - 출발지 요청: WAF 접근 로그에서 라운드 시작부터 끝까지 이 라운드의 공격 출발지(현재·소진 모두, `Origin` 행)에서 온
-  요청 가운데 플랫폼이 보낸 행동의 마커가 없는 줄은 그 공격자의 행동입니다(`telemetry/access.origin_requests`,
+  요청 가운데 플랫폼이 보낸 행동의 마커가 없는 줄은 그 공격자의 행동입니다(`telemetry/waf_log.origin_requests`,
   `elastic.access_record`의 `host`는 nginx `vhost`). SOCKS·VPN 터널로 보낸 요청과 kali 셸의 `curl`이 여기에 들어갑니다.
   `training/attack/actions.actions`가 한 줄마다 `origin_request` 행동(마커 `log:<문서 id>`, 시각 상관)을 덧붙이고,
   선언된 케이스가 아니므로 `free_actions`로만 셉니다. board의 귀속 구간(loot 전 2분)에 들어가고, corp도 그 시각에 겹친
@@ -500,7 +501,7 @@ sequenceDiagram
 
 - 소진 판정은 WAF nginx 오류 로그입니다. `log-shipper.conf`가 `/var/log/nginx/error.log`를 Tag `nginx-error`로
   보내고, filebeat가 `message`를 `error.message`로 옮겨 모듈 `nginx_error`로 넣습니다. 라운드에 API 요청이 올 때
-  `telemetry.elastic.error_events`가 읽고 `telemetry.access.refusal_in`이 `access forbidden by rule, client: <ip>`
+  `telemetry.elastic.error_events`가 읽고 `telemetry.waf_log.refusal_in`이 `access forbidden by rule, client: <ip>`
   (`deny`)와 `limiting requests, excess: ... by zone "<zone>", client: <ip>`(`limit_req`)를 골라냅니다.
   dry run 줄, `delaying request`, ModSecurity의 403 줄은 고르지 않습니다.
 - `limit_req` 하한은 `domain.traffic.limit_floor`입니다. `traffic.yaml`의 `users`, `origins` 가중치, `rate`(없으면
@@ -543,7 +544,7 @@ sequenceDiagram
 | `alert.seen`, `rule.tested`, `rule.applied`, `rule.refused`, `limit.below_floor`, `limit.shared_key`, `case.judged` | 방어, 스태프 |
 | `objective.lost` | 양쪽(누구 행동인지는 스태프만) |
 
-이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `Objective`,
+이벤트는 피드일 뿐 저장소가 아닙니다. 점수와 판정은 이벤트가 아니라 행(`Action`, `Detection`, `ObjectiveLoss`,
 `RuleTest`, `RuleSet`)을 읽습니다.
 
 ## 레슨
@@ -557,12 +558,12 @@ sequenceDiagram
 할당 하트비트. 상대 쪽 동작, 스태프 전용 `correlation`, 사람용 `defence_kibana` 제외)와 `shell`을 만들고, `calls.py`가
 도구 명세로 인자를 검사한 뒤 `rest.py`로 한 번 호출하며, `play.py`의 턴 루프에 `provider.py` 인터페이스로 모델을
 붙입니다. 생성 클라이언트는 없습니다. 학습자가 난이도(`{step}`)로 만든 봇 자리는 플랫폼이 띄웁니다. 라운드가
-시작되면 `training/round/bots.py`가 봇 자리마다 `BotRun`을 만들고, 실행기가 `bot_run_claim`(태그 `bots`, 실행기 키
+시작되면 `training/round/bot_runs.py`가 봇 자리마다 `BotRun`을 만들고, 실행기가 `bot_run_claim`(태그 `bots`, 실행기 키
 `IsLauncher`)으로 가져가 플레이어 토큰, 모델, 속도, 허용 동작, 공격이면 카드를 받습니다. 실행기는 `bot_run_report`로
 메모를, `bot_run_finish`로 종료를 알립니다. 서버는 봇 자리를 사람 자리와 똑같이 다루고, 속도와 허용 동작은 실행기의
 프록시가 겁니다. 실행기는 compose 서비스 `bots`(`bots/launcher.py`, 이미지 `cr-bots`)입니다. 실행마다 `127.0.0.1`에 `relay.py`를 띄우고 그 뒤에 Claude Code를 print 모드(stream-json 입력)로 실행합니다. 공격 봇은 첫 메시지 하나를 받고 입력이 닫혀, 턴이 끝나면 실행도 끝납니다. 방어 봇은 라운드가 끝날 때까지 세션을 그대로 둡니다. 실행기가 난이도의 `watch_s`(1~3단계 75·30·10초)마다 플레이어 토큰으로 `defence_state`, `defence_alerts`, `defence_traffic`를 커서 이어서 읽고, 새 알림, 거부, 처음 보는 출발지 주소, 단계 변화가 있으면 그것을 담은 메시지를 하나 더 보냅니다(`watch.py`, 알림과 주소는 20개까지 보이고 나머지는 개수만). 턴이 끝나도 실행은 이어지고, 단계가 `ended`가 되면 그 확인의 알림·트래픽 읽기가 실패해도 `round_score`를 읽으라는 마지막 메시지를 보내고 입력을 닫습니다. `defence_state`가 `401`(실행 토큰 폐기)로 답하면 바로 입력을 닫습니다. 난이도의 턴 수(메시지를 합쳐 셈)나 예산을 다 쓰면 그때도 끝납니다. 자식은 relay 주소와 실행 키만 받고, 플레이어 토큰은 relay만 쥡니다. 속도를 넘긴 호출은 `429 pace_limited`, 난이도가 주지 않는 동작이나 케이스는 `403 not_at_this_step`으로 플랫폼에 닿기 전에 거부합니다. 자식은 실행마다 빈 작업 디렉터리와 자기 설정 디렉터리에서 `--safe-mode`, 설정 소스 없이, Bash(`python -m bots.cli`와 `sleep`만 허용)와 Write(작업 디렉터리 최상위의 `.json`만 허용, `Edit(/*.json)`) 두 도구로 돌고, 비밀을 못 읽는 별도 uid(`bot0`..`bot7`)로 실행됩니다. 명령줄 설정은 `bashOutputMaxChars` 128000 하나입니다. 기본값 30,000자를 넘는 응답(`defence_waf`는 약 42 KB)은 파일로 빠지는데, 자식은 파일을 읽는 명령이 전부 막혀 있어 그 파일을 못 엽니다. 따옴표가 든 인자는 명령줄에 쓰지 않고 Write로 `call.json`에 적은 뒤 `python -m bots.cli <도구> --json-file call.json`으로 넘깁니다. 실행기는 플랫폼을 compose 이름 `http://platform:8000`으로 부르므로 플랫폼 스택이 `DJANGO_ALLOWED_HOSTS`에 `platform`을 넣습니다. 이미지에는 `bots/`와 `openapi/schema.yaml`만 있습니다. nginx는 세션 쿠키 없이 Bearer 헤더로 온 요청을 그 헤더로 묶어(`api_client`) 봇 자리마다 사람 세션처럼 따로 셉니다. 시연이 끝날 때까지 `{step}` 자리가 있는 라운드와 기준 분포는 `CR_BOT_ROUND_USERS`에 적힌 계정만
 엽니다(`403 bot_rounds_closed`). `{name}` 자리(토큰을 한 번 돌려주는 외부 드라이버)는 스태프만 만듭니다. `rest.py`가 스키마의 `operationId`에서 메서드·경로·쿼리를 찾아 보냅니다. 상대 쪽
-도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_terminal`이 주는
+도구는 보내기 전에 거부합니다. `shell`은 사람 플레이어와 같은 셸입니다. `attack_terminal`이나 `defence_waf_terminal`이 주는
 SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에서 명령 하나를 실행합니다(`shell.py`). 방어 봇에는
 `defence_ids_terminal`로 센서 호스트(`analyst`)에서 실행하는 `ids_shell`도 있고, IDS 룰은 이것으로만 바꿉니다. 룰 테스트는
 몇 분 걸려 Claude Code의 명령 제한(120초)을 넘기므로, CLI의 `defence_waf_test`와 `defence_ids_test`는 테스트를 분리된
@@ -629,7 +630,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
 SQLite에서 옮겼습니다. SQLite는 파일 하나에 쓰는 쪽이 하나뿐이라 라운드 셋이 동시에 돌 때 봇 메모, 판정,
 `bot_run_finish`가 30초 잠금 대기를 넘겼기 때문입니다(`docs/DECISIONS.md` 2026-11-25).
 
-- `platform`과 `rebuild`가 `CR_DB_HOST=postgres`로 붙고, 비밀번호는 compose secret `store_password`에서 읽습니다.
+- `platform`과 `refill`이 `CR_DB_HOST=postgres`로 붙고, 비밀번호는 compose secret `store_password`에서 읽습니다.
   `cr-postgres`는 내부 네트워크 `store`에만 있고 포트를 열지 않습니다.
 - 원격 장비에 ssh로 닿는 동안에는 DB 쓰기 트랜잭션을 열어 두지 않습니다. `apply_waf`, `apply_ids`와 라이브
   룰 기록은 WAF·센서에 먼저 쓰고, 그 결과를 짧은 트랜잭션에서 버전 확인과 함께 기록합니다. 같은 라운드·엔진의

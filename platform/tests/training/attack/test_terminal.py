@@ -1,7 +1,7 @@
 import pytest
 
 from cr import errors
-from sandbox import access as jump
+from sandbox import jump
 from testing.fakerange import KALI_MANAGEMENT
 from tests.training.attack.conftest import codes, url
 from training.attack import actions as service

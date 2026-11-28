@@ -150,6 +150,15 @@ def test_export_then_import_carries_the_same_document_into_a_new_problem(saved, 
     assert without_stamps(imported.json()) == exported
 
 
+def test_an_import_of_a_document_exported_with_the_old_kind_field_loads(saved, as_staff):
+    exported = as_staff.get(f"/api/staff/problems/{saved['problem']['id']}/export/").json()
+    exported["problem"]["kind"] = "round"
+
+    imported = as_staff.post("/api/staff/problems/import/", exported, format="json")
+
+    assert imported.status_code == 201 and "kind" not in imported.json()["problem"]
+
+
 def test_an_import_is_validated_like_any_save(source, as_staff):
     refused(as_staff.post("/api/staff/problems/import/", broken(lambda doc: doc["problem"].update(side="red")),
                           format="json"), 400, "not_a_choice", "problem.side")

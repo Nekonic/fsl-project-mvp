@@ -126,7 +126,7 @@ class Node:
 
 
 @dataclass(frozen=True)
-class Sandbox:
+class Plan:
     slot: int
     wargame: str
     lans: tuple[Lan, ...]
@@ -237,7 +237,7 @@ class _Wired:
 
     def upstreams(self) -> dict[str, str]:
         return {f"{wargame.upper()}_ADDRESS": address
-                for wargame, address in sorted(self.definition.filling("gateway").upstreams.items())}
+                for wargame, address in sorted(self.definition.filling("waf").upstreams.items())}
 
 
 def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot: int, upstream: str,
@@ -247,7 +247,7 @@ def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot
         [internet] = [port for port in wired.of("attacker") if port.origins]
         return {"INTERNET_ADDRESS": internet.address, "ORIGINS": " ".join(internet.extra)}
     if role == "waf":
-        return {"GATEWAY": wired.facing("gateway", "edge"), "LOG_SERVER": wired.of("log-server")[0].address,
+        return {"GATEWAY": wired.facing("waf", "edge"), "LOG_SERVER": wired.of("log-server")[0].address,
                 "WARGAMES": definition.wargame, **wired.upstreams()}
     if role == "infra":
         edge = definition.filling("edge")
@@ -255,7 +255,7 @@ def environment(definition: Definition, ports: tuple[Port, ...], role: str, slot
         return {"SLOT": str(slot), "WAF_FRONT": front, "UPSTREAM": upstream,
                 "IDS_LEGS": " ".join(port.address for port in ports if port.ids),
                 "LOG_SERVER": wired.of("log-server")[0].address, "COLLECTOR": collector,
-                "SITES": " ".join(definition.filling("gateway").names), "CUSTOMERS": " ".join(customers)}
+                "SITES": " ".join(definition.filling("waf").names), "CUSTOMERS": " ".join(customers)}
     return {"WARGAMES": definition.wargame, **wired.upstreams()}
 
 
@@ -297,7 +297,7 @@ def user_data(node: str, role: str, env: dict[str, str], collector: str, manager
 
 
 def plan(definition: Definition, slot: int, origins, chosen_origin: str, collector: str,
-         manager: tuple[str, str] = ("", ""), tag: str = "") -> Sandbox:
+         manager: tuple[str, str] = ("", ""), tag: str = "") -> Plan:
     if not origins:
         raise RangeUnavailable("the declaration names no origin, so Kali would stand on no Internet address")
     first = default_origin(origins, chosen_origin)
@@ -314,4 +314,4 @@ def plan(definition: Definition, slot: int, origins, chosen_origin: str, collect
                           user_data=user_data(name, role, env, collector, manager, tag,
                                               definition.answers.get(name, "")), env=env))
     logged = next(port.lan for port in ports if port.device == definition.filling("log-server").name)
-    return Sandbox(slot=slot, wargame=definition.wargame, lans=lans, nodes=tuple(nodes), logged=logged)
+    return Plan(slot=slot, wargame=definition.wargame, lans=lans, nodes=tuple(nodes), logged=logged)

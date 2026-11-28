@@ -12,7 +12,7 @@ from training.round import site
 def cloud(monkeypatch, tmp_path):
     made = fakerange.FakeCloud()
     fakerange.HELD["range"] = made
-    monkeypatch.setenv("CR_SUBSTRATE", "testing.fakerange.connect")
+    monkeypatch.setattr("cr.config.SUBSTRATE", "testing.fakerange.connect")
     monkeypatch.setenv("CR_REFILL_DIR", str(tmp_path / "refill"))
     monkeypatch.setenv("CR_JUMP_DIR", str(tmp_path / "jump"))
     monkeypatch.setattr("sandbox.kibana.session_view_ready", lambda *given, **named: True)

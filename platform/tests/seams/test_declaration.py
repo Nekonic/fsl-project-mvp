@@ -8,7 +8,7 @@ DECLARATION = ROOT / "platform" / "sandbox" / "declaration.yaml"
 
 
 def test_the_default_origin_has_to_be_somewhere_an_attack_can_start():
-    from sandbox.definitions import Declaration, Segment
+    from sandbox.declaration import Declaration, Segment
 
     inside_only = Declaration(
         segments=(Segment(id="estate", name="Application estate", origin=""),),

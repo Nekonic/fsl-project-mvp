@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from cr.config import OpenStackConfig
-from sandbox import fabric as networks
+from sandbox import fabric
 from sandbox import openstack, pool, stack_plan
 from testing import fakecloud
 
@@ -43,7 +43,7 @@ def test_each_slot_is_one_stack_and_the_pool_spreads_the_wargames_over_the_slots
     assert [plan.wargame for plan in adapter.plan_slots()] == ["board", "corp", "board"]
     created = stacks(cloud)["cr-slot-2"]
     assert created["parameters"]["control_network"] == "net-mgmt"
-    assert created["parameters"]["senders_group"] == "g-" + networks.SENDERS_GROUP
+    assert created["parameters"]["senders_group"] == "g-" + fabric.SENDERS_GROUP
     assert created["parameters"]["image_kali"] == "cr-kali-bake1" and created["parameters"]["flavor_waf"] == "dba.small"
 
 
@@ -52,11 +52,11 @@ def test_the_slots_share_three_lan_security_groups_and_the_fabric_teardown_remov
     for one in adapter.every_slot():
         one.ensure_slot()
 
-    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(networks.LAN_GROUP_PREFIX)}
+    lan_groups = {group["id"]: group for group in cloud.groups if group["name"].startswith(fabric.LAN_GROUP_PREFIX)}
     assert len(lan_groups) == 3, "a pool of any size adds three groups, not five per slot"
     used = {group for port in cloud.ports for group in port.get("security_groups") or ()}
     assert set(lan_groups) <= used
-    steps = networks.teardown(adapter.declared, [], [], [], cloud.groups)
+    steps = fabric.teardown(adapter.declared, [], [], [], cloud.groups)
     assert {("group", ident) for ident in lan_groups} <= set(steps)
 
 
@@ -79,7 +79,7 @@ def test_commands_reach_each_role_on_its_own_node_and_the_targets_through_docker
 
     slot.runner("attacker")(["curl", "http://corp.com/"])
     slot.runner("corp-db")(["mysql", "-e", "select 1"])
-    slot.runner("gateway")(["nginx", "-t"])
+    slot.runner("waf")(["nginx", "-t"])
     kali, target, waf = (cloud.control_address(2, node) for node in ("cr-kali", "cr-target", "cr-waf"))
 
     assert cloud.runner.sent_to(kali)[-1].startswith("sudo sh -c ") and "curl http://corp.com/" in cloud.runner.sent_to(kali)[-1]
@@ -129,7 +129,7 @@ def test_commands_to_a_ready_slot_ask_the_cloud_nothing_until_its_stack_is_creat
     request = fakecloud.adapter(cloud, slots=1)
 
     request.runner("attacker")(["true"])
-    request.runner("gateway")(["true"])
+    request.runner("waf")(["true"])
     request.terminal("cr-waf")
     assert len(cloud.calls) == asked, "the node addresses are held per stack, not looked up per command"
     alias = request.terminal("cr-kali")[1]

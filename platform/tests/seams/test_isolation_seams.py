@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from sandbox import definitions as declaration
+from sandbox import declaration
 
 REPO = Path(__file__).resolve().parents[3]
 SCANNED_ROOTS = ("platform", "front/src", "bots", "test", "bin")
@@ -58,7 +58,7 @@ SEAMS = {
         set(),
         r"\bcr-(?:kali|waf|infra|target)\b"),
     JUMP: (
-        {"platform/sandbox/access.py"},
+        {"platform/sandbox/jump.py"},
         r"\bauthorized_keys\b|cr-session-"),
     EDGE: (
         {"platform/sandbox/edge.py"},

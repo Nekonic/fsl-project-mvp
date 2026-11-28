@@ -139,7 +139,7 @@ is reported apart under `free_actions` and never scored as one.
   Neutron and the target VM's Docker networks (`sandbox/wiring.py` parses it,
   `sandbox/topology.py` names it for the learner, filtered by side);
   `sandbox/edge.py` the only one that writes the infra router's nftables
-  `pool` and `spent` sets; `sandbox/access.py` the only one that knows the
+  `pool` and `spent` sets; `sandbox/jump.py` the only one that knows the
   platform sshd's jump grants and the per-player key in a box account's
   `authorized_keys`; `sandbox/attacker.py` the only one that knows the
   attacker box (origins, `set-origin`, `set-peer`, the command log, the tool

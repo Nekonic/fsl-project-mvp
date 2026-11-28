@@ -361,7 +361,7 @@ class NewPlatform:
 
 
 def restoring(ran):
-    [restore] = [command for command in ran if "stop platform rebuild &&" in command]
+    [restore] = [command for command in ran if "stop platform refill &&" in command]
     return restore
 
 
@@ -553,10 +553,10 @@ def test_the_restore_stops_every_service_that_holds_the_store_and_starts_them_ag
     module.hand_over(platform, "secret", key, store)
 
     restore = restoring(platform.ran)
-    assert "compose.yaml stop platform rebuild &&" in restore, (
-        "on 2026-11-24 cr-rebuild kept a connection to the store the restore replaced; its lock "
+    assert "compose.yaml stop platform refill &&" in restore, (
+        "on 2026-11-24 the refill container (then cr-rebuild) kept a connection to the store the restore replaced; its lock "
         "made every write of the new platform wait")
-    assert platform.ran[-1].endswith("up -d --force-recreate platform rebuild")
+    assert platform.ran[-1].endswith("up -d --force-recreate platform refill")
 
 
 def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_platform_services(tmp_path):
@@ -568,7 +568,7 @@ def test_without_a_sideload_the_rebuild_pulls_everything_and_restarts_only_the_p
     module.hand_over(platform, "secret", key, None)
 
     assert not [command for command in platform.ran if "docker load" in command or "git " in command]
-    assert platform.ran[-1].endswith("up -d --force-recreate platform rebuild"), (
+    assert platform.ran[-1].endswith("up -d --force-recreate platform refill"), (
         "the password file keeps its inode, so compose sees no change and would keep the platform that read it empty"
     )
     assert platform.settings_fed() == b""

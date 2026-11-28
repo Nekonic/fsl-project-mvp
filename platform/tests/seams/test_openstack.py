@@ -142,7 +142,7 @@ def test_a_401_that_survives_a_fresh_token_is_reported_not_looped(cloud):
     assert cloud.tokens == 2, cloud.tokens
 
 def test_an_adapter_with_nowhere_else_to_look_names_the_cloud_it_could_not_reach():
-    from sandbox import definitions as declaration
+    from sandbox import declaration
 
     far = "http://127.0.0.1:1"
     cloudspec = openstack.Cloud(keystone=far, neutron=far, nova=far, project="cr",
@@ -180,7 +180,7 @@ REAL_SHAPES = {
 }
 
 def test_describe_runs_end_to_end_over_http_against_reference_shapes(cloud):
-    from sandbox import definitions as declaration
+    from sandbox import declaration
 
     class H(cloud.handler()):
         def do_GET(self):

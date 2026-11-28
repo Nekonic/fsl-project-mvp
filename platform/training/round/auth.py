@@ -11,7 +11,7 @@ from cr import errors
 from domain.round_rules import Phase
 from training.models import Allocation, Round, Player
 from users import permissions as users
-from users.players import hashed, token_usable
+from training.round.player_tokens import hashed, token_usable
 
 BEARER = b"bearer"
 NOT_STARTED = (Phase.CREATED.value, Phase.STARTING.value)

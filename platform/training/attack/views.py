@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from training.attack import actions as service
 from training.attack import serializers
-from training.round import access as auth
+from training.round import auth
 from training.round.views_catch_up import CatchingUpView
 
 TAGS = ["attack"]

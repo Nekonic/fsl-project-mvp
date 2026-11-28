@@ -43,7 +43,7 @@ export const fixtures = [
     ssh: { host: "range.example", port: 2222, user: "kali", private_key: "placeholder-key", expires_at: minutesFromNow(10), target_host: "kali", target_user: "kali" },
     remaining,
   })),
-  reply("get", "/api/rounds/{round_id}/defence/terminal/", (asked) => ({
+  reply("get", "/api/rounds/{round_id}/defence/waf/terminal/", (asked) => ({
     ws_url: `/vm-terminal/defence/${asked.params.round_id}/`,
     ssh: { host: "range.example", port: 2222, user: "analyst", private_key: "placeholder-key", expires_at: minutesFromNow(10), target_host: "waf", target_user: "analyst" },
   })),

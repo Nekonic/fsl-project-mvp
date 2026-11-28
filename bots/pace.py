@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
-TERMINAL_GRANTS = frozenset({"attack_terminal", "defence_terminal", "defence_ids_terminal"})
+TERMINAL_GRANTS = frozenset({"attack_terminal", "defence_waf_terminal", "defence_ids_terminal"})
 NEVER_PACED = frozenset({"attack_forfeit", "defence_forfeit", "allocation_heartbeat"})
 
 

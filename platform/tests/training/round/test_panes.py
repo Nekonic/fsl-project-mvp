@@ -12,7 +12,7 @@ from training.round import lifecycle as service
 
 
 @pytest.fixture
-def running(allocation, problem, learner, other):
+def running(allocation, learner, other):
     return service.start_round(pvp(allocation, other, learner))
 
 
@@ -128,7 +128,7 @@ def test_recording_probes_writes_redacted_recordings_and_a_manifest_then_release
 
     assert started.status_code == 202 and progress["state"] == "done", progress
     assert progress["failed"] == [] and len(progress["done"]) == progress["total"]
-    assert "board-normal-search" in manifest["cases"] and manifest["image_digest"]
+    assert "board-normal-search" in manifest["cases"] and manifest["image"]
     response = json.loads((folder / "board-sqli-search.response.json").read_text())
     assert "pbkdf2_sha256$placeholder" not in response["body"] and response["status"] == 200
     assert (folder / "board-sqli-search.pcap").read_bytes() == b"pcap"

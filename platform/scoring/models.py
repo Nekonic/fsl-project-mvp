@@ -3,8 +3,8 @@ from django.db import models
 from training.models import Round
 
 
-class Objective(models.Model):
-    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="objectives")
+class ObjectiveLoss(models.Model):
+    round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="objective_losses")
     key = models.CharField(max_length=128)
     name = models.CharField(max_length=256)
     achieved_at = models.DateTimeField()
@@ -14,6 +14,7 @@ class Objective(models.Model):
     seen = models.BooleanField(default=False)
 
     class Meta:
+        db_table = "scoring_objective"
         ordering = ["achieved_at", "id"]
         constraints = [models.UniqueConstraint(fields=["round", "key"], name="one_loss_per_objective")]
 
@@ -29,4 +30,4 @@ class Verdict(models.Model):
 
     class Meta:
         ordering = ["judged_at", "id"]
-        constraints = [models.UniqueConstraint(fields=["round", "action"], name="one_verdict_per_case")]
+        constraints = [models.UniqueConstraint(fields=["round", "action"], name="one_verdict_per_action")]

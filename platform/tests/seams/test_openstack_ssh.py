@@ -10,8 +10,8 @@ from dataclasses import replace
 
 import pytest
 
-from sandbox import definitions as declaration
-from sandbox import fabric as networks
+from sandbox import declaration
+from sandbox import fabric
 from sandbox import openstack
 from sandbox.runner import RangeUnavailable, Segment
 
@@ -115,7 +115,7 @@ def adapter(host, server_id="target-1", launched_at=FIRST_BOOT, **cloud) -> open
     declared = replace(
         declaration.read(), origins=(), segments=(Segment(id="mgmt", name="Management"),)
     )
-    network = networks.network_name(networks.MANAGEMENT)
+    network = fabric.network_name(fabric.MANAGEMENT)
     listed = {"networks": [{"id": "net-mgmt", "name": network, "tags": [f"{openstack.SEGMENT_TAG}=mgmt"]}]}
     servers = {
         "servers": [

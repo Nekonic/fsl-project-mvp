@@ -6,7 +6,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[4]
 RECORDED = ("board-sqli-search", "board-sqli-login-bypass")
-DIGEST = "sha256:placeholder"
+IMAGE = "ghcr.io/nekonic/cr-board"
 
 
 def copied_source(into: Path) -> Path:
@@ -20,11 +20,11 @@ def copied_source(into: Path) -> Path:
     return into
 
 
-def recorded(source: Path, wargame: str, cases: tuple[str, ...], digest: str = DIGEST) -> None:
+def recorded(source: Path, wargame: str, cases: tuple[str, ...], image: str = IMAGE) -> None:
     probes = source / "wargames" / wargame / "probes"
     probes.mkdir(exist_ok=True)
     (probes / "manifest.json").write_text(json.dumps({
-        "image_digest": digest, "recorded_at": "2026-11-20T00:00:00+00:00",
+        "image": image, "recorded_at": "2026-11-20T00:00:00+00:00",
         "cases": {case: {"marker": case} for case in cases}}))
 
 

@@ -7,8 +7,8 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.views import APIView
 
 from tests import rounds
-from training.round import access as auth
-from users import players
+from training.round import auth
+from training.round import player_tokens
 
 pytestmark = pytest.mark.django_db
 
@@ -63,7 +63,7 @@ def codes(answer):
 def bot_round():
     found = rounds.opened(rounds.problem())
     player = rounds.playing(found, "attack", bot_name="attack-bot")
-    return found, player, players.issue_token(player)
+    return found, player, player_tokens.issue_token(player)
 
 
 def test_a_bot_token_reaches_its_own_side_of_its_own_round(bot_round):
@@ -87,7 +87,7 @@ def test_the_token_is_stored_only_as_its_hash(bot_round):
     _, player, token = bot_round
     player.refresh_from_db()
 
-    assert player.token_hash == players.hashed(token) and token not in player.token_hash
+    assert player.token_hash == player_tokens.hashed(token) and token not in player.token_hash
 
 
 def test_an_unknown_malformed_or_revoked_token_is_not_signed_in(bot_round):
@@ -96,7 +96,7 @@ def test_an_unknown_malformed_or_revoked_token_is_not_signed_in(bot_round):
     assert codes(called(AttackRoute, token="not-a-token", round_id=found.pk)) == ["not_signed_in"]
     assert codes(called(AttackRoute, token="\xff\xfe", round_id=found.pk)) == ["not_signed_in"]
     assert called(AttackRoute, token=f"{token} extra", round_id=found.pk).status_code == 401
-    players.revoke_token(player)
+    player_tokens.revoke_token(player)
     revoked = called(AttackRoute, token=token, round_id=found.pk)
     assert codes(revoked) == ["not_signed_in"]
     assert revoked["WWW-Authenticate"] == 'Bearer realm="player"'
@@ -146,7 +146,7 @@ def test_the_round_reads_admit_its_players_and_its_operator_and_no_one_else(make
     opener, outsider = make_user("opener"), make_user("outsider")
     found = rounds.opened(rounds.problem(), opened_by=opener)
     player = rounds.playing(found, "attack", bot_name="attack-bot")
-    token = players.issue_token(player)
+    token = player_tokens.issue_token(player)
 
     assert called(RoundRoute, user=opener, round_id=found.pk).data == {"players": [], "operator": True}
     assert called(RoundRoute, user=staff, round_id=found.pk).data["operator"] is True

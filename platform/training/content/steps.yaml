@@ -65,4 +65,4 @@ steps:
         operations: [defence_state, defence_alerts, defence_traffic, defence_probes, defence_waf, defence_waf_versions,
                      defence_waf_version, defence_waf_check, defence_waf_test, defence_waf_test_result,
                      defence_waf_apply, defence_forfeit, defence_ids_rules, defence_ids_versions, defence_ids_version,
-                     defence_ids_test, defence_ids_test_result, defence_ids_terminal, defence_terminal]
+                     defence_ids_test, defence_ids_test_result, defence_ids_terminal, defence_waf_terminal]

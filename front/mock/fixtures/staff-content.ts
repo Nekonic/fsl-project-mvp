@@ -22,7 +22,7 @@ const postures: Posture[] = [
 
 function wargameRound(id: number, wargame: string, title: string): Stored {
   return {
-    problem: { id, kind: "round", wargame, side: "both", title, summary: "Placeholder summary for the match.", body: "", published: true, revision: 3, author: "staff-one", updated: UPDATED },
+    problem: { id, wargame, side: "both", title, summary: "Placeholder summary for the match.", body: "", published: true, revision: 3, author: "staff-one", updated: UPDATED },
     round: {
       matchups: ["def_vs_bot", "atk_vs_bot"], posture: "default",
       probe_cases: [`${wargame}-sqli-search`, `${wargame}-xss-script-tag-in-search`, `${wargame}-sqli-orderby-sqlmap-detect`, `${wargame}-path-traversal-static`, `${wargame}-normal-sort`],
@@ -43,7 +43,7 @@ let nextPosture = 4;
 
 function listed() {
   return [...documents.values()].map((doc) => ({
-    id: doc.problem.id, kind: doc.problem.kind, wargame: doc.problem.wargame, side: doc.problem.side,
+    id: doc.problem.id, wargame: doc.problem.wargame, side: doc.problem.side,
     title: doc.problem.title, published: doc.problem.published, revision: doc.problem.revision, updated: doc.problem.updated,
   }));
 }

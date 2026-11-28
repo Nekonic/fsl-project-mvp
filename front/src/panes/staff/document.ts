@@ -26,16 +26,16 @@ export function blankSetup(): SetupBody {
 
 export function blankDraft(wargame: string): Draft {
   return {
-    problem: { kind: "round", wargame, side: "defence", title: "", summary: "", body: "", published: false },
+    problem: { wargame, side: "defence", title: "", summary: "", body: "", published: false },
     round: blankSetup(),
     start_posture: null,
   };
 }
 
 export function draftOf(stored: StoredDocument): Draft {
-  const { kind, wargame, side, title, summary, body, published } = stored.problem;
+  const { wargame, side, title, summary, body, published } = stored.problem;
   return {
-    problem: { kind, wargame, side, title, summary, body, published },
+    problem: { wargame, side, title, summary, body, published },
     round: stored.round ? { ...stored.round } : blankSetup(),
     start_posture: stored.start_posture ?? null,
   };

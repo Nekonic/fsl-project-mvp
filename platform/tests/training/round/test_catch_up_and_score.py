@@ -19,7 +19,7 @@ def read_due(found):
 
 
 @pytest.fixture
-def running(allocation, problem, learner, other):
+def running(allocation, learner, other):
     found = service.start_round(pvp(allocation, other, learner))
     found.snapshot["round"].update(time_limit_s=900, benign_every_s=30)
     found.ends_at = found.started + timedelta(seconds=900)
@@ -134,7 +134,7 @@ def test_the_score_keeps_objectives_outcomes_and_free_actions_apart(as_operator,
 
 
 @pytest.mark.parametrize("side", ["attack", "defence"])
-def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, allocation, problem,
+def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correlation(browser, allocation,
                                                                                    other, make_user, staff, side):
     defender = make_user("defender")
     found = service.start_round(pvp(allocation, other, defender))
@@ -153,7 +153,7 @@ def test_a_player_reads_the_score_only_after_the_end_and_never_picks_the_correla
     assert browser.get(url(found, "score/?correlation=window")).status_code == 200
 
 
-def test_an_operator_who_plays_in_the_round_reads_its_score_only_after_the_end(browser, allocation, problem, other):
+def test_an_operator_who_plays_in_the_round_reads_its_score_only_after_the_end(browser, allocation, other):
     found = service.start_round(pvp(allocation, allocation.opened_by, other))
     browser.force_authenticate(allocation.opened_by)
 
@@ -261,14 +261,14 @@ def test_the_rebuild_job_runs_a_fixed_number_of_rounds_without_sleeping_past_the
     advanced, paused = [], []
     monkeypatch.setattr(sandbox, "advance_refills", lambda: advanced.append(1) or [])
 
-    assert sandbox.keep_rebuilding(2.0, rounds=2, pause=paused.append) == 2
+    assert sandbox.keep_refilling(2.0, rounds=2, pause=paused.append) == 2
     assert len(advanced) == 2 and len(paused) == 1
 
 
 def test_a_failed_rebuild_step_does_not_stop_the_rebuild_job(monkeypatch, cloud, db):
     monkeypatch.setattr(sandbox, "advance_refills", lambda: (_ for _ in ()).throw(RuntimeError("refill bug")))
 
-    assert sandbox.keep_rebuilding(0.0, rounds=2, pause=lambda seconds: None) == 2
+    assert sandbox.keep_refilling(0.0, rounds=2, pause=lambda seconds: None) == 2
 
 
 def kinds_for(found, side):
@@ -490,7 +490,7 @@ def test_a_read_after_the_round_ended_loads_nothing_into_the_edge(cloud, as_oper
 
 def test_a_dump_holding_the_hash_and_an_alert_on_it_lose_nothing_until_the_loot_reaches_the_target_s_truth(
         monkeypatch, cloud, browser, running, other):
-    from scoring.models import Objective
+    from scoring.models import ObjectiveLoss
     from testing.fakes import BOARD_TRUTH, FakeElastic
 
     browser.force_authenticate(other)
@@ -504,13 +504,13 @@ def test_a_dump_holding_the_hash_and_an_alert_on_it_lose_nothing_until_the_loot_
 
     assert dumped["done"] is True and BOARD_TRUTH["admin"] in dumped["output"]
     assert running.detections.filter(marker=fired["marker"]).exists()
-    assert not Objective.objects.filter(round=running).exists()
+    assert not ObjectiveLoss.objects.filter(round=running).exists()
 
     loot = {"value": [{"username": "admin", "hash": BOARD_TRUTH["admin"]}]}
     looted = browser.post(url(running, "attack/loot/"), loot, format="json")
 
     assert looted.json()["lost"] is True
-    assert Objective.objects.filter(round=running, key="board-auth-user-admin").exists()
+    assert ObjectiveLoss.objects.filter(round=running, key="board-auth-user-admin").exists()
 
 
 def test_a_response_is_an_origin_the_waf_spent_or_a_tested_version_the_defence_applied_never_a_give_up_or_the_setup(

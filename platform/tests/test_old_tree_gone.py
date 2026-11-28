@@ -18,8 +18,6 @@ GONE = (
     "docs/superpowers/plans", "metrics.json", "bin/measure",
 )
 
-REFUSES_THE_OLD_KIND = {"platform/tests/domain/test_problems.py"}
-
 
 def tracked():
     listed = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True)
@@ -27,8 +25,8 @@ def tracked():
 
 
 def is_held_or_prose(name):
-    return (name.startswith(("platform/carry/", "docs/")) or name.endswith(".md")
-            or name == SELF or name in REFUSES_THE_OLD_KIND or not (ROOT / name).is_file())
+    return (name.startswith("docs/") or name.endswith(".md")
+            or name == SELF or not (ROOT / name).is_file())
 
 
 def referencing():
@@ -49,7 +47,7 @@ def test_the_old_product_tree_is_gone():
     assert [path for path in GONE if (ROOT / path).exists()] == []
 
 
-def test_only_the_files_still_waiting_for_their_rewrite_name_the_old_api_or_scenarios():
+def test_no_file_names_the_old_api_or_scenarios():
     assert referencing() == set(), (
-        "a file outside platform/carry names api.* or a scenario; remove the reference"
+        "a file names api.* or a scenario; remove the reference"
     )

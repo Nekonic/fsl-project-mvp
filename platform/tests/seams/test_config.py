@@ -24,12 +24,12 @@ def test_every_seam_config_is_a_frozen_dataclass(kind):
 
 def test_the_config_is_built_from_the_topologies_and_the_environment():
     built = config.build({"ELASTIC_URL": "http://es.test:9200", "KIBANA_URL": "http://kb.test/kibana",
-                          "BOARD_API_URL": "http://board.test:8000", "CR_JUMP_PORT": "2200",
+                          "BOARD_PORT": "8001", "CR_JUMP_PORT": "2200",
                           "ATTACKER_TARGET_URL": "http://corp.com"}, ROOT)
 
     assert built.elastic.url == "http://es.test:9200" and built.elastic.index_of(3) == "logs-3-*"
     assert built.kibana.url == "http://kb.test/kibana" and Path(built.kibana.objects).is_file()
-    assert built.ground_truth.board_url == "http://board.test:8000"
+    assert built.ground_truth.board_port == 8001
     assert built.jump.port == 2200
     assert (built.box.attacker, built.box.proxy, built.box.way_in) == ("cr-kali", "cr-kali", "cr-edge")
     assert built.box.target_url == "http://corp.com" and built.box.default_origin == "ru"

@@ -156,20 +156,20 @@ services:
       - ./cases:/src/cases:ro
       - platformdata:/data
 
-  rebuild:
+  refill:
     platform: linux/amd64
     image: ghcr.io/nekonic/cr-platform:${CR_IMAGE_TAG:-dev}
-    container_name: cr-rebuild
+    container_name: cr-refill
     depends_on:
       platform: {condition: service_started}
       postgres: {condition: service_healthy}
     networks:
       mgmt: {}
       store: {}
-    entrypoint: ["gosu", "cr", "python", "manage.py", "rebuild_slots"]
+    entrypoint: ["gosu", "cr", "python", "manage.py", "refill_slots"]
     environment:
       <<: *platform-environment
-      CR_REBUILD_EVERY_SECONDS: "${CR_REBUILD_EVERY_SECONDS:-5}"
+      CR_REFILL_EVERY_SECONDS: "${CR_REFILL_EVERY_SECONDS:-5}"
     env_file: *platform-env-file
     secrets: [openstack_password, store_password]
     volumes: *platform-volumes
