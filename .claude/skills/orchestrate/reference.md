@@ -26,7 +26,7 @@ imports. Docs (`*.md`, `docs/`, `.claude/`) select nothing.
 The unit `conftest.py` and `__init__.py`, `pytest.ini`, `pyproject.toml`,
 `uv.lock` and `cr/settings.py` run the whole unit suite, and so does any
 changed file no test reaches. A range-facing change (`platform/` outside
-`tests/` and `console/`, `wargames/`, `redteam/`, `deploy/`, `test/` but
+`tests/` and `console/`, `wargames/`, `cases/`, `deploy/`, `test/` but
 `test/durations.json`, `compose.yaml`, `bin/acceptance`) that no acceptance
 test names needs all of acceptance. Because `api/views.py` imports
 most of `platform/`, a change there still selects most of the API tests; a

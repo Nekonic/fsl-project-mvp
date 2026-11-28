@@ -122,7 +122,7 @@ is reported apart under `free_actions` and never scored as one.
 
 - `test/` stays green, in particular TP > 0 and TN > 0 — attacks detected,
   benign traffic passes. That is the hypothesis.
-- The benign cases in `redteam/cases/` stay; deleting them makes the score look
+- The benign cases in `cases/` stay; deleting them makes the score look
   good and the platform pointless.
 - The target decides whether it was beaten; never mark an objective from the
   platform's own belief about an attack. The objective layer's value is that
@@ -211,11 +211,11 @@ logic changed, and before a push.
   (same for `test/`).
 - No comments or docstrings in code (Python, shell, TS/TSX/JS), in
   `platform/`, `front/src`, `bots/`, `bin/`, `test/`, `deploy/`, `wargames/`
-  and `redteam/` alike; name things so the code says what it does.
+  and `cases/` alike; name things so the code says what it does.
   Exceptions: `deploy/suricata/rules/`, where a commented-out rule is how a
   rule is disabled, the header Django writes into generated migrations, and
   a script's shebang. YAML data and config files may carry comments
-  (`redteam/cases/*.yaml`, `wargames/board/traffic.yaml`,
+  (`cases/*.yaml`, `wargames/board/traffic.yaml`,
   `deploy/openstack/cloud.example.yaml`).
   `platform/tests/seams/test_no_comments.py` scans Python (comment tokens
   and docstrings), shell (trailing comments and Python fed to a heredoc

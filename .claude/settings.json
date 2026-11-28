@@ -53,7 +53,7 @@
       "Edit(deploy/**)",
       "Edit(docs/**)",
       "Edit(platform/**)",
-      "Edit(redteam/**)",
+      "Edit(cases/**)",
       "Edit(test/**)",
       "Edit(wargames/**)",
       "Edit(.claude/**)",
