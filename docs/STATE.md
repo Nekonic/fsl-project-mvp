@@ -372,11 +372,6 @@ stand". Still not run on a range:
 - **Screens not yet one file to change.** Verdict tones differ between
   `Score` and `RuleTestTable`; some cytoscape widths and margins in
   `panes/Map.tsx` and the SVG stroke widths are still numbers in code.
-- **One case, many firings.** A benign case fires on every pass of the
-  customers, and the score lists one line per firing, while CLAUDE.md counts
-  one case as one decision. The acceptance harness reads a case as detected
-  when any firing drew an alert. The user has not ruled
-  (`docs/DECISIONS.md`, 2026-11-23).
 - **A round no one calls on does nothing.** The benign pass, origin loss,
   alert ingest, verdicts and the time-limit end wait for the next request
   for the round; a polling console or bot keeps it moving. The edge sets

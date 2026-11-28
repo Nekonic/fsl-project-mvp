@@ -11620,3 +11620,11 @@ The user: "시간대 kst로 맞춰놔". The store and the API keep UTC ISO times
 every time it shows through `front/src/format.ts` with `timeZone: "Asia/Seoul"`, whatever the
 viewer's browser zone. Kibana's spaces already carry `dateFormat:tz: Asia/Seoul`
 (`sandbox/kibana.py`), and the terminals run with `TZ=KST-9`.
+
+## 2026-11-28 — Benign passes stay counted per pass
+
+The user: "어차피 TN 같은거나 이게 중요한게 아니야 결국에 공격자가 공격에 성공했는지, 방어자가
+방어에 성공했는지잖아". The benign cases keep the rule test honest (a rule that refuses one of
+their probes cannot go live) and fill the logs with ordinary traffic; how many TN their passes
+add is not worth changing. The open point of 2026-11-23 ("one case, many firings") is closed
+with no change.

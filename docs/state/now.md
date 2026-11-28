@@ -262,10 +262,6 @@ a docs review, the edge sets after an infra reboot. The list is in
 - The bot no longer runs in the repo: the `bots` service starts Claude Code
   from an empty directory with no setting sources, from an image holding only
   `bots/` and the schema (live on 2026-11-25).
-- A benign case fires many times per round and the score lists one line per
-  firing, against CLAUDE.md's "one case is one decision"; the acceptance
-  harness reads a case as detected when any firing drew an alert. The user
-  has not ruled.
 - Four acceptance checks read Elasticsearch directly
   (`test/test_event_time.py`, `test_geoip_durable.py`,
   `test_origin_placement.py`, `test_waf_geolocation.py`); the seam scan
