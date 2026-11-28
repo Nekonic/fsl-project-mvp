@@ -87,8 +87,8 @@ def test_a_question_without_its_context_is_sent_back_and_one_with_it_passes():
 
 
 def test_a_word_the_user_asked_about_needs_its_meaning_in_the_same_reply():
-    assert "녹화" in reply.verdict("녹화를 다시 만들었습니다.", ["녹화"])
-    assert reply.verdict("녹화(룰 테스트가 다시 보내는 요청)를 다시 만들었습니다.", ["녹화"]) == ""
+    assert "대본" in reply.verdict("대본를 다시 만들었습니다.", ["대본"])
+    assert reply.verdict("대본(룰 테스트가 다시 보내는 요청)를 다시 만들었습니다.", ["대본"]) == ""
 
 
 def hook(script, payload, **environment):
