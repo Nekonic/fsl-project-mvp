@@ -196,7 +196,7 @@ flowchart TB
   여러 번 열 수 있지만, 목표를 하나라도 잃은 할당에서는 채점 라운드를 새로 시작하지 않습니다(`409 objective_fallen`). board 비밀번호는
   이제 라운드마다 새로 정하지만 이 규칙은 아직 그대로입니다.
 - 훈련 환경 VM은 `deploy/roles/<역할>/install.sh`로 미리 구운 Glance 이미지로 부팅합니다. 기본 이름은
-  `cr-<역할>-bake1`이고, 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`을 씁니다. 부팅할 때 인터넷에 나가지 않습니다.
+  `cr-<역할>-bake1`이고, 이 클라우드는 `cr-kali-bake5`, `cr-waf-bake6`, `cr-infra-bake3`, `cr-target-bake3`을 씁니다. 부팅할 때 인터넷에 나가지 않습니다.
 - Kali는 인터넷 역할입니다. 출발지 30개국의 /24 대역에 걸친 주소 100개를 갖고, 기본 출발지 5.188.10.10을 첫 주소로
   둡니다. Kali의 `internet` 포트는 address pair `0.0.0.0/0`으로 이 주소를 모두 쓰고, MAC은 Neutron이 준 것만
   통과합니다.
@@ -250,7 +250,7 @@ flowchart TB
 - Heat 필요
 - [외부 네트워크](docs/OPENSTACK.md#25-external-network-and-floating-ips-admin-once): floating IP pool, [인터넷 연결](docs/OPENSTACK.md#26-internet-egress)
 - 아래 [flavor](docs/OPENSTACK.md#33-flavors-admin-once-init-chooses). `init`은 flavor를 만들지 않습니다.
-- Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드는 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`).
+- Glance에 역할 이미지 4개(기본 이름 `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1`. 이름은 `compute.images`. 이 클라우드는 `cr-kali-bake5`, `cr-waf-bake6`, `cr-infra-bake3`, `cr-target-bake3`).
   `deploy/roles/<역할>/install.sh`를 인터넷에 나갈 수 있는 빌더 VM에서 실행하고 스냅샷을 뜹니다.
   스냅샷의 `min_disk`는 빌더의 디스크 크기가 되므로, 빌더 flavor의 디스크가 훈련 환경 VM의 flavor보다 크면 stack이 뜨지 않습니다.
   절차는 [이미지](docs/OPENSTACK.md#36-images)에 있습니다. target 이미지는 구울 때 받은 board, corp

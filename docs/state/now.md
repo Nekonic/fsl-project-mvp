@@ -10,28 +10,35 @@ Updated: 2026-11-28.
 
 ## What the cloud runs
 
-`dev` on `cr-platform2`, since a replace on the afternoon of 2026-11-28
-(UTC+9 15:49, exit 0, 16 min): times shown in UTC+9 on the console and in
-Kibana, log lines and backup names in UTC+9, and English terms written in
-English on the console (probes, range, slot, stack, signature). The pvp
-time limit is 15 minutes: set on the VM through `CR_PVP_TIME_LIMIT_SECONDS=900`
-in `/opt/cr/openstack.env`, and the code default on `dev` is 900 since,
-not yet deployed. `main` holds the old product until gate 2.
+`dev` on `cr-platform2`, since a replace on the evening of 2026-11-28
+(UTC+9 20:55, exit 0, 30 min) onto new role images `cr-kali-bake5`,
+`cr-waf-bake6` and `cr-infra-bake3` (target unchanged, `cr-target-bake3`):
+the 2026-11-28 renames (role files in `deploy/roles/`, `cases/`,
+`sites.conf`, `customers.py`, `web-proxy.py`, `board.rules`, the `refill`
+service, `defence/waf/terminal/`) and the kali command log stamping a
+command when it starts are live. The pvp time limit is 15 minutes, the
+code default (`CR_PVP_TIME_LIMIT_SECONDS=900`). `main` holds the old product
+until gate 2.
 
 ## Checked live today
 
 - After that replace, both pvp wargames passed every step from sign-in to
-  sign-out (rounds 497 board, 498 corp; `~/.cache/fsl-work/pvp-check/`):
+  sign-out (rounds 499 board, 500 corp; `~/.cache/fsl-work/pvp-check/`):
   on corp the attack takes the objective, IDS sid 9000201 alerts, the
   defender's WAF rule passes its test, goes live and the same attack gets
   403; on board the search SQLi is refused by CRS and then by the
-  defender's rule. Times on screen read UTC+9; no Hangul spelling of an
-  English term shows.
+  defender's rule. Both rounds ran 15 minutes from start to `ends_at`.
+- corp's WAF rule test replays the re-recorded `corp-rogue-admin` probe,
+  whose registration request carries the form's `-5` field ids, and the
+  defender's rule refuses it (TP).
+- The full acceptance from the platform VM stopped at the one-hour limit:
+  75 passed, 2 failed, 11 not reached (one group of 11 modules unfinished).
+  `test_corp_authz.py::test_a_live_option_flip_is_lost_from_the_targets_own_row`
+  lost `corp-rogue-admin` beside `corp-self-registration`;
+  `test_origin_spend.py::test_the_first_origin_is_spent_and_the_box_moves_to_the_next`
+  saw `origin.spent` but no `origin.switched`. Neither is explained yet.
 - The demo answer sheet (attack and defence per wargame, the rules used and
   the sqlmap commands from `cases/board.yaml`) is a private artifact.
-- corp's committed probes for `corp-rogue-admin` still hold the old `-4`
-  registration requests; the case itself sends `-5` since the fix. They are
-  not recorded again yet.
 
 ## Open
 
@@ -46,27 +53,19 @@ not yet deployed. `main` holds the old product until gate 2.
   does not cover the back button, Kibana's own English UI.
 - The launcher does not stop a bot's child process when its round ends (the
   platform marks the run ended; the child runs to `CR_BOT_RUN_SECONDS`).
-- The kali change `deploy/roles/kali/operator-log.sh` waits for a kali bake; the
-  slots run `cr-kali-bake4`'s command log.
 - The attack bot meets 2 refusals a run on Sonnet and Opus 5.5 and goes on.
 - Round 406's `ground_truth_unavailable` (2026-11-27) is not explained; a
   round that does not start now logs why.
 - Whether a platform read under three rounds still runs past 5 s now that it
   runs off the request thread (`CR_READ_IN_BACKGROUND=1`) is not measured.
-- The 2026-11-28 renames on `sweep-fix` (role files in `deploy/roles/`,
-  `cases/`, `sites.conf`, `customers.py`, `web-proxy.py`, `board.rules`, the
-  `refill` service, `defence/waf/terminal/`) are not deployed; the role files
-  reach the VMs at the next bake of each role (DECISIONS 2026-11-28).
 - The rest is in `docs/STATE.md` "Not live-verified" and "Open points".
 
 ## Next, in order
 
-1. Record corp's probes again with the fixed `corp-rogue-admin` case
-   (`bin/record-probes`) and commit them.
-2. Deploy `dev` (`bin/cloud up --replace`).
-3. External learners: the public-IP forwards (UDP 51820-51919, TCP 2222,
+1. The two acceptance failures above, then the 11 tests not reached.
+2. External learners: the public-IP forwards (UDP 51820-51919, TCP 2222,
    the console) and `CR_VPN_HOST`.
-4. Gate 2: a live review round with zero countable findings and a docs
+3. Gate 2: a live review round with zero countable findings and a docs
    review, then the change and its evidence to the user.
 
 Written for a session that reaches the cloud through the user's VPN

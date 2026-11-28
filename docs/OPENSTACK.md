@@ -111,7 +111,7 @@ user's password, flavor access, the base image and `cloud.yaml` (§4).
 | Kolla-Ansible cloud with Heat, Glance, Nova, Neutron (ML2/OVN) | done (this cloud) | §2 |
 | Project `fsl-range`, member user, clouds.yaml entry, quota check, flavor choice | `bin/cloud init` as admin (2026-11-15); flavors and quotas are never created or raised by it | §3 |
 | Base image, stock Ubuntu 24.04, upload with checksum check | `bin/cloud init` when missing; done (this cloud, 2026-10-20) | §3.6 |
-| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range; `cr-kali-bake3` from `restructure` on 2026-11-24; `cr-kali-bake4` from `bot-rounds` on 2026-11-25 (the learner tunnel); `cr-waf-bake4` and `cr-target-bake3` from `integrate` on 2026-11-25 (each slot's own wargame is the WAF's default server; corp's links follow the address typed); `cr-waf-bake5` from `waf-920350` on 2026-11-25 (CRS 920350 removed), which the range runs since `waf5` | §3.6 |
+| Role images `cr-<role>-bake1` | baked by hand from `deploy/roles/<role>/install.sh`; active in Glance (this cloud, 2026-11-18). Rebaked from `restructure` on 2026-11-23 as `cr-infra-bake2`, `cr-waf-bake3` and `cr-target-bake2`, the range on `cr-kali-bake2` (the kali snapshot failed, §3.6); the §3.7-§3.10 checks passed on that range; `cr-kali-bake3` from `restructure` on 2026-11-24; `cr-kali-bake4` from `bot-rounds` on 2026-11-25 (the learner tunnel); `cr-waf-bake4` and `cr-target-bake3` from `integrate` on 2026-11-25 (each slot's own wargame is the WAF's default server; corp's links follow the address typed); `cr-waf-bake5` from `waf-920350` on 2026-11-25 (CRS 920350 removed), which the range ran from `waf5`; `cr-kali-bake5`, `cr-waf-bake6` and `cr-infra-bake3` from `sweep-fix` on 2026-11-28, which the range runs since | §3.6 |
 | `cloud.yaml`: every cloud-specific value, validated | written by `bin/cloud init` (2026-11-15) | §4 |
 | Platform and wargame images on GHCR (`.github/workflows/images.yml`) | done (public, pulled 2026-10-11) | §5 |
 | Heat stack pulls images instead of `--build` | done (2026-10-11) | §5 |
@@ -668,7 +668,7 @@ Glance holds three kinds of image:
 |---|---|---|
 | `compute.base_image` (e.g. `ubuntu-24.04`) | the stock `noble-server-cloudimg-amd64.img`, checksum verified, uploaded as is (below) | `bin/cloud init`, once |
 | the Kali base | Kali's Generic Cloud image (`kali-linux-<ver>-cloud-genericcloud-amd64.tar.xz`), converted and uploaded once **[unverified]** | by hand, once |
-| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-25 `cr-kali-bake4`, `cr-waf-bake5`, `cr-infra-bake2`, `cr-target-bake3`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
+| `cr-kali-bake1`, `cr-waf-bake1`, `cr-infra-bake1`, `cr-target-bake1` (**(this cloud)** since 2026-11-28 `cr-kali-bake5`, `cr-waf-bake6`, `cr-infra-bake3`, `cr-target-bake3`) | baked from `deploy/roles/<role>/install.sh` on a builder VM, then a Nova snapshot (below) | by hand, once per bake |
 
 The platform VM installs or writes every package, tool, key and setting at
 boot from the base image. The range VMs boot from the baked images with no
@@ -841,6 +841,17 @@ Glance took both snapshots without an image deleted.
 On 2026-11-25 `cr-waf-bake5` was baked from `waf-920350` (`modsecurity.conf`
 removes CRS 920350); the range runs it since the `waf5` replace of that
 evening.
+
+On 2026-11-28 `cr-kali-bake5`, `cr-waf-bake6` and `cr-infra-bake3` were baked
+from `sweep-fix` on `m1.medium` builders on the development VM's network with
+the group `cr-bake`, kali from `cr-kali-base`. A second builder beside the
+kali one failed with `No valid host was found.` while the four-slot pool
+stood, so the pool was deleted first (`DELETE pool/`, no allocation open) and
+the three bakes ran at once; the replace after them built every slot again.
+The unused `cr-kali-bake3` was deleted for Glance room first. waf and infra
+`install.sh` under 20 min each, snapshots about 4 min (4,012,769,280 and
+3,049,193,472 bytes); kali `install.sh` about 42 min, snapshot about 10 min,
+14,105,247,744 bytes; each `min_disk` 30 GB.
 
 A range stack names its images by `compute.images`, and the stack's digest
 holds the names, not the content (§6, §7): bake a changed role under a new
