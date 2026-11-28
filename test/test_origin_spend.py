@@ -17,6 +17,7 @@ EVERY_S = 2
 GRACE_S = 10.0
 CUSTOMER_WAIT = 2 * plays.BENIGN_EVERY_S + 60.0
 LOG_WAIT = 240.0
+SWITCH_WAIT = 60.0
 BURST = 40
 SLOW_RPM = 30
 FAST_RPM = 600
@@ -78,6 +79,15 @@ def spend_the_first_origin(played: plays.Played) -> tuple[dict, list[plays.Answe
     return first, answers
 
 
+def moved_events(played: plays.Played) -> list[dict]:
+    deadline = time.monotonic() + SWITCH_WAIT
+    while True:
+        seen = plays.events(played, {"origin.spent", "origin.switched"})
+        if "origin.switched" in {event["kind"] for event in seen} or time.monotonic() >= deadline:
+            return seen
+        time.sleep(plays.POLL)
+
+
 def at(stamp: str) -> float:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
@@ -103,7 +113,7 @@ def spent_round():
         held_connection(played.allocation, log)
         time.sleep(3 * EVERY_S)
         first, answers = spend_the_first_origin(played)
-        spent_events = [event for event in plays.events(played, {"origin.spent", "origin.switched"})]
+        spent_events = moved_events(played)
         time.sleep(GRACE_S + 2 * EVERY_S)
         held = connection_log(played.allocation, log)
         state = plays.attack_seen(played)

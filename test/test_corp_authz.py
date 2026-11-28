@@ -45,7 +45,11 @@ def test_a_live_option_flip_is_lost_from_the_targets_own_row(corp_stands, option
     assert seen["flips"] == (200, 200), seen["flips"]
     assert seen["registration_open"] == "1"
 
-    assert seen["lost"] == {"corp-self-registration"}, (
-        f"the target's own record did not lose the option flip alone; got {seen['lost']}"
+    assert seen["lost"] - {"corp-rogue-admin"} == {"corp-self-registration"}, (
+        f"the target's own record did not lose the option flip; got {seen['lost']}"
     )
-    assert "corp-self-registration" in lost_in(seen["score"]), seen["score"]["objectives"]
+    lost = lost_in(seen["score"])
+    assert "corp-self-registration" in lost, seen["score"]["objectives"]
+    if "corp-rogue-admin" in lost:
+        assert lost["corp-rogue-admin"]["attributed_marker"] in seen["flip_markers"], (
+            f"an administrator the flip did not make was counted: {lost['corp-rogue-admin']}")

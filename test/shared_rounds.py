@@ -434,9 +434,10 @@ def option_flip_run():
         nonce = nonce_from(played, "/", AJAX_NONCE)
         assert nonce, "no wpgdprcData.ajaxSecurity on the live corp.com homepage; is corp-wp up?"
         flipping = {"action": "wpgdprc_process_action", "security": nonce}
-        seen["flips"] = tuple(
-            posted(played, "/wp-admin/admin-ajax.php", option_flip(name, value), flipping).body["status"]
-            for name, value in (("users_can_register", "1"), ("default_role", "administrator")))
+        flipped = [posted(played, "/wp-admin/admin-ajax.php", option_flip(name, value), flipping).body
+                   for name, value in (("users_can_register", "1"), ("default_role", "administrator"))]
+        seen["flips"] = tuple(answer["status"] for answer in flipped)
+        seen["flip_markers"] = {answer["marker"] for answer in flipped}
         read = run_side_by_side(CORP_DB, {name: option_query(name) for name in ("users_can_register", "default_role")},
                                 allocation=played.allocation)
         seen["registration_open"] = read["users_can_register"].stdout.strip()
