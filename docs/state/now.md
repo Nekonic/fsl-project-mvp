@@ -36,7 +36,21 @@ until gate 2.
   `test_corp_authz.py::test_a_live_option_flip_is_lost_from_the_targets_own_row`
   lost `corp-rogue-admin` beside `corp-self-registration`;
   `test_origin_spend.py::test_the_first_origin_is_spent_and_the_box_moves_to_the_next`
-  saw `origin.spent` but no `origin.switched`. Neither is explained yet.
+  saw `origin.spent` but no `origin.switched`. Both were the tests, not the
+  product. The spend logs `origin.switched` after the edge and the box move,
+  about 2 s after `origin.spent` (round 518: 12:59:19.7 and 12:59:21.6 UTC),
+  and the test read the events at once; it now waits for the switch. In the
+  option-flip round (506) the benign `corp-normal-registration` POST got 302
+  at 12:21:33 UTC after `default_role` became `administrator`, and the
+  target's binary log gave `corp-rogue-admin` an administrator grant at
+  12:21:36, attributed to the `default_role` flip: a real rogue admin the
+  flip made. The test now allows that loss when it is
+  attributed to one of the flip's own requests. Rerun from the platform VM
+  with the two fixed modules and the 11 not reached: 40 passed, 0 failed,
+  0 errors in 40 min (`test_corp_authz` 3, `test_origin_spend` 6, the group
+  of 11 31). No platform image changed, so no replace.
+- After that, both pvp checks passed again: board 19 of 19 steps (round
+  533), corp 20 of 20 (round 535).
 - The demo answer sheet (attack and defence per wargame, the rules used and
   the sqlmap commands from `cases/board.yaml`) is a private artifact.
 
@@ -62,10 +76,9 @@ until gate 2.
 
 ## Next, in order
 
-1. The two acceptance failures above, then the 11 tests not reached.
-2. External learners: the public-IP forwards (UDP 51820-51919, TCP 2222,
+1. External learners: the public-IP forwards (UDP 51820-51919, TCP 2222,
    the console) and `CR_VPN_HOST`.
-3. Gate 2: a live review round with zero countable findings and a docs
+2. Gate 2: a live review round with zero countable findings and a docs
    review, then the change and its evidence to the user.
 
 Written for a session that reaches the cloud through the user's VPN
