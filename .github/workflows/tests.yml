@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, guardrails]
   workflow_dispatch:
 
 permissions:
