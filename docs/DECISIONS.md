@@ -11572,3 +11572,16 @@ the events it skipped. A resource no longer reads again for events that were alr
 backlog when the page opened, and panes asking for the same resource in one render share one
 read. A player who does not operate the allocation no longer asks for it on the result page:
 the round says `operated`.
+
+## 2026-11-28 — Each wargame's sensor starts on its own rules
+
+A corp round started on the board's four signatures (SQLi, XSS, path traversal), because a
+slot's refill seeded every sensor from `deploy/suricata/rules/local.rules` whatever wargame the
+slot runs. None of them names a corp case's mechanism, so a corp round with no posture began
+with no IDS detection at all. The sensor device in `wargames/<id>/topology.yaml` now names its
+starting file under `baseline:`: board keeps `local.rules`, corp gets `corp.rules`, one
+signature per declared corp attack case (the `wp_capabilities[administrator]` key in the
+registration form, a `users_can_register` change through `admin-ajax.php`, `rbsm_submit_post`
+with an existing `postId`), each `msg` holding the case's `expect`. None matches the four
+benign corp cases (checked on the requests the case file builds). A posture still applies on
+top at round start.

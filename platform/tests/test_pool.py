@@ -167,3 +167,13 @@ def test_the_pool_holds_as_many_slots_of_each_wargame_as_the_cloud_settings_ask_
     assert pool.assigned(5, ("board", "corp"), (("board", 3), ("corp", 1))) == ""
     with pytest.raises(openstack.RangeUnavailable, match="CR_OPENSTACK_POOL"):
         openstack.connect(dataclasses.replace(signed, pool="board=0"), declared)
+
+
+def test_a_slot_s_sensor_starts_on_the_rules_its_own_wargame_names(cloud):
+    adapter = fakecloud.adapter(cloud, slots=2)
+    rules = fakecloud.ROOT / "deploy/suricata/rules"
+
+    started = {one.wargame: one.baseline_rules("sensor") for one in adapter.every_slot()}
+
+    assert started == {"board": (rules / "local.rules").read_text(), "corp": (rules / "corp.rules").read_text()}
+    assert started["board"] != started["corp"], "a corp round would start on the board's signatures"
