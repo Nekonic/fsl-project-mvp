@@ -152,7 +152,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
                lifecycle.py   라운드 만들기, 참가, 시작, catch_up(READS), 케이스 판정, 종료, 기권, 점수
                access.py      PlayerTokenAuthentication, IsPlayer(side), InRound, IsOperator, OnAllocation
-               views_catch_up.py  CatchingUpView: 요청마다 할당 만료 확인과 catch_up
+               views_catch_up.py  CatchingUpView: 요청마다 할당 만료 확인과 catch_up(CR_READ_IN_BACKGROUND면 별도 스레드)
                site.py(사이트 패널 프록시)  retention.py  views.py(라운드, 할당, 스태프 range API)
                bots.py        봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
                records.py     라운드 기록(점수·복기 고정, 90일 보관)
@@ -302,7 +302,9 @@ sequenceDiagram
   보냅니다.
 - 주기적으로 도는 라운드 작업은 없습니다. 라운드나 할당에 대한 API view는 모두 `CatchingUpView`
   (`training/round/views_catch_up.py`)를 거치고, 인증과 권한 확인 뒤 `lifecycle.catch_up`으로 라운드를 먼저 읽고
-  그다음 만료된 할당을 닫습니다. `catch_up`은 `Round.reading_since`에 대한 조건부 `UPDATE` 하나로 라운드를 잡고(5분이 지난 잡기는 버려진
+  그다음 만료된 할당을 닫습니다. `CR_READ_IN_BACKGROUND=1`(`compose.yaml`이 켬)이면 이 읽기를 요청 스레드가
+  아니라 같은 프로세스의 스레드 하나에서 돌리고 요청은 기다리지 않습니다. 같은 라운드에 이미 도는 스레드가 있으면
+  새로 띄우지 않습니다. 터미널 권한 view(`Terminal`, `IdsTerminal`)는 읽기를 부르지 않습니다. `catch_up`은 `Round.reading_since`에 대한 조건부 `UPDATE` 하나로 라운드를 잡고(5분이 지난 잡기는 버려진
   것으로 봄) `read_at`으로 놓습니다. 놓을 때는 자기가 잡은 시각과 같은 잡기만 풉니다. 읽기 단계마다 DB에서 라운드가
   아직 진행 중인지 보고, 그사이 끝났으면 거기서 멈춥니다. 아무도 부르지 않는 라운드는 아무 일도 하지 않습니다.
 - 읽기 단계 하나가 실패해도 나머지 단계는 계속 돕니다. 제한 시간이 지난 라운드는 다음 요청이 끝내고 종료 시각은

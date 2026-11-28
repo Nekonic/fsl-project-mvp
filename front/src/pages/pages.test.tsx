@@ -8,6 +8,9 @@ import { DebriefReport, rowText } from "./Debrief";
 import { safeNext } from "./Login";
 import { Result } from "./Result";
 import { RoundAttack } from "./RoundAttack";
+import { RoundDefence } from "./RoundDefence";
+import { RoundHeader, NOT_STARTED_READ_EVERY_MS } from "../console/RoundHeader";
+import { setHash } from "../router";
 import { RoundLobby } from "./RoundLobby";
 import { wargameName } from "./wargameText";
 
@@ -167,6 +170,8 @@ describe("RoundLobby start", () => {
     render(<RoundLobby params={{ allocation: "66" }} />);
     (await screen.findByText(t("lobby.start"))).closest("button")?.click();
     expect(await screen.findByText(t("lobby.starting"))).toBeTruthy();
+    expect(screen.getByText(tFor("phase", "starting"))).toBeTruthy();
+    expect(screen.queryByText(tFor("phase", "created"))).toBeNull();
     started(json({ round: 81, phase: "running" }));
   });
 });
@@ -334,5 +339,57 @@ describe("access page profile download", () => {
     expect(file?.blob.type).toBe("text/plain");
     expect(await file?.blob.text()).toBe(profile);
     clicks.mockRestore();
+  });
+});
+
+describe("RoundLobby slot", () => {
+  it("names the range slot by its number, never by the stack name", async () => {
+    allocationAnswering(67, null);
+    const page = render(<RoundLobby params={{ allocation: "67" }} />);
+    expect(await screen.findByText(t("slot.name", { slot: 1 }))).toBeTruthy();
+    expect(page.container.textContent).not.toContain("cr-slot");
+  });
+});
+
+function roundAnswering(round: number, phases: string[]) {
+  const asked: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    asked.push(url);
+    if (url.includes("/events/")) return json({ events: [], next: 0 });
+    if (url.endsWith(`/api/rounds/${round}/`)) {
+      const phase = phases.length > 1 ? phases.shift() : phases[0];
+      return json({ round, wargame: "board", problem: null, matchup: "pvp", phase, allocation: null, ends_at: null, ended: null, end_reason: "", players: [] });
+    }
+    if (url.includes("/defence/alerts/")) return json({ alerts: [], next: 0, more: false, total: 0 });
+    if (url.includes("/defence/traffic/")) return json({ by_origin: [], next: "" });
+    return json([]);
+  }));
+  return asked;
+}
+
+describe("RoundHeader before the round runs", () => {
+  it("says the round waits for the operator, then that it is starting, without a reload", async () => {
+    roundAnswering(91, ["created", "starting"]);
+    render(<RoundHeader round={91} side="defence" />);
+    expect(await screen.findByText(t("round.created_banner"))).toBeTruthy();
+    vi.advanceTimersByTime(NOT_STARTED_READ_EVERY_MS);
+    expect(await screen.findByText(t("round.starting_banner"))).toBeTruthy();
+    expect(screen.getByText(t("round.starting_detail"))).toBeTruthy();
+    expect(screen.queryByText(t("round.created_banner"))).toBeNull();
+  });
+});
+
+describe("defence console", () => {
+  it("opens on the alerts and loads Kibana only once its tab is opened", async () => {
+    history.replaceState(null, "", "/rounds/92/defence");
+    const asked = roundAnswering(92, ["running"]);
+    render(<RoundDefence params={{ round: "92" }} />);
+    await vi.waitFor(() => expect(asked.some((url) => url.includes("/defence/alerts/"))).toBe(true));
+    await settle();
+    expect(asked.some((url) => url.includes("/defence/kibana/"))).toBe(false);
+    setHash("kibana");
+    await vi.waitFor(() => expect(asked.some((url) => url.includes("/defence/kibana/"))).toBe(true));
+    history.replaceState(null, "", "/");
   });
 });

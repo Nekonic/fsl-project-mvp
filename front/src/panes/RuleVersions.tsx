@@ -27,12 +27,13 @@ export function useRuleVersions(round: number, engine: Engine) {
 }
 
 export function versionNoteKey(version: AppliedVersion): StringKey {
-  if (version.tested === null) return "versions.untested";
+  if (version.tested === null) return version.source === "setup" ? "versions.starting_rules" : "versions.untested";
   return version.same_as_tested ? "versions.same_as_tested" : "versions.not_same_as_tested";
 }
 
 const NOTE_TONE: Partial<Record<StringKey, TextTone>> = {
   "versions.untested": "warn",
+  "versions.starting_rules": "muted",
   "versions.same_as_tested": "ok",
   "versions.not_same_as_tested": "warn",
 };

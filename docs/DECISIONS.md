@@ -11592,3 +11592,24 @@ registration form, a `users_can_register` change through `admin-ajax.php`, `rbsm
 with an existing `postId`), each `msg` holding the case's `expect`. None matches the four
 benign corp cases (checked on the requests the case file builds). A posture still applies on
 top at round start.
+
+## 2026-11-28 — pvp demo check: terminal, corp registration, reads off the request
+
+A pvp check on the cloud (board round 489, corp round 490) failed at the Kali terminal and at
+corp's first objective. Causes, each read from the platform's logs or the target:
+
+| Symptom | Cause | Change |
+|---|---|---|
+| Kali terminal: '연결하는 중' then '연결하지 못했습니다' | ttyd's page carries its 700 KB script inline in `<body>`; the console's `shellStateOf` read `body.textContent` before xterm existed, found numbers like `574` and took the page for a 5xx gateway page. It reloaded the iframe every 2 s (ttyd log: a WS opened and closed by the client each second, a new process each time) and gave up after five reloads | a page with a `<script>` is never a gateway refusal; a test holds it |
+| Terminal grant `GET .../attack/terminal/` 23-29 s | the request that came due paid the round's log read (alerts, commands over ssh, terminal reloads, customers: 11 s alone, 25 s under load) | terminal grant views do not read; every other view reads on a thread of its own with `CR_READ_IN_BACKGROUND=1` (`compose.yaml`), so no request waits for it. Site requests ('요청 0' for 30 s on corp) were the same wait |
+| corp-rogue-admin: 200, objective kept, no account | the case and the benign registration sent `user_login-4` and the rest under form id 4 while the registration form is id 5 (`um_field_5_*` on `/register/`); Ultimate Member re-rendered the form with field errors. With `-5` the same request makes a user whose `wp_capabilities` holds `administrator`, and `scoring/effect.py` flips the objective from the binary log | the two cases send `-5`. The recorded probes under `wargames/corp/probes/` still hold the `-4` requests; they are WAF/IDS replay material and are re-recorded with `bin/record-probes` when the target is next baked |
+| corp: no alert on the attack | CRS at its starting level does not flag the `wp_càpabilities[administrator]` field; corp's sensor started on the board's rules (merged corp-ids) | corp starts on `corp.rules`, whose signature names `[administrator]`. The WAF still lets it through until the defender writes a rule; that is the exercise |
+| pvp debrief `steps` null | human seats have no difficulty step | `steps` lists only seats that have one; `objectives` stays the lost objectives with their marks |
+| defender console opened on Kibana (200+ requests at join) | the defence rail began with Kibana | it begins with alerts; Kibana mounts only when its tab opens |
+| starting WAF 1 / IDS 1 shown '테스트 안 함' in warning colour | the starting version has no test by nature | a version from the round setup reads '시작 룰', muted |
+| lobby showed `cr-slot-1` | the stack name was the learner's slot label | learners see '1번'; staff pages keep the stack name |
+| 30-40 s start with no state on the consoles | start applies the posture (7.6 s measured), takes the baseline (3.1 s), fills the pool, prepares Kibana, starts customers, on a 2-vCPU platform VM | the lobby row shows '준비 중' while the start runs and both consoles show a waiting or starting notice, re-reading the round every 5 s until it runs |
+
+Problems 19 and 20 called the wargame '회사 홈페이지' while the console names it '기업 사이트'; their
+title, summary and body were changed through the staff API (copies before the change in the
+backup folder).

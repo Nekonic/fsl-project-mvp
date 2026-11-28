@@ -177,7 +177,7 @@ def compose(found: Round) -> dict[str, Any]:
     timeline.sort(key=lambda row: row["at"] or "")
     return {
         "round": found.pk, "matchup": found.matchup, "pending": lifecycle.pending(found),
-        "steps": {player.side: player.step or None for player in Player.objects.filter(round=found)},
+        "steps": {player.side: player.step for player in Player.objects.filter(round=found) if player.step},
         "card": card_of(found), "bots": bot_lines(found), "objectives": objective_marks(score),
         "timeline": timeline, "score": score,
     }

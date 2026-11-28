@@ -69,7 +69,7 @@ function SlotsCard({ slots, pool, wargames, probeAllocations }: {
   probeAllocations: Set<number>;
 }) {
   const columns: Column<SlotLine>[] = [
-    { key: "slot", label: t("lobby.slot"), kind: "key", cell: (slot) => t("slot.name", { slot: slot.slot }) },
+    { key: "slot", label: t("lobby.slot"), kind: "key", cell: (slot) => t("slot.stack", { slot: slot.slot }) },
     { key: "wargame", label: t("col.wargame"), kind: "nowrap", cell: (slot) => <WargameName id={slot.wargame} wargames={wargames} /> },
     {
       key: "state", label: t("col.state"),

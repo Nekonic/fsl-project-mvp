@@ -14,6 +14,7 @@ import { nodeLabel, zoneCaption } from "./Map";
 import { Objectives, objectivesChanged } from "./Objectives";
 import { presetKibana } from "./Kibana";
 import { rememberTest, RuleTestTable, Untested } from "./RuleTestTable";
+import { versionNoteKey } from "./RuleVersions";
 import { Score, SCORE_PENDING_READ_EVERY_MS, ScoreReport } from "./Score";
 import { objectiveNamesOf, wargameLabel } from "./staff/catalog";
 import { objectiveLabel } from "./staff/RoundSetupEditor";
@@ -637,5 +638,14 @@ describe("Alerts", () => {
   it("joins a fresh newest page to the list it overlaps and replaces a list it leaves a gap after", () => {
     expect(newestFirst([alert(5), alert(4)], [alert(7), alert(6), alert(5)])).toEqual({ alerts: [alert(7), alert(6), alert(5), alert(4)], joined: true });
     expect(newestFirst([alert(5), alert(4)], [alert(9), alert(8)])).toEqual({ alerts: [alert(9), alert(8)], joined: false });
+  });
+});
+
+describe("applied version note", () => {
+  const version = { version: 1, applied_at: "2026-11-20T09:00:00Z", tested: null, same_as_tested: false, sha: "abc", source: "setup" as const };
+
+  it("calls the round-start version the starting rules, not an untested change", () => {
+    expect(versionNoteKey(version)).toBe("versions.starting_rules");
+    expect(versionNoteKey({ ...version, version: 2, source: "terminal" })).toBe("versions.untested");
   });
 });

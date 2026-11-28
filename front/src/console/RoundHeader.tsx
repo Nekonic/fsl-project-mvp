@@ -18,6 +18,8 @@ const FORFEIT_PATH = {
 const ROUND_EVENTS = ["round.started", "round.ended", "player.joined"];
 const BOT_RUN_UNSETTLED = new Set(["queued", "running"]);
 export const BOT_RUN_READ_EVERY_MS = 15_000;
+export const NOT_STARTED_READ_EVERY_MS = 5_000;
+const NOT_STARTED = new Set(["created", "starting"]);
 
 export function useRound(round: number) {
   const shown = useResource("/api/rounds/{round_id}/", { params: { round_id: round } }, { refreshOn: { round, kinds: ROUND_EVENTS } });
@@ -31,6 +33,12 @@ export function useRound(round: number) {
     const timer = setInterval(reloadRound, BOT_RUN_READ_EVERY_MS);
     return () => clearInterval(timer);
   }, [botUnsettled, reloadRound]);
+  const notStarted = Boolean(shown.data && NOT_STARTED.has(shown.data.phase));
+  useEffect(() => {
+    if (!notStarted) return undefined;
+    const timer = setInterval(reloadRound, NOT_STARTED_READ_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [notStarted, reloadRound]);
   return { round: shown.data, problem: problem.data, error: shown.error, reload: shown.reload };
 }
 
@@ -86,6 +94,8 @@ export function RoundHeader({ round, side }: RoundHeaderProps) {
       />
       {forfeit.error && <ErrorNotice error={forfeit.error} />}
       {error && <ErrorNotice error={error} />}
+      {shown?.phase === "created" && <Banner title={t("round.created_banner")} detail={t("round.created_detail")} />}
+      {shown?.phase === "starting" && <Banner title={t("round.starting_banner")} detail={t("round.starting_detail")} />}
       {ended && shown && (
         <Banner
           title={t("round.ended_banner")}

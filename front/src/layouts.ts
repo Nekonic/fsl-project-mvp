@@ -41,7 +41,7 @@ export const layouts: Record<LayoutName, ConsoleSpec> = {
   defence: {
     side: "defence",
     mark: "defence",
-    rail: [kibana, map, idsRules, waf, alerts, terminalWaf],
+    rail: [alerts, kibana, map, idsRules, waf, terminalWaf],
     asideLead: "objectives",
     aside: ["brief", "applied"],
   },

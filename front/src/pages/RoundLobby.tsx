@@ -96,13 +96,16 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
   const joinPlayer = async (round: number, side: Side) => {
     if (await join.run({ params: { round_id: String(round), side } })) onChanged();
   };
+  const [startingRound, setStartingRound] = useState<number | null>(null);
   const startRound = async (round: number) => {
+    setStartingRound(round);
     if (await start.run({ params: { round_id: round } })) onChanged();
   };
   const endRound = async (round: number) => {
     if (await end.run({ params: { round_id: round } })) onChanged();
   };
   const closed = allocation.closed !== null;
+  const shownPhase = (line: RoundLine) => (line.phase === "created" && start.busy && startingRound === line.round ? "starting" : line.phase);
 
   const columns: Column<RoundLine>[] = [
     { key: "round", label: t("col.round"), kind: "strong", cell: (line) => t("round.name", { round: line.round }) },
@@ -112,7 +115,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
       key: side, label: t(`col.${side}_player`),
       cell: (line) => <PlayerCell line={line} side={side} seated={seatOfUser(line, username) !== undefined} joining={join.busy} onJoin={(round, chosen) => void joinPlayer(round, chosen)} />,
     })),
-    { key: "phase", label: t("col.state"), cell: (line) => <Badge tone={phaseTone(line.phase)}>{tFor("phase", line.phase)}</Badge> },
+    { key: "phase", label: t("col.state"), cell: (line) => <Badge tone={phaseTone(shownPhase(line))}>{tFor("phase", shownPhase(line))}</Badge> },
     {
       key: "act", label: "", kind: "end",
       cell: (line) => {
@@ -120,7 +123,7 @@ function Rounds({ allocation, onChanged }: RoundsProps) {
           return (
             <Row>
               <Button tone="primary" small busy={start.busy} disabled={closed || !allocation.ready} onClick={() => void startRound(line.round)}>{t("lobby.start")}</Button>
-              {start.busy && <Text small tone="muted">{t("lobby.starting")}</Text>}
+              {start.busy && startingRound === line.round && <Text small tone="muted">{t("lobby.starting")}</Text>}
             </Row>
           );
         }
@@ -392,7 +395,7 @@ export function RoundLobby({ params }: PageProps) {
   const host = shown ? wargameHost(shown.wargame) : "";
   const facts = shown
     ? [
-      ...(shown.slot !== null ? [{ value: t("slot.name", { slot: shown.slot }), label: t("lobby.slot"), mono: true }] : []),
+      ...(shown.slot !== null ? [{ value: t("slot.name", { slot: shown.slot }), label: t("lobby.slot") }] : []),
       { value: clock(shown.expires_at), label: t("lobby.expires") },
     ]
     : [];
