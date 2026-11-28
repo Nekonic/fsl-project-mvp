@@ -540,9 +540,9 @@ sudo docker compose start platform rebuild
 ## 현재 상태
 
 지금 트리는 Player vs AI 라운드, PostgreSQL 저장소, 라운드가 끝날 때까지 남는 방어 봇 위에 다음을 더한 것입니다.
-두 차례 라이브 리뷰에서 나온 수정, 늦게 색인된 알림 읽기, 문제 없이 여는 `pvp`(30분 제한), 봇끼리 붙는 기준선
+두 차례 라이브 리뷰에서 나온 수정, 늦게 색인된 알림 읽기, 문제 없이 여는 `pvp`(15분 제한), 봇끼리 붙는 기준선
 라운드 제거, 화면 전체의 한국어 문구 정리와 로그아웃 수정, 워게임마다 따로 두는 IDS 시작 룰(corp는 `corp.rules`),
-요청과 따로 도는 로그 읽기, 다시 로드되지 않는 Kali 터미널, UTC+9 시각 표시. 클라우드의 `cr-platform2`에서
+요청과 따로 도는 로그 읽기, 다시 로드되지 않는 Kali 터미널, UTC+9 시각 표시, 영어로 쓰는 용어(probes, range 등)는 영어 그대로. 클라우드의 `cr-platform2`에서
 돌아갑니다. 룰 테스트용 probes는 `wargames/<id>/probes/`에 커밋되어 있고, 콘솔은 플랫폼 이미지의 `/srv/front`에서
 나갑니다. 훈련 환경에서 돌린 것과 그 결과, 아직 돌리지 않은 것은 [docs/STATE.md](docs/STATE.md)에 있습니다.
 

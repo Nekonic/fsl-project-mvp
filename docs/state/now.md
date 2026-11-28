@@ -9,21 +9,25 @@ Updated: 2026-11-28.
 
 ## What the cloud runs
 
-`pvp-demo-fix` on `cr-platform2`, since one replace on the morning of
-2026-11-28 (exit 0, 14 min). `main` holds the old product until gate 2.
-
-`dev` is ahead of the cloud by two changes, not deployed: every time the
-console shows is UTC+9 (`front/src/format.ts`; Kibana's spaces already show
-UTC+9 through `dateFormat:tz` in `sandbox/kibana.py`), and the console says
-probes for the stored requests the rule test replays.
+`dev` on `cr-platform2`, since a replace on the afternoon of 2026-11-28
+(UTC+9 15:49, exit 0, 16 min): times shown in UTC+9 on the console and in
+Kibana, log lines and backup names in UTC+9, and English terms written in
+English on the console (probes, range, slot, stack, signature). The pvp
+time limit is 15 minutes: set on the VM through `CR_PVP_TIME_LIMIT_SECONDS=900`
+in `/opt/cr/openstack.env`, and the code default on `dev` is 900 since,
+not yet deployed. `main` holds the old product until gate 2.
 
 ## Checked live today
 
-- After that one replace, both pvp wargames passed every step from sign-in
-  to sign-out (`~/.cache/fsl-work/pvp-check/{board,corp}/results.json`):
-  on corp the attack takes the objective, the IDS alert shows, the
+- After that replace, both pvp wargames passed every step from sign-in to
+  sign-out (rounds 497 board, 498 corp; `~/.cache/fsl-work/pvp-check/`):
+  on corp the attack takes the objective, IDS sid 9000201 alerts, the
   defender's WAF rule passes its test, goes live and the same attack gets
-  403; on board the SQLi is refused by CRS and then by the defender's rule.
+  403; on board the search SQLi is refused by CRS and then by the
+  defender's rule. Times on screen read UTC+9; no Hangul spelling of an
+  English term shows.
+- The demo answer sheet (attack and defence per wargame, the rules used and
+  the sqlmap commands from `redteam/cases/board.yaml`) is a private artifact.
 - corp's committed probes for `corp-rogue-admin` still hold the old `-4`
   registration requests; the case itself sends `-5` since the fix. They are
   not recorded again yet.
