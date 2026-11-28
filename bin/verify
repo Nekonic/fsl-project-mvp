@@ -144,6 +144,12 @@ elif [ "$CHANGED" = 1 ] && [ "$unit_kind" = some ]; then
   else
     fail "platform/tests, the files the change reaches"
   fi
+elif [ "$CHANGED" = 1 ]; then
+  if unit_suite $(cd platform && find tests -name 'test_*.py' | sort); then
+    ok "platform/tests, every layer"
+  else
+    fail "platform/tests, every layer"
+  fi
 elif [ "$FAST" = 0 ] && [ "$CHANGED" = 0 ]; then
   UNIT_LOG="$(mktemp)"
   UNIT_NICE="nice -n 19"

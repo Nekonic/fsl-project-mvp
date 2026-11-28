@@ -22,7 +22,7 @@ check_dev_push() {
     code=1
   else
     echo "pre-push: bin/verify --changed on the merge of $remote/dev and the pushed commit"
-    (cd "$scratch/tree" && timeout 3600 bin/verify --changed "$base")
+    (cd "$scratch/tree" && timeout 3600 bin/verify --changed "$base..HEAD")
     code=$?
     [ "$code" = 124 ] && echo "1시간 초과: 오류로 보고 원인을 찾을 것"
   fi
