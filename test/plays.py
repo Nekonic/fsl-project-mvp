@@ -19,7 +19,6 @@ from opening import refused_for_room
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
-DECLARED_RULES = REPO_ROOT / "deploy/suricata/rules/board.rules"
 CASES = REPO_ROOT / "cases"
 WARGAMES = REPO_ROOT / "wargames"
 TITLE = "Acceptance {wargame}"
@@ -127,8 +126,14 @@ def declared_cases(wargame: str) -> list[dict]:
     return yaml.safe_load((CASES / f"{wargame}.yaml").read_text(encoding="utf-8")) or []
 
 
-def declared_rules() -> str:
-    return DECLARED_RULES.read_text()
+def starting_rules_path(wargame: str) -> str:
+    topology = yaml.safe_load((WARGAMES / wargame / "topology.yaml").read_text(encoding="utf-8"))
+    return next(device["baseline"] for device in topology["devices"].values()
+                if isinstance(device, dict) and "sensor" in device.get("roles", ()))
+
+
+def declared_rules(wargame: str) -> str:
+    return (REPO_ROOT / starting_rules_path(wargame)).read_text()
 
 
 @dataclass(frozen=True)
@@ -151,7 +156,7 @@ def round_document(setup: Setup) -> dict:
         "round": {"matchups": list(setup.matchups), "posture": posture, "probe_cases": list(setup.probe_cases),
                   "objectives": objective_keys(setup.wargame), "traffic": None,
                   "benign_every_s": BENIGN_EVERY_S, "time_limit_s": None},
-        "start_posture": {"name": posture, "suricata_rules": setup.suricata_rules or declared_rules(),
+        "start_posture": {"name": posture, "suricata_rules": setup.suricata_rules or declared_rules(setup.wargame),
                           "waf_files": setup.waf_files},
     }
 
@@ -471,8 +476,8 @@ def apply_ids(played: Played, text: str, timeout: float = SCORE_WAIT) -> Reloade
 
 def sensor_runs_the_declared_rules(played: Played) -> str:
     live = ids_rules(played)["text"]
-    if live != declared_rules():
-        return f"the sensor's live rules are not deploy/suricata/rules/board.rules: {live[:300]!r}"
+    if live != declared_rules(played.wargame):
+        return f"the sensor's live rules are not {starting_rules_path(played.wargame)}: {live[:300]!r}"
     checked = in_shell(played, "ids", "sudo suricata -T")
     return "ok" if checked.get("ok") else json.dumps(checked)[:2000]
 

@@ -1,4 +1,4 @@
-from shared_sessions import CONTROL, verdicts_of
+from shared_rounds import CONTROL, verdicts_of
 
 
 def test_both_strategies_find_the_same_declared_attack(terminal_windows):

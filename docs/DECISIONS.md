@@ -11788,3 +11788,19 @@ lesson-era and unread strings are gone. The Kali notice is `map-symbols/node-kal
 its symbol. A pvp round's brief pane is titled "워게임 설명", and the round tables show "—" under
 "문제" for a pvp round; the past-round and record tables show the wargame in its own column.
 The staff range page writes the pool as `pool`. A sign-in block's end shows in UTC+9.
+
+## 2026-11-28 — Shared acceptance rounds are rounds; each plays on its wargame's starting rules
+
+The acceptance plugin `test/shared_sessions.py` is `test/shared_rounds.py` and
+`test_concurrent_sessions` is `test_concurrent_rounds`; its fixtures `board_session`,
+`origins_session`, `rules_session`, `terminal_session`, `corp_sessions`, `rogue_admin_session` and
+`option_flip_session` end in `_round` (`corp_rounds`). "Session" was the name of the removed
+`/api/sessions/` API and is also pytest's fixture scope. The acceptance posture took
+`deploy/suricata/rules/board.rules` for every wargame, so a corp acceptance round replaced
+corp's own `corp.rules` with the board's and its rogue-admin registration drew no alert;
+`plays.declared_rules(wargame)` now reads the sensor's `baseline:` in
+`wargames/<id>/topology.yaml`, and `test_corp_authz` and `test_score_reveal` expect the
+corp rogue-admin loss detected (still unanswered). `test/opening.py` keeps only what the suite
+calls (`refused_for_room`, `settling`). `bin/build-css` (the removed Django template console's
+Tailwind build) and `bin/worldmap` (the removed map screen, left behind in the 2026-10 entry)
+are deleted; `bin/pick-origins` stays and `docs/ARCHITECTURE.md` says when to run it.

@@ -1,12 +1,12 @@
 import pytest
 
 import plays
-from shared_sessions import CONTROL, PORTED_MESSAGE, UNION
+from shared_rounds import CONTROL, PORTED_MESSAGE, UNION
 
 
 @pytest.fixture(scope="module")
-def fired_with_a_ported_rule(rules_session):
-    return rules_session["noisy_alerts"], rules_session["noisy_markers"]
+def fired_with_a_ported_rule(rules_round):
+    return rules_round["noisy_alerts"], rules_round["noisy_markers"]
 
 
 def test_a_rule_written_against_http_ports_actually_fires(fired_with_a_ported_rule):

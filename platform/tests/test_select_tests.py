@@ -210,13 +210,13 @@ def test_an_acceptance_test_is_chosen_by_the_file_it_names(repo):
 def test_the_acceptance_conftest_reaches_every_acceptance_test(repo):
     root = repo({
         **SMALL,
-        "test/conftest.py": "pytest_plugins = [\"shared_sessions\"]\n",
-        "test/shared_sessions.py": "import pytest\n",
+        "test/conftest.py": "pytest_plugins = [\"shared_rounds\"]\n",
+        "test/shared_rounds.py": "import pytest\n",
         "test/test_a.py": "def test_a():\n    pass\n",
         "test/test_b.py": "def test_b():\n    pass\n",
     })
 
-    chosen = selector.select(root, {"test/shared_sessions.py": "M"})
+    chosen = selector.select(root, {"test/shared_rounds.py": "M"})
 
     assert sorted(chosen.acceptance) == ["test/test_a.py", "test/test_b.py"]
 

@@ -1,7 +1,7 @@
 import pytest
 
 import plays
-from shared_sessions import CATCH_ALL_ATTACKS, CATCH_ALL_BENIGN, CATCH_ALL_MESSAGE
+from shared_rounds import CATCH_ALL_ATTACKS, CATCH_ALL_BENIGN, CATCH_ALL_MESSAGE
 
 
 def indiscriminate(listed: list[dict], attack_markers: set[str]) -> set[str]:
@@ -9,10 +9,10 @@ def indiscriminate(listed: list[dict], attack_markers: set[str]) -> set[str]:
 
 
 @pytest.fixture(scope="module")
-def block_everything(rules_session):
-    lines = plays.per_case(rules_session["after_catch_all"])
+def block_everything(rules_round):
+    lines = plays.per_case(rules_round["after_catch_all"])
     phase = {name: lines[name] for name in CATCH_ALL_ATTACKS + CATCH_ALL_BENIGN if name in lines}
-    return phase, rules_session["catch_all_markers"], rules_session["catch_all_alerts"]
+    return phase, rules_round["catch_all_markers"], rules_round["catch_all_alerts"]
 
 
 def test_the_experiment_is_valid_at_all(block_everything):

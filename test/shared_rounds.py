@@ -147,7 +147,7 @@ def score(full_run):
 
 
 @pytest.fixture(scope="session")
-def board_session(stack_is_up):
+def board_round(stack_is_up):
     with plays.Round("board") as played:
         seen = {"round": played.round}
         seen["objectives_at_start"] = plays.attack_seen(played)["objectives"]
@@ -171,7 +171,7 @@ def board_session(stack_is_up):
 
 
 @pytest.fixture(scope="session")
-def origins_session(stack_is_up):
+def origins_round(stack_is_up):
     with plays.Round("board") as played:
         state = plays.attack_seen(played)
         seen = {"origins": state["origins"], "first": state["remaining"]["origin"]}
@@ -191,7 +191,7 @@ def origins_session(stack_is_up):
 
 
 @pytest.fixture(scope="session")
-def rules_session(stack_is_up):
+def rules_round(stack_is_up):
     seen = {}
     with plays.Round("board") as played:
         baseline = runs_the_declared_rules(played)
@@ -259,7 +259,7 @@ def rules_session(stack_is_up):
 
 
 @pytest.fixture(scope="session")
-def terminal_session(stack_is_up):
+def terminal_round(stack_is_up):
     with plays.Round("board") as played:
         state = plays.attack_seen(played)
         seen = {"round": played.round, "origin": state["remaining"]["origin"]}
@@ -453,17 +453,17 @@ def finished(*calls):
 
 
 @pytest.fixture(scope="session")
-def corp_sessions(stack_is_up):
+def corp_rounds(stack_is_up):
     corp_is_declared()
     rogue_admin, option_flip_seen = finished(rogue_admin_run, option_flip_run)
     return {"rogue_admin": rogue_admin.result(), "option_flip": option_flip_seen.result()}
 
 
 @pytest.fixture(scope="session")
-def rogue_admin_session(corp_sessions):
-    return corp_sessions["rogue_admin"]
+def rogue_admin_round(corp_rounds):
+    return corp_rounds["rogue_admin"]
 
 
 @pytest.fixture(scope="session")
-def option_flip_session(corp_sessions):
-    return corp_sessions["option_flip"]
+def option_flip_round(corp_rounds):
+    return corp_rounds["option_flip"]

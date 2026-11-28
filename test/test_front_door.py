@@ -13,10 +13,10 @@ def declared_origins() -> list[ipaddress.IPv4Network]:
 
 
 @pytest.fixture
-def probe(terminal_session):
-    token, alerts = terminal_session["front"]
+def probe(terminal_round):
+    token, alerts = terminal_round["front"]
     assert alerts, f"the probe {token} raised no alert at all, so nothing can be said about it"
-    return terminal_session["origin"], alerts
+    return terminal_round["origin"], alerts
 
 
 def test_the_front_door_is_on_the_outside(probe):

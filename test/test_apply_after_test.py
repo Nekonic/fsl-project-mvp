@@ -23,7 +23,7 @@ def played():
 
 @pytest.fixture(scope="module")
 def applied_round(played):
-    text = plays.declared_rules() + CANDIDATE
+    text = plays.declared_rules(played.wargame) + CANDIDATE
     ids_test = plays.rule_test_ids(played, text)
     ids_applied = plays.apply_ids(played, text)
     fired = plays.fired(played, CONTROL)

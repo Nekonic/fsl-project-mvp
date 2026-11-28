@@ -15,12 +15,12 @@ from bots import signin
 from opening import settling
 from range import ATTACKER, run, start_hint
 
-pytest_plugins = ["shared_sessions"]
+pytest_plugins = ["shared_rounds"]
 
 REPO_ROOT = plays.REPO_ROOT
 PLATFORM_URL = plays.PLATFORM_URL
 TARGET_PUBLIC = "http://board.com"
-RESET_WAIT = 1800
+REFILL_WAIT = 1800
 RESET_POLL = 2
 
 SPLIT = os.environ.get("CR_SPLIT", "")
@@ -36,7 +36,7 @@ def reachable() -> bool:
 
 
 def wait_out_a_refill() -> list[dict]:
-    deadline = time.monotonic() + RESET_WAIT
+    deadline = time.monotonic() + REFILL_WAIT
     while True:
         slots = plays.slots()
         if (slots and not settling(slots)) or time.monotonic() >= deadline:
@@ -61,7 +61,7 @@ def stack_is_up():
         return
     slots = wait_out_a_refill()
     assert slots, f"{PLATFORM_URL}/api/staff/range/ lists no slot. Run `{start_hint()}` first."
-    assert not settling(slots), f"the range was still refilling a slot after {RESET_WAIT}s: {slots}"
+    assert not settling(slots), f"the range was still refilling a slot after {REFILL_WAIT}s: {slots}"
 
 
 class Standing:
@@ -121,7 +121,7 @@ def the_range_is_not_refilling(stack_is_up):
     if not IDLE and not BESIDE_ANOTHER_WORKER:
         slots = wait_out_a_refill()
         assert not settling(slots), (
-            f"the range was still refilling after {RESET_WAIT}s: {slots}. A closed allocation rebuilds its slot's "
+            f"the range was still refilling after {REFILL_WAIT}s: {slots}. A closed allocation refills its slot's "
             f"stack, and a test that reaches a host meanwhile finds it gone or half configured")
 
 
@@ -146,7 +146,7 @@ def from_attacker(path: str, allocation: int | None = None) -> None:
 
 
 def runs_the_declared_rules(played: plays.Played) -> str:
-    committed = plays.declared_rules()
+    committed = plays.declared_rules(played.wargame)
     live = plays.ids_rules(played)["text"]
 
     assert live == committed, (

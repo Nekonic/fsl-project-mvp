@@ -164,7 +164,7 @@ is reported apart under `free_actions` and never scored as one.
   checks of Elasticsearch's own set-up, `test/test_event_time.py`,
   `test/test_geoip_durable.py`, `test/test_origin_placement.py` and
   `test/test_waf_geolocation.py`, read Elasticsearch directly; the
-  acceptance checks of the objectives, `test/shared_sessions.py` and
+  acceptance checks of the objectives, `test/shared_rounds.py` and
   `test/test_board_exfil.py`, read the target's ground truth to hold the
   score against it; in each `wargames/<id>/topology.yaml` the sensor device
   `cr-ids` names the rule file and reload command `sandbox/suricata.py` is

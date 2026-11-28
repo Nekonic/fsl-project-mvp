@@ -105,7 +105,8 @@ bin/
   cloud                       클라우드 전체. 스태프 range API를 bots/rest.py로 호출
   platform-rebuild            플랫폼 VM 재구축. 준비 확인만 urllib로 /api/auth/csrf/를 직접 찌름(bots/rest.py 안 거침)
   backup  prune               DB 백업(pg_dump custom format)·복원(--restore), 닫힌 할당 정리
-  fetch-geoip  pick-origins  worldmap  build-css
+  fetch-geoip                 Elasticsearch ingest-geoip DB(GeoLite2-City)를 deploy/elastic/ingest-geoip/에 받음
+  pick-origins                platform/sandbox/declaration.yaml의 internet origins 블록(ranking·origins)을 Cloudflare Radar 비율로 다시 만들어 출력. 비율을 새로 받을 때만 돌리고 출력은 손으로 붙여 넣음
 platform/                     패키지 아님. manage.py와 pytest의 작업 디렉터리
   cr/          settings.py(CR_DB_HOST가 있으면 PostgreSQL, 없으면 SQLite)  logtime.py(로그 시각 UTC+9)  urls.py  wsgi.py  schema.py(쪽별 스키마)
                config.py    경계마다 넘기는 frozen 설정, topology의 센서 목록. 설정을 읽는 유일한 경계 모듈
@@ -252,7 +253,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
 | 공격 박스 | `sandbox/attacker.py` | `cr/config.py`의 라벨 파일 경로 기본값 |
 | WireGuard(키, 프로필, 중계) | `sandbox/vpn.py` | 없음. kali 쪽 `deploy/roles/kali/set-peer`는 `sandbox/attacker.py`만 부름 |
 | 고객 박스(infra VM의 `cr-customers` 유닛, 계정, 기록) | `sandbox/customers.py` | 없음 |
-| 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_sessions.py`, `test/test_board_exfil.py` |
+| 대상의 정답 데이터 | `scoring/loot.py`(board), `scoring/effect.py`(corp) | 점수를 정답 데이터와 맞춰 보는 acceptance 검사 `test/shared_rounds.py`, `test/test_board_exfil.py` |
 
 - 바깥 장치를 아는 파일은 모두 `sandbox/`에 있고 `telemetry/elastic.py`, `scoring/loot.py`, `scoring/effect.py`만
   예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/jump.py`)을 쓰고,

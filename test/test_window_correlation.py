@@ -1,7 +1,7 @@
 import pytest
 
 import plays
-from shared_sessions import CONTROL, with_token
+from shared_rounds import CONTROL, with_token
 
 
 def test_a_free_tool_run_is_attributed_to_its_origin_by_time_and_source(terminal_windows):

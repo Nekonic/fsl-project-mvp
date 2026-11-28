@@ -1,7 +1,7 @@
 from collections import Counter
 
 import plays
-from shared_sessions import CATCH_ALL_BENIGN, CONTROL, SQLMAP, benign_names
+from shared_rounds import CATCH_ALL_BENIGN, CONTROL, SQLMAP, benign_names
 
 
 def test_ground_truth_contains_both_labels(full_run):
@@ -69,8 +69,8 @@ def test_the_real_rule_set_still_gets_the_credit(full_run):
     )
 
 
-def test_a_true_positive_whose_alert_does_not_name_the_mechanism_is_not_corroborated(rules_session):
-    lines = plays.per_case(rules_session["after_generic"])
+def test_a_true_positive_whose_alert_does_not_name_the_mechanism_is_not_corroborated(rules_round):
+    lines = plays.per_case(rules_round["after_generic"])
 
     assert any(name in lines for name in CATCH_ALL_BENIGN), "no benign case ran beside the generic rule"
     assert lines[CONTROL]["verdict"] == "tp" and lines[CONTROL]["corroborated"] is False, (
@@ -78,14 +78,14 @@ def test_a_true_positive_whose_alert_does_not_name_the_mechanism_is_not_corrobor
         f"{lines[CONTROL]}")
 
 
-def test_benign_traffic_comes_from_the_infra_not_the_attacker(rules_session):
-    attack_markers = set(rules_session["noisy_markers"].values())
-    benign = [alert for alert in rules_session["noisy_alerts"]
+def test_benign_traffic_comes_from_the_infra_not_the_attacker(rules_round):
+    attack_markers = set(rules_round["noisy_markers"].values())
+    benign = [alert for alert in rules_round["noisy_alerts"]
               if alert["request_id"] and alert["request_id"] not in attack_markers]
-    processes = rules_session["attacker_processes"].splitlines()
+    processes = rules_round["attacker_processes"].splitlines()
 
     assert benign, "no alert carried a benign marker, so nothing shows where benign traffic comes from"
-    assert not [alert for alert in benign if alert["src_ip"] in rules_session["noisy_origins"]], (
-        f"benign requests left from an attack origin: {[a for a in benign if a['src_ip'] in rules_session['noisy_origins']][:5]}")
+    assert not [alert for alert in benign if alert["src_ip"] in rules_round["noisy_origins"]], (
+        f"benign requests left from an attack origin: {[a for a in benign if a['src_ip'] in rules_round['noisy_origins']][:5]}")
     assert not [line for line in processes if "customers.py" in line or line.split(" ", 1)[0] == "cr-users"], (
         f"the attacker box runs the customers' program: {processes}")

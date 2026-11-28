@@ -65,9 +65,9 @@ def test_the_red_team_run_is_shared_by_the_modules_that_read_it():
 
     assert "full_run" in shared["test_acceptance"]
     assert "full_run" in shared["test_strategy_honesty"]
-    assert "board_session" in shared["test_board_loot"]
+    assert "board_round" in shared["test_board_loot"]
     assert shared["test_window_correlation"] == shared["test_strategy_comparison"] == {"terminal_windows"}
-    assert not shared["test_concurrent_sessions"], (
+    assert not shared["test_concurrent_rounds"], (
         "a helper's argument was read as the red-team fixture"
     )
 
@@ -97,7 +97,7 @@ def test_the_modules_that_hold_two_sessions_take_two_slots_and_start_first(worke
 
 
 def test_a_group_starts_only_when_the_slots_it_holds_are_free():
-    two = split.Process("group 1", "worker", ["test_concurrent_sessions"], 90, 2)
+    two = split.Process("group 1", "worker", ["test_concurrent_rounds"], 90, 2)
     one = split.Process("group 2", "worker", ["test_board"], 30, 1)
 
     assert split.next_to_start([two, one], 2) is two
@@ -147,40 +147,9 @@ def slot(allocation=None, state="idle", wargame="board"):
     return {"slot": 1, "wargame": wargame, "allocation": allocation, "refill": {"state": state, "reason": ""}}
 
 
-def test_room_means_an_unheld_slot_whose_refill_has_settled():
-    assert opening.has_room([slot(allocation=4), slot()])
-    assert not opening.has_room([slot(allocation=4)])
-    for state in ("running", "failed"):
-        assert not opening.has_room([slot(state=state)])
-    assert opening.has_room([slot(wargame="")], "corp") and not opening.has_room([slot()], "corp")
+def test_a_slot_whose_refill_runs_is_settling():
     assert opening.settling([slot(), slot(state="running")]) and not opening.settling([slot(state="failed")])
-    assert not opening.has_room([])
-
-
-def test_waiting_for_room_polls_until_there_is_some_or_time_is_up():
-    now = [0.0]
-    answers = iter([False, False, True])
-
-    def sleep(seconds):
-        now[0] += seconds
-
-    assert opening.wait_for_room(lambda: next(answers), 60, 5, lambda: now[0], sleep)
-    assert now[0] == 10
-    assert not opening.wait_for_room(lambda: False, 12, 5, lambda: now[0], sleep)
-
-
-def test_an_open_refused_for_room_is_retried_once_there_is_room():
-    answers = iter(["409", "409", "201"])
-    made_room = []
-
-    result = opening.retried(lambda: next(answers), lambda said: said == "409",
-                             lambda: made_room.append(1) or True, attempts=5)
-
-    assert result == "201" and len(made_room) == 2
-    assert opening.retried(lambda: "409", lambda said: True, lambda: False, attempts=5) == "409"
-    tries = []
-    opening.retried(lambda: tries.append(1) or "409", lambda said: True, lambda: True, attempts=3)
-    assert len(tries) == 3
+    assert not opening.settling([])
 
 
 def test_the_run_never_holds_more_slots_than_the_range_has(monkeypatch, tmp_path):

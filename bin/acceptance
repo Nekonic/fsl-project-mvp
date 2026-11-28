@@ -22,7 +22,7 @@ import requests
 from bots import rest, signin
 
 TESTS = ROOT / "test"
-SHARED_FIXTURE_FILES = ("conftest.py", "shared_sessions.py")
+SHARED_FIXTURE_FILES = ("conftest.py", "shared_rounds.py")
 DURATIONS = TESTS / "durations.json"
 UNMEASURED_SECONDS = 10.0
 
@@ -32,7 +32,7 @@ IDLE = (
     "test_waf_geolocation",
 )
 TWO_ALLOCATIONS = (
-    "test_concurrent_sessions",
+    "test_concurrent_rounds",
     "test_corp_authz",
 )
 STANDING_STACK = (

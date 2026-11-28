@@ -1,6 +1,6 @@
 import pytest
 
-from shared_sessions import DEFACED, corp_is_declared
+from shared_rounds import DEFACED, corp_is_declared
 
 
 @pytest.fixture
@@ -12,8 +12,8 @@ def lost_in(score: dict) -> dict[str, dict]:
     return {line["key"]: line for line in score["objectives"]["lost"]}
 
 
-def test_a_live_rogue_admin_is_lost_from_the_targets_own_row_with_no_signature(corp_stands, rogue_admin_session):
-    seen = rogue_admin_session
+def test_a_live_rogue_admin_is_lost_from_the_targets_own_row_and_detected(corp_stands, rogue_admin_round):
+    seen = rogue_admin_round
     assert seen["registered"].ok and seen["registered"].body["status"] == 302, (
         f"the rogue-admin registration did not complete: {seen['registered'].text}")
     assert seen["created"] and all(uid > 1 for uid in seen["created"]), (
@@ -26,12 +26,12 @@ def test_a_live_rogue_admin_is_lost_from_the_targets_own_row_with_no_signature(c
 
     breach = lost_in(seen["score"]).get("corp-rogue-admin")
     assert breach is not None, seen["score"]["objectives"]
-    assert breach["detected"] is False, breach
+    assert breach["detected"] is True, breach
     assert breach["attributed_marker"], f"the breach was tied to no action of the attack player: {breach}"
 
 
-def test_a_live_content_overwrite_is_lost_from_the_targets_own_row(corp_stands, rogue_admin_session):
-    seen = rogue_admin_session
+def test_a_live_content_overwrite_is_lost_from_the_targets_own_row(corp_stands, rogue_admin_round):
+    seen = rogue_admin_round
     assert '"success":true' in seen["overwrite"].body["body"], (
         f"the postId overwrite was refused: {seen['overwrite'].text}")
     assert (seen["overwritten"]["post_title"], seen["overwritten"]["post_content"]) == (
@@ -40,8 +40,8 @@ def test_a_live_content_overwrite_is_lost_from_the_targets_own_row(corp_stands, 
     assert "corp-content-overwrite" in lost_in(seen["score"]), seen["score"]["objectives"]
 
 
-def test_a_live_option_flip_is_lost_from_the_targets_own_row(corp_stands, option_flip_session):
-    seen = option_flip_session
+def test_a_live_option_flip_is_lost_from_the_targets_own_row(corp_stands, option_flip_round):
+    seen = option_flip_round
     assert seen["flips"] == (200, 200), seen["flips"]
     assert seen["registration_open"] == "1"
 

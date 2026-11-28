@@ -4,8 +4,8 @@ import plays
 
 
 @pytest.fixture(scope="module")
-def caught_by_a_rule_without_a_buffer(rules_session):
-    return rules_session["bufferless"]
+def caught_by_a_rule_without_a_buffer(rules_round):
+    return rules_round["bufferless"]
 
 
 def test_a_rule_without_an_app_layer_buffer_still_credits_the_case_it_caught(caught_by_a_rule_without_a_buffer):

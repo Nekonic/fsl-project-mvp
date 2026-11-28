@@ -29,7 +29,7 @@ def ground_truth(played: plays.Played) -> list[tuple[str, str]]:
 def tested_round():
     with plays.Round("board", SETUP) as played:
         before_truth, before_alerts = ground_truth(played), plays.alerts(played)
-        ids = plays.rule_test_ids(played, plays.declared_rules() + CANDIDATE)
+        ids = plays.rule_test_ids(played, plays.declared_rules(played.wargame) + CANDIDATE)
         edited = {**plays.appended(played, plays.CRS_SETUP, plays.paranoia(2)),
                   **plays.appended(played, plays.CRS_EXCLUSIONS, plays.STATIC_EXCLUDED)}
         waf = plays.rule_test_waf(played, edited)

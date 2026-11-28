@@ -81,7 +81,7 @@ EXCEPTIONS = {
     "platform/entrypoint.sh": {NODE_NAMES, JUMP},
     "front/src/panes/Kibana.tsx": {KIBANA},
     "test/plays.py": {CRS},
-    "test/shared_sessions.py": {GROUND_TRUTH},
+    "test/shared_rounds.py": {GROUND_TRUTH},
     "test/test_board_exfil.py": {GROUND_TRUTH},
     "test/test_event_time.py": {ELASTICSEARCH, INDEX_PATTERNS},
     "test/test_geoip_durable.py": {ELASTICSEARCH},

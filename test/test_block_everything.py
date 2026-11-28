@@ -1,10 +1,10 @@
 import pytest
 
 import plays
-from shared_sessions import CATCH_ALL
+from shared_rounds import CATCH_ALL
 
 SETUP = plays.Setup(wargame="board", title="Acceptance block everything board",
-                    suricata_rules=plays.declared_rules() + CATCH_ALL,
+                    suricata_rules=plays.declared_rules("board") + CATCH_ALL,
                     waf_files={plays.CRS_EXCLUSIONS: plays.paranoia(4, inbound=1)})
 FIRING_ROUNDS = 3
 BENIGN_WAIT = 2 * plays.BENIGN_EVERY_S + 60.0

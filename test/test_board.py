@@ -1,5 +1,5 @@
 import plays
-from shared_sessions import CONTROL, UNION
+from shared_rounds import CONTROL, UNION
 
 
 def test_an_attack_on_the_board_is_detected_and_a_benign_request_passes(full_run):

@@ -36,7 +36,7 @@ def two_allocations(stack_is_up):
 
         tuned = plays.tune_waf(second, with_waf_probe(second))
         assert tuned.ok, tuned.text
-        committed = plays.declared_rules()
+        committed = plays.declared_rules(first.wargame)
         seen["committed"] = committed
         seen["applied"] = plays.apply_ids(first, committed + PROBE)
         seen["first_tuning"] = plays.waf_files(first)[plays.CRS_EXCLUSIONS]
