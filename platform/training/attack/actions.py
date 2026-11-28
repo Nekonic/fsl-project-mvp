@@ -29,7 +29,6 @@ from sandbox import attacker as box
 from sandbox import customers, edge
 from sandbox.reach import allocation_range, range_of
 from scoring import losses as referee
-from scoring.baseline import LOOT_VERIFIED, objective_model
 from telemetry import access as waf_log
 from telemetry import events as log
 from telemetry.models import AccessCursor
@@ -633,7 +632,7 @@ def state(found: Round) -> State:
         objectives=tuple(ObjectiveLine(key=one.key, name=one.name, state=one.state)
                          for one in referee.objectives(found)),
         origins=origins.lines(held), remaining=origins.remaining_of(held),
-        takes_loot=objective_model(found) == LOOT_VERIFIED)
+        takes_loot=referee.takes_loot(found))
 
 
 @dataclass(frozen=True)

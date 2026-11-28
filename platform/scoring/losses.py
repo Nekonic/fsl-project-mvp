@@ -68,6 +68,10 @@ def lose(found: Round, fired: Iterable[Mapping[str, Any]], at: datetime, earlies
     return tuple(fell)
 
 
+def takes_loot(found: Round) -> bool:
+    return objective_model(found) == LOOT_VERIFIED
+
+
 def submit_loot(found: Round, value: Any, actions: Sequence[ActionRecord] = (),
                 at: datetime | None = None) -> LootVerdict:
     if objective_model(found) != LOOT_VERIFIED:

@@ -104,6 +104,8 @@ class NextOrigin(AttackView):
 
 
 class Terminal(AttackView):
+    reads_logs = False
+
     @extend_schema(tags=TAGS, responses=serializers.AttackTerminal, operation_id="attack_terminal")
     def get(self, request, round_id: int):
         return answered(serializers.AttackTerminal, request,

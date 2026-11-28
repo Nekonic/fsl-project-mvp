@@ -156,6 +156,7 @@ describe("shellStateOf", () => {
   it("waits until the shell has printed something, and sees a gateway refusal", () => {
     expect(shellStateOf(frameWith("<p>Loading</p>", null))).toBe("connecting");
     expect(shellStateOf(frameWith("<h1>503 Service Temporarily Unavailable</h1>", null))).toBe("refused");
+    expect(shellStateOf(frameWith('<script>var e={574:1,509:2};</script>', null))).toBe("connecting");
     expect(shellStateOf(frameWith('<div class="xterm"></div>', ["", ""]))).toBe("connecting");
     expect(shellStateOf(frameWith('<div class="xterm"></div>', ["", "analyst@kali:~$ "]))).toBe("ready");
   });

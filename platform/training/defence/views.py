@@ -124,6 +124,8 @@ class WafApply(DefenceView):
 
 
 class Terminal(DefenceView):
+    reads_logs = False
+
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_terminal")
     def get(self, request, round_id: int):
         shown = defence_terminal.terminal(request.round, request.player)
@@ -131,6 +133,8 @@ class Terminal(DefenceView):
 
 
 class IdsTerminal(DefenceView):
+    reads_logs = False
+
     @extend_schema(tags=TAGS, responses=serializers.DefenceTerminal, operation_id="defence_ids_terminal")
     def get(self, request, round_id: int):
         shown = defence_terminal.terminal(request.round, request.player, defence_terminal.IDS)

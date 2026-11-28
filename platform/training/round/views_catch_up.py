@@ -24,9 +24,11 @@ def catch_up(request) -> None:
 
 class CatchingUpView(APIView):
     needs_reads: tuple[str, ...] = ()
+    reads_logs = True
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        catch_up(request)
+        if self.reads_logs:
+            catch_up(request)
         for what in self.needs_reads:
             lifecycle.refuse_if_unread(request.round, what)

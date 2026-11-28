@@ -51,7 +51,8 @@ export function shellStateOf(frame: HTMLIFrameElement | null): ShellState {
   }
   if (!page || !page.body) return "connecting";
   if (!page.querySelector(".xterm")) {
-    return /\b5\d\d\b/.test(page.body.textContent ?? "") ? "refused" : "connecting";
+    const gatewayPage = !page.querySelector("script");
+    return gatewayPage && /\b5\d\d\b/.test(page.body.textContent ?? "") ? "refused" : "connecting";
   }
   const buffer = shown?.term?.buffer?.active;
   if (buffer?.getLine) {

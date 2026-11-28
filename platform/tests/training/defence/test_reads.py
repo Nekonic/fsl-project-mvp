@@ -141,7 +141,7 @@ def test_alerts_page_by_detection_id_and_filter_by_engine_rule_and_source(as_def
     assert [alert["rule"] for alert in waf["alerts"]] == ["942100"]
     assert [alert["engine"] for alert in by_rule["alerts"]] == ["ids"]
     assert [alert["src_ip"] for alert in by_source["alerts"]] == [CUSTOMER]
-    assert later == {"alerts": [], "next": every["next"]}
+    assert later == {"alerts": [], "next": every["next"], "more": False, "total": 2}
     assert as_defender.get(url(board_round, "alerts/"), {"engine": "kql"}).status_code == 400
 
 
