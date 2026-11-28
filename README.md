@@ -432,6 +432,8 @@ CR_FINAL_CHECK=1 bin/verify --fast    # 단위·API 테스트 전체, 최종 검
 
 - `.githooks/pre-push`는 `dev`로 가는 push만 봅니다. `origin/dev`와 push하는 커밋을 임시 worktree에서 합치고
   `bin/verify --changed`를 돌려 실패하면 push를 거절합니다. 다른 브랜치 push는 그대로 나갑니다.
+- `.githooks/commit-msg`는 `Claude-Session:`, `Co-Authored-By`, claude.ai/code 링크가 든 커밋 메시지를 거절합니다.
+  GitHub Actions `tests`도 push된 커밋마다 같은 검사를 합니다.
 - `bin/verify --fast`, 전체 `bin/verify`, `--only` 없는 `bin/acceptance`는 `CR_FINAL_CHECK=1` 없이는 시작하지
   않습니다. 리뷰 라운드에서 결함이 0건일 때 한 번 돌리는 최종 검증입니다. GitHub Actions `tests`가 `dev` push마다
   `bin/verify --fast`를 돌립니다.
@@ -551,7 +553,7 @@ sudo docker compose start platform refill
 ## 현재 상태
 
 지금 트리는 Player vs AI 라운드, PostgreSQL 저장소, 라운드가 끝날 때까지 남는 방어 봇 위에 다음을 더한 것입니다.
-두 차례 라이브 리뷰에서 나온 수정, 늦게 색인된 알림 읽기, 문제 없이 여는 `pvp`(15분 제한), 봇끼리 붙는 기준선
+두 차례 라이브 리뷰에서 나온 수정, 늦게 색인된 알림 읽기, 문제 없이 여는 `pvp`(15분 제한), 봇끼리만 붙는
 라운드 제거, 화면 전체의 한국어 문구 정리와 로그아웃 수정, 워게임마다 따로 두는 IDS 시작 룰(corp는 `corp.rules`),
 요청과 따로 도는 로그 읽기, 다시 로드되지 않는 Kali 터미널, UTC+9 시각 표시, 영어로 쓰는 용어(probes, range 등)는 영어 그대로. 클라우드의 `cr-platform2`에서
 돌아갑니다. 룰 테스트용 probes는 `wargames/<id>/probes/`에 커밋되어 있고, 콘솔은 플랫폼 이미지의 `/srv/front`에서

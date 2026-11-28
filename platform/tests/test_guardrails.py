@@ -118,3 +118,23 @@ def test_a_push_to_a_branch_other_than_dev_passes_the_hook():
                           capture_output=True, timeout=20)
 
     assert done.returncode == 0 and done.stdout == ""
+
+
+def test_a_commit_message_with_an_attribution_line_is_refused(tmp_path):
+    def refused(message):
+        (tmp_path / "message").write_text(message)
+        return subprocess.run([str(ROOT / ".githooks/commit-msg"), str(tmp_path / "message")],
+                              capture_output=True, timeout=20).returncode != 0
+
+    assert [refused(message) for message in (
+        "Fix the thing\n",
+        "Fix the thing\n\nClaude-Session: https://example.invalid/x\n",
+        "Fix the thing\n\nCo-authored-by: someone <a@b>\n",
+        "Fix the thing\n\nsee https://claude.ai/code/session_x\n",
+    )] == [False, True, True, True]
+
+
+def test_ci_runs_the_commit_message_check_over_the_pushed_commits():
+    workflow = (ROOT / ".github/workflows/tests.yml").read_text()
+
+    assert ".githooks/commit-msg" in workflow and "github.event.before" in workflow

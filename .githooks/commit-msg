@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+if grep -qiE 'Claude-Session:|Co-Authored-By|claude\.ai/code' "$1"; then
+  echo "commit-msg: refused - the message names Claude-Session:, Co-Authored-By or a claude.ai/code link; remove the line" >&2
+  exit 1
+fi

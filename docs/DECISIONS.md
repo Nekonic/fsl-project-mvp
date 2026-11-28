@@ -11849,7 +11849,7 @@ hook or a test that fails.
 
 | # | Mechanism | Where | Blocks |
 |---|---|---|---|
-| 1 | dev stays green | `.githooks/pre-push` (`git config core.hooksPath .githooks`), `.github/workflows/tests.yml`, a SessionStart line | a push to `dev` whose merge with `origin/dev` fails `bin/verify --changed`; CI runs `bin/verify --fast` on every push to `dev`; each session opens with the latest result |
+| 1 | dev stays green | `.githooks/pre-push` and `.githooks/commit-msg` (`git config core.hooksPath .githooks`), `.github/workflows/tests.yml`, a SessionStart line | a push to `dev` whose merge with `origin/dev` fails `bin/verify --changed`; a commit message naming `Claude-Session:`, `Co-Authored-By` or a claude.ai/code link, in the hook and in CI over the pushed commits; CI runs `bin/verify --fast` on every push to `dev`; each session opens with the latest result |
 | 2 | a decision reaches every reader | `Replaces:` lines here, `platform/tests/seams/test_replaced_forms.py` | the unit tests, while a replaced name or behaviour is still written outside this file, `docs/research/`, `docs/specs/` and generated files |
 | 3 | briefs from facts | `bin/facts`, `.claude/hooks/before-delegate.sh` | an Agent or Workflow call whose brief does not name `~/.cache/fsl-work/facts.txt`, or when that file is older than 30 minutes |
 | 4 | done means checked | `bin/orders-check`, `.claude/hooks/orders-stop.sh` | a stop while a `끝남` row of `~/.cache/fsl-work/user-orders.md` fails its `검사` command (rows marked `fast`, 10 s in all); each row also says what its check does not see |

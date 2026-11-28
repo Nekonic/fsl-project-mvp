@@ -14,6 +14,17 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+      - name: commit messages carry no attribution lines
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then pushed="$BEFORE..HEAD"; else pushed="HEAD~1..HEAD"; fi
+          for commit in $(git rev-list "$pushed"); do
+            git log -1 --format=%B "$commit" > "$RUNNER_TEMP/message"
+            .githooks/commit-msg "$RUNNER_TEMP/message" || { git log -1 --format='%h %s' "$commit"; exit 1; }
+          done
       # the unit tests run on SQLite, as bin/verify --fast does locally;
       # platform/tests/test_store_postgres.py starts its own PostgreSQL with Docker
       - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc

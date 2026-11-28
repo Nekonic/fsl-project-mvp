@@ -1,5 +1,6 @@
 import os
 import pathlib
+import shlex
 import subprocess
 
 SCRIPT = pathlib.Path(__file__).resolve().parents[1] / "vm-terminal.sh"
@@ -114,11 +115,13 @@ def test_a_kept_terminal_reattaches_to_one_tmux_session_per_player_so_a_reload_k
 
 def test_the_shell_s_clock_is_korean_time_even_in_a_box_without_a_time_zone_database(tmp_path):
     ran, asked, seen = opened(tmp_path, "cr-waf", "defence", "3", lookup=WAF_SHELL)
-    zone = next(word.removeprefix("TZ=") for word in remote_command(seen).split() if word.startswith("TZ="))
+    zone = next(word.removeprefix("TZ=") for word in shlex.split(remote_command(seen)) if word.startswith("TZ="))
     offset = subprocess.run(["date", "+%z"], capture_output=True, text=True,
                             env={"TZ": zone, "TZDIR": str(tmp_path / "no-zoneinfo")}).stdout.strip()
+    shown = subprocess.run(["date", "+%Z"], capture_output=True, text=True,
+                           env={"TZ": zone, "TZDIR": str(tmp_path / "no-zoneinfo")}).stdout.strip()
 
-    assert "/" not in zone and offset == "+0900", "the WAF image has no tzdata, so TZ=Asia/Seoul read as UTC"
+    assert "/" not in zone and offset == "+0900" and shown == "+09", "the WAF image has no tzdata, so TZ=Asia/Seoul read as UTC"
 
 
 def test_an_open_shell_is_closed_once_the_round_no_longer_gives_the_player_a_terminal(tmp_path):

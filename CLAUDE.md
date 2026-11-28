@@ -39,7 +39,9 @@ hook sends back one that does not).
 
 Hooks hold the rest (2026-11-28, `docs/DECISIONS.md`): `.githooks/pre-push`
 (`git config core.hooksPath .githooks`) refuses a push to `dev` whose merge
-with `origin/dev` fails `bin/verify --changed`; a delegation is denied unless
+with `origin/dev` fails `bin/verify --changed`, and `.githooks/commit-msg`
+refuses a message naming `Claude-Session:`, `Co-Authored-By` or a claude.ai/code
+link (CI checks the pushed commits the same way); a delegation is denied unless
 its brief names `~/.cache/fsl-work/facts.txt` written by `bin/facts` in the
 last 30 minutes; a stop is blocked while a `끝남` row of
 `~/.cache/fsl-work/user-orders.md` fails its `검사` (`bin/orders-check`); a

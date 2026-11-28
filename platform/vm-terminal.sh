@@ -35,7 +35,7 @@ esac
 options="-t -i /data/ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o HostKeyAlias=$alias -o LogLevel=ERROR -o ConnectTimeout=10 -o ServerAliveInterval=30"
 recheck="${TERMINAL_RECHECK:-15}"
 exec 3<&0
-ssh $options "${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}" "sudo -i -u $account env TERM=xterm-256color TZ=KST-9 bash -l" <&3 2>>"$log" &
+ssh $options "${CR_OPENSTACK_SSH_USER:-ubuntu}@${addr}" "sudo -i -u $account env TERM=xterm-256color TZ='<+09>-9' bash -l" <&3 2>>"$log" &
 shell=$!
 exec 3<&-
 (

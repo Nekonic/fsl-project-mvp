@@ -75,12 +75,12 @@ def still_written(forms: list[Replaced], paths: list[str]) -> dict[str, list[str
 def test_a_replaces_line_names_a_pattern_and_optional_paths():
     forms = replaced_forms(
         "## 2026-11-28 — One\nReplaces: `old_name`\n"
-        "## 2026-11-29 — Two\nReplaces: `레인지` in `docs/`, `README.md` except `docs/OPENSTACK.md`\n"
+        "## 2026-11-29 — Two\nReplaces: `옛말` in `docs/`, `README.md` except `docs/OPENSTACK.md`\n"
     )
 
     assert [(form.heading, form.pattern.pattern, form.within, form.outside) for form in forms] == [
         ("2026-11-28 — One", "old_name", (), ()),
-        ("2026-11-29 — Two", "레인지", ("docs/", "README.md"), ("docs/OPENSTACK.md",)),
+        ("2026-11-29 — Two", "옛말", ("docs/", "README.md"), ("docs/OPENSTACK.md",)),
     ]
 
 
