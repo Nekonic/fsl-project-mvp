@@ -6,23 +6,41 @@ problems in `docs/TROUBLESHOOTING.md`; the current design in
 `docs/ARCHITECTURE.md`, the historical 2026-11-19 design in
 `docs/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 
-Updated: 2026-11-28.
+Updated: 2026-11-29.
 
 ## What the cloud runs
 
-`dev` on `cr-platform2`, since a replace on the evening of 2026-11-28
-(UTC+9 20:55, exit 0, 30 min) onto new role images `cr-kali-bake5`,
-`cr-waf-bake6` and `cr-infra-bake3` (target unchanged, `cr-target-bake3`):
-the 2026-11-28 renames (role files in `deploy/roles/`, `cases/`,
-`sites.conf`, `customers.py`, `web-proxy.py`, `board.rules`, the `refill`
-service, `defence/waf/terminal/`) and the kali command log stamping a
-command when it starts are live. The pvp time limit is 15 minutes, the
-code default (`CR_PVP_TIME_LIMIT_SECONDS=900`). `main` holds the old product
-until gate 2.
+`dev` on `cr-platform2`, since a replace just after midnight UTC+9 on
+2026-11-29 (exit 0, 14 min; role images unchanged: `cr-kali-bake5`,
+`cr-waf-bake6`, `cr-infra-bake3`, `cr-target-bake3`). Live with it:
+
+- One port. The site pane is `/site/<round>/<host>/` on 8000 under
+  `Content-Security-Policy: sandbox allow-forms allow-same-origin; script-src 'none'; object-src 'none'; base-uri 'none'`
+  (`docs/DECISIONS.md` 2026-11-28 "One port"). The old site port is gone from compose
+  and from the `cr-platform` group, which now opens 22, 2222, 8000 and
+  udp 51820-51919. The user forwards 8000, 2222 and udp 51820-51919.
+- The guardrails (`docs/DECISIONS.md` 2026-11-28 "Six checks"), with a
+  `commit-msg` hook and a CI step refusing attribution lines. Each clone
+  turns the hooks on once: `git config core.hooksPath .githooks`.
+- The terminals run with `TZ='<+09>-9'`, so `date` shows `+09`.
+
+The pvp time limit is 15 minutes, the code default. `main` holds the old
+product until gate 2.
 
 ## Checked live today
 
-- After that replace, both pvp wargames passed every step from sign-in to
+- After the one-port replace: a board pvp check (round 542) passed 19 of 19
+  steps and a corp pvp check (round 543) 21 of 21. Both checks now require
+  the site frame on `:8000/site/` with the policy above. On corp a
+  registration posted through the pane (302, one POST row), and the
+  browser logged `Blocked script execution` for the target's scripts.
+  `bin/acceptance --only test_front_door,test_range_isolation` from the
+  platform VM: 13 passed, 0 failed in 7.5 min. `bin/select-tests` named all
+  88 acceptance tests for the change (the Heat template and `cr/config.py`
+  are named by no test), past the one-hour limit, so these two modules, the
+  ones that check what reaches the platform VM, ran instead.
+- Before the one-port change, on the tree before it:
+  both pvp wargames passed every step from sign-in to
   sign-out (rounds 499 board, 500 corp; `~/.cache/fsl-work/pvp-check/`):
   on corp the attack takes the objective, IDS sid 9000201 alerts, the
   defender's WAF rule passes its test, goes live and the same attack gets
@@ -72,12 +90,14 @@ until gate 2.
   round that does not start now logs why.
 - Whether a platform read under three rounds still runs past 5 s now that it
   runs off the request thread (`CR_READ_IN_BACKGROUND=1`) is not measured.
+- `bin/acceptance --only` takes module stems (`test_front_door`); a name with
+  `.py` matches nothing and the run reports 0 passed, 0 failed.
 - The rest is in `docs/STATE.md` "Not live-verified" and "Open points".
 
 ## Next, in order
 
-1. External learners: the public-IP forwards (UDP 51820-51919, TCP 2222,
-   the console) and `CR_VPN_HOST`.
+1. External learners: the public-IP forwards (TCP 8000, TCP 2222,
+   UDP 51820-51919) and `CR_VPN_HOST`.
 2. Gate 2: a live review round with zero countable findings and a docs
    review, then the change and its evidence to the user.
 
