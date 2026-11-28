@@ -425,9 +425,16 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 
 ```bash
 uv sync --frozen        # .venv를 uv.lock에 맞춤
+git config core.hooksPath .githooks   # 클론마다 한 번: dev로 가는 push 전에 bin/verify --changed
 bin/verify --changed    # 바뀐 파일이 닿는 테스트만
-bin/verify --fast       # 단위·API 테스트 전체
+CR_FINAL_CHECK=1 bin/verify --fast    # 단위·API 테스트 전체, 최종 검증 때만
 ```
+
+- `.githooks/pre-push`는 `dev`로 가는 push만 봅니다. `origin/dev`와 push하는 커밋을 임시 worktree에서 합치고
+  `bin/verify --changed`를 돌려 실패하면 push를 거절합니다. 다른 브랜치 push는 그대로 나갑니다.
+- `bin/verify --fast`, 전체 `bin/verify`, `--only` 없는 `bin/acceptance`는 `CR_FINAL_CHECK=1` 없이는 시작하지
+  않습니다. 리뷰 라운드에서 결함이 0건일 때 한 번 돌리는 최종 검증입니다. GitHub Actions `tests`가 `dev` push마다
+  `bin/verify --fast`를 돌립니다.
 
 - `bin/verify`는 먼저 `openapi/schema.yaml`을 다시 내보냅니다(`manage.py spectacular`). 스키마가 바뀌면 그 변경과
   함께 커밋합니다. `bots/`, `test/`, `bin/`은 생성 클라이언트 없이 이 스키마의 `operationId`로 API를 부릅니다
@@ -457,7 +464,7 @@ npm run build && npx vitest run
 ```
 
 - 전체 `bin/verify`는 acceptance(`test/`)까지 돌리고 플랫폼 VM에서 실행합니다:
-  `CR_PLATFORM_URL=http://<address>:8000 bin/verify`. acceptance 구성은 [test/README.md](test/README.md)에 있습니다.
+  `CR_FINAL_CHECK=1 CR_PLATFORM_URL=http://<address>:8000 bin/verify`. acceptance 구성은 [test/README.md](test/README.md)에 있습니다.
 
 ## 백업과 복원
 

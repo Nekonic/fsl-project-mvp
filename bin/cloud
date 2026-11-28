@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import secrets
+import subprocess
 import sys
 import tempfile
 import time
@@ -24,6 +25,8 @@ import requests
 from bots import rest, signin
 
 REBUILD = ROOT / "bin/platform-rebuild"
+FACTS = ROOT / "bin/facts"
+REPLACE_COUNTER = Path(os.environ.get("CR_WORK_DIR") or Path.home() / ".cache/fsl-work") / "replaces.txt"
 CALL_TIMEOUT = 1800
 SLOT_WAIT = 1800
 GONE_WAIT = 1800
@@ -508,11 +511,35 @@ def init(args: argparse.Namespace) -> None:
     print("init is done; bin/cloud up brings the platform and the range's pool up")
 
 
+def replaces_today(today: str, counter: Path) -> int:
+    counter.parent.mkdir(parents=True, exist_ok=True)
+    with counter.open("a", encoding="utf-8") as written:
+        written.write(today + "\n")
+    return sum(1 for line in counter.read_text(encoding="utf-8").splitlines() if line == today)
+
+
+def undeployed_commits() -> str:
+    try:
+        said = subprocess.run([sys.executable, str(FACTS), "--undeployed"], capture_output=True, text=True,
+                              timeout=30).stdout.strip()
+    except (OSError, subprocess.TimeoutExpired) as error:
+        said = f"on dev, not deployed: unknown ({error})"
+    return said or "on dev, not deployed: unknown"
+
+
+def before_a_replace() -> None:
+    print(undeployed_commits())
+    today = time.strftime("%Y-%m-%d", time.gmtime(time.time() + UTC9_SECONDS))
+    print(f"replace {replaces_today(today, REPLACE_COUNTER)} today ({today} UTC+9, counted in {REPLACE_COUNTER})")
+
+
 def main(argv: list[str]) -> int:
     args = arguments(argv)
     if args.action == "init":
         init(args)
     elif args.action == "up":
+        if args.replace:
+            before_a_replace()
         address = up(args)
         print(f"the range is ready; the platform is at http://{address}:8000/")
     else:

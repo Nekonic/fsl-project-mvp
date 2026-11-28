@@ -15,6 +15,26 @@
           {
             "type": "command",
             "command": "d=$(jq -r '.cwd // empty' 2>/dev/null); cat \"${d:-${CLAUDE_PROJECT_DIR:-.}}/docs/state/now.md\" 2>/dev/null"
+          },
+          {
+            "type": "command",
+            "command": "ci=$(timeout 8 gh run list --branch dev --workflow tests.yml --limit 1 2>/dev/null | head -1); echo \"dev CI: ${ci:-unknown (gh missing or failed)}\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/orders-stop.sh\"",
+            "timeout": 20
+          },
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/reply-check.py\"",
+            "timeout": 10
           }
         ]
       }

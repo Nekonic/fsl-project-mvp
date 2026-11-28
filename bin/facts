@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_PLATFORM = "http://192.168.2.247:8000"
+
+WORK = Path(os.environ.get("CR_WORK_DIR") or Path.home() / ".cache/fsl-work")
+FACTS = WORK / "facts.txt"
+ORDERS = WORK / "user-orders.md"
+LOCK = WORK / "acceptance.lock"
+VM = os.environ.get("CR_FACTS_VM", "ubuntu@192.168.2.247")
+VM_KEY = Path.home() / ".ssh/fsl_claude"
+VM_TREE = "/opt/cr"
+VM_ENV_FILES = ("/opt/cr/openstack.env", "/opt/cr/.env")
+SETTINGS = ("CR_PVP_TIME_LIMIT_SECONDS", "CR_JUDGE_AFTER_SECONDS", "CR_READ_IN_BACKGROUND")
+SSH_OPTIONS = ("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+               "-o", "LogLevel=ERROR", "-o", "ConnectTimeout=5")
+CALL_SECONDS = 10
+UTC9 = timezone(timedelta(hours=9), "UTC+9")
+SETTING_LINE = re.compile(r"^(?P<file>[^:]+):(?P<key>[A-Z0-9_]+)=(?P<value>.*)$")
+
+
+def run(argv: list[str], cwd: Path = ROOT) -> tuple[int, str]:
+    try:
+        done = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=CALL_SECONDS)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        return 1, str(error)
+    return done.returncode, (done.stdout or done.stderr).strip()
+
+
+def dev_head() -> str:
+    run(["git", "fetch", "-q", "origin", "dev"])
+    code, head = run(["git", "log", "-1", "--format=%h %s", "origin/dev"])
+    return head if code == 0 else f"unknown ({head})"
+
+
+def vm_state() -> dict:
+    keys = "|".join(SETTINGS)
+    remote = (f"git -C {VM_TREE} log -1 --format='%h %s'; "
+              f"grep -HE '^({keys})=' {' '.join(VM_ENV_FILES)} 2>/dev/null; true")
+    code, said = run(["ssh", *SSH_OPTIONS, "-i", str(VM_KEY), VM, remote])
+    if code != 0:
+        return {"commit": f"unknown ({said.splitlines()[-1] if said else 'ssh failed'})", "settings": []}
+    lines = said.splitlines()
+    settings = []
+    for line in lines[1:]:
+        matched = SETTING_LINE.match(line)
+        if matched and matched["key"] in SETTINGS:
+            settings.append(f"{matched['key']}={matched['value']} ({matched['file']})")
+    return {"commit": lines[0] if lines else "unknown", "settings": settings}
+
+
+def undeployed(vm_commit: str) -> list[str]:
+    deployed = vm_commit.split(" ", 1)[0]
+    if not re.fullmatch(r"[0-9a-f]{7,40}", deployed):
+        return [f"unknown: the platform VM's commit was not read ({vm_commit})"]
+    code, listed = run(["git", "log", "--format=%h %s", f"{deployed}..origin/dev"])
+    if code != 0:
+        return [f"unknown: {listed}"]
+    return listed.splitlines()
+
+
+def slot_states() -> list[str]:
+    try:
+        import plays
+        answer = plays.ask("staff_range", plays.operator())
+    except Exception as error:
+        return [f"unknown ({type(error).__name__}: {str(error)[:120]})"]
+    if not answer.ok:
+        return [f"unknown (staff_range answered {answer.status})"]
+    rows = []
+    for slot in answer.body.get("slots", []):
+        refill = slot.get("refill") or {}
+        held = f"allocation {slot['allocation']}" if slot.get("allocation") else "free"
+        reason = f" - {refill['reason']}" if refill.get("reason") else ""
+        rows.append(f"slot {slot.get('slot')} {slot.get('wargame')}: {held}, refill {refill.get('state')}{reason}")
+    return rows
+
+
+def acceptance_state(lock: Path = LOCK) -> str:
+    try:
+        held = json.loads(lock.read_text())
+    except FileNotFoundError:
+        return "not running"
+    except (OSError, ValueError) as error:
+        return f"unknown (unreadable lock {lock}: {error})"
+    try:
+        os.kill(int(held["pid"]), 0)
+    except (ProcessLookupError, KeyError, ValueError):
+        return f"not running (stale lock {lock}, pid {held.get('pid')})"
+    except PermissionError:
+        pass
+    started = datetime.fromtimestamp(held.get("started", 0), UTC9).strftime("%m-%d %H:%M")
+    return f"running since {started} UTC+9, modules {held.get('modules')}, pid {held['pid']}"
+
+
+def ci_result() -> str:
+    code, said = run(["gh", "run", "list", "--branch", "dev", "--workflow", "tests.yml", "--limit", "1",
+                      "--json", "workflowName,status,conclusion,displayTitle,createdAt",
+                      "--jq", '.[0] | "\\(.workflowName) \\(.status) \\(.conclusion) - \\(.displayTitle) (\\(.createdAt))"'])
+    return said if code == 0 and said else f"unknown ({said or 'gh failed'})"
+
+
+def open_orders(orders: Path = ORDERS) -> list[str]:
+    try:
+        lines = orders.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return [f"unknown ({orders} unreadable)"]
+    header, rows = None, []
+    for line in lines:
+        if not line.startswith("|") or set(line) <= set("|- "):
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if header is None:
+            header = cells
+            continue
+        row = dict(zip(header, cells))
+        if row.get("상태") and row["상태"] != "끝남":
+            rows.append(f"#{row.get('#')} [{row['상태']}] {row.get('지시 (사용자 말)', cells[1])}")
+    return rows
+
+
+def report(now: datetime) -> str:
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        head = pool.submit(dev_head)
+        vm = pool.submit(vm_state)
+        slots = pool.submit(slot_states)
+        ci = pool.submit(ci_result)
+        dev = head.result()
+        state = vm.result()
+        lines = [
+            f"facts at {now.strftime('%Y-%m-%d %H:%M')} UTC+9 (bin/facts)",
+            f"origin/dev: {dev}",
+            f"platform VM runs: {state['commit']}",
+        ]
+        missing = undeployed(state["commit"])
+        lines.append(f"on dev, not deployed: {len(missing)}")
+        lines += [f"  {commit}" for commit in missing[:15]]
+        lines.append(f"slots ({os.environ['CR_PLATFORM_URL']}):")
+        lines += [f"  {slot}" for slot in slots.result()]
+        lines.append(f"acceptance: {acceptance_state()}")
+        lines.append("VM settings:")
+        lines += [f"  {setting}" for setting in state["settings"] or ["none of " + ", ".join(SETTINGS) + " set"]]
+        lines.append(f"dev CI: {ci.result()}")
+    orders = open_orders()
+    lines.append(f"open orders ({ORDERS}): {len(orders)}")
+    lines += [f"  {order}" for order in orders]
+    return "\n".join(lines) + "\n"
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="facts", description="what is true now, read from origin, the VM and the API")
+    parser.add_argument("--undeployed", action="store_true", help="print only the dev commits the VM does not run")
+    args = parser.parse_args(argv)
+    os.environ.setdefault("CR_PLATFORM_URL", DEFAULT_PLATFORM)
+    sys.path[:0] = [str(ROOT), str(ROOT / "test")]
+    if args.undeployed:
+        run(["git", "fetch", "-q", "origin", "dev"])
+        missing = undeployed(vm_state()["commit"])
+        print(f"on dev, not deployed: {len(missing)}")
+        for commit in missing:
+            print(f"  {commit}")
+        return 0
+    began = time.monotonic()
+    text = report(datetime.now(UTC9))
+    WORK.mkdir(parents=True, exist_ok=True)
+    FACTS.write_text(text, encoding="utf-8")
+    sys.stdout.write(text)
+    print(f"({time.monotonic() - began:.1f}s, written to {FACTS})")
+    return 0
+
+
+if __name__ == "__main__":
+    venv_python = ROOT / ".venv/bin/python"
+    if venv_python.exists() and Path(sys.prefix).resolve() != (ROOT / ".venv").resolve():
+        os.execv(str(venv_python), [str(venv_python), __file__, *sys.argv[1:]])
+    sys.exit(main(sys.argv[1:]))

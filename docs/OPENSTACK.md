@@ -2077,7 +2077,7 @@ own case's alerts.
 ```bash
 curl -s -b jar http://$ADDRESS:8000/api/staff/range/                       # signed in as in §5.6
 curl -s -b jar -H "X-CSRFToken: $T" -X POST http://$ADDRESS:8000/api/staff/range/fabric/ | jq .clean
-ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
+ssh ubuntu@$ADDRESS 'cd /opt/cr && CR_FINAL_CHECK=1 CR_PLATFORM_URL=http://'$ADDRESS':8000 bin/verify'
 ```
 
 `bin/verify` runs `uv sync --frozen` and then the checkout's

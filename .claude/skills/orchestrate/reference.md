@@ -9,8 +9,13 @@ change touches the verify modes or the substrate seams.
 |---|---|---|
 | `bin/verify --changed [BASE]` | the unit test files the change reaches | by default while working |
 | `bin/verify --changed [BASE] --live` | the same, plus the acceptance modules the change reaches, on the live range | a range-facing change, before it is pushed |
-| `bin/verify --fast` | every unit test | before a commit that touches shared code |
-| `bin/verify` | all of acceptance on the live range, with every unit test beside it at the lowest CPU priority | range-facing logic changed, and before a push |
+| `CR_FINAL_CHECK=1 bin/verify --fast` | every unit test | the final check, after a review round found nothing; CI runs it on every push to `dev` |
+| `CR_FINAL_CHECK=1 bin/verify` | all of acceptance on the live range, with every unit test beside it at the lowest CPU priority | the final check before gate 2, after a review round found nothing |
+
+Without `CR_FINAL_CHECK=1` the last two refuse to start, and so does
+`bin/acceptance` without `--only`. `.githooks/pre-push` runs
+`bin/verify --changed` on the merge of `origin/dev` and a commit pushed to
+`dev`, and refuses the push when it is red.
 
 The live modes run where the `cr-platform` container was brought up from the
 same checkout (the platform VM's `/opt/cr`), refuse while a session is open,

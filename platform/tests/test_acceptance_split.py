@@ -188,3 +188,40 @@ def test_a_group_wider_than_the_range_fails_the_run_instead_of_waiting_forever(m
     codes, totals = split.run_all([], [split.Process("group 1", "worker", ["test_x"], 10, 2)], 1, tmp_path, [])
 
     assert codes == [1] and totals.errors == 1
+
+
+def test_a_run_over_an_hour_is_stopped_and_reported_as_an_error(monkeypatch, tmp_path, capsys):
+    killed = []
+
+    class Hanging:
+        def poll(self):
+            return None
+
+        def kill(self):
+            killed.append(True)
+
+    monkeypatch.setattr(split, "_started", lambda process, slots, logs, extra: (process, Hanging(), None, None))
+    monkeypatch.setattr(split, "POLL_SECONDS", 0)
+    ticks = iter([0, 10, split.LONGEST_RUN_SECONDS + 1])
+
+    codes, totals = split.run_all([split.Process("group 1", "worker", ["test_x"])], [], 1, tmp_path, [],
+                                  clock=lambda: next(ticks))
+
+    assert codes == [1] and totals.errors == 1 and killed == [True]
+    assert split.OVER_AN_HOUR in capsys.readouterr().out
+
+
+def test_the_whole_suite_refuses_to_start_unless_it_is_the_final_check(monkeypatch, capsys):
+    monkeypatch.delenv("CR_FINAL_CHECK", raising=False)
+
+    assert split.main([]) == 2
+    assert "CR_FINAL_CHECK=1" in capsys.readouterr().out
+
+
+def test_the_lock_names_the_run_while_it_runs_and_is_gone_after(tmp_path):
+    lock = tmp_path / "acceptance.lock"
+
+    with split.held_lock("test_x", "http://platform", lock) as held:
+        assert '"modules": "test_x"' in held.read_text()
+
+    assert not lock.exists()

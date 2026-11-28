@@ -28,6 +28,18 @@ case "${1:-}" in
     ;;
 esac
 
+if [ "$CHANGED" = 0 ] && [ "${CR_FINAL_CHECK:-}" != 1 ]; then
+  if [ "$FAST" = 1 ]; then refused="bin/verify --fast"; else refused="bin/verify (acceptance 전체)"; fi
+  echo "$refused 은(는) 최종 검증 전용입니다: 리뷰 라운드가 결함 0건을 낸 뒤에만 CR_FINAL_CHECK=1 을 붙여 실행합니다."
+  echo "수정 중에는 bin/verify --changed (range 쪽이면 --changed --live)만 돌립니다."
+  exit 2
+fi
+
+timed_out() {
+  [ "$1" = 124 ] && echo "1시간 초과: 오류로 보고 원인을 찾을 것"
+  return 0
+}
+
 UNIT_JOBS="${CR_UNIT_JOBS:-$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)}"
 [ "$UNIT_JOBS" -gt 4 ] && UNIT_JOBS=4
 UNIT_NICE=""
@@ -48,8 +60,8 @@ unit_suite() {
     return 1
   fi
   for list in "$dir"/*.files; do
-    (cd platform && $UNIT_NICE "$PY" -m pytest $(cat "$list") -q -p no:cacheprovider \
-      > "${list%.files}.log" 2>&1; echo $? > "${list%.files}.code") &
+    (cd platform && $UNIT_NICE timeout 3600 "$PY" -m pytest $(cat "$list") -q -p no:cacheprovider \
+      > "${list%.files}.log" 2>&1; code=$?; timed_out "$code" >> "${list%.files}.log"; echo "$code" > "${list%.files}.code") &
   done
   wait
   for list in "$dir"/*.files; do
@@ -279,7 +291,10 @@ fi
 rm -f "$RULES_SAID"
 
 section "acceptance (live stack)"
-if "$PY" bin/acceptance ${only:+--only "$only"}; then
+timeout 3600 "$PY" bin/acceptance ${only:+--only "$only"}
+acceptance_code=$?
+timed_out "$acceptance_code"
+if [ "$acceptance_code" = 0 ]; then
   ok "test/"
 else
   fail "test/"

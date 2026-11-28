@@ -363,3 +363,38 @@ def test_a_printed_line_starts_with_the_time_in_utc9_whatever_the_host_zone(monk
     print("slot standing", file=module.Stamped(written))
 
     assert written.getvalue() == "05:33:45 slot standing\n"
+
+
+def test_a_replace_counts_the_replaces_of_its_own_day(tmp_path):
+    module = command()
+    counter = tmp_path / "work/replaces.txt"
+
+    counts = [module.replaces_today(day, counter) for day in ("2026-11-27", "2026-11-28", "2026-11-28")]
+
+    assert counts == [1, 1, 2]
+
+
+def test_up_replace_says_what_dev_holds_that_the_vm_does_not_before_it_starts(monkeypatch, tmp_path, capsys):
+    module = command()
+    calls = []
+    monkeypatch.setattr(module, "REPLACE_COUNTER", tmp_path / "replaces.txt")
+    monkeypatch.setattr(module, "undeployed_commits", lambda: calls.append("facts") or "on dev, not deployed: 2")
+    monkeypatch.setattr(module, "up", lambda args: calls.append("up") or "203.0.113.8")
+
+    module.main(["up", "--replace"])
+    module.main(["up"])
+
+    out = capsys.readouterr().out
+    assert calls == ["facts", "up", "up"]
+    assert "on dev, not deployed: 2" in out and "replace 1 today" in out
+    assert (tmp_path / "replaces.txt").read_text().count("\n") == 1
+
+
+def test_the_undeployed_commits_come_from_bin_facts(monkeypatch):
+    module = command()
+    asked = []
+    monkeypatch.setattr(module.subprocess, "run", lambda argv, **kw: asked.append(argv) or subprocess.CompletedProcess(
+        argv, 0, stdout="on dev, not deployed: 0\n"))
+
+    assert module.undeployed_commits() == "on dev, not deployed: 0"
+    assert asked[-1][-2:] == [str(module.FACTS), "--undeployed"]

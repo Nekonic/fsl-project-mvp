@@ -11547,12 +11547,16 @@ cases. Problems stay for Player vs AI rounds, which carry the steps, cards and b
 baselines. Rejected: a pvp problem per wargame (made on 2026-11-27 as problems 18 and 21 only
 because `create_round` takes a problem id for every round; removed).
 
+Replaces: `matchups\W{0,4}\[[^\]]*["']pvp["']|pvp ?문제|pvp problem` except `platform/tests/domain/test_problems.py`
+
 ## 2026-11-27 — No bot-vs-bot baseline
 
 The user: "별로 필요없다 그냥 문제공개해 뭐 내가 몇%인게 중요한게 아니잖아", then "앞으로
 기준선제거". A bot problem is published without baselines, and a learner's result is shown
 without a percentile against bot-vs-bot rounds. Supersedes the 2026-11-24 ruling "A bot-vs-bot
 baseline". The baseline rounds, their staff button and the publish refusal are removed.
+
+Replaces: `bot_vs_bot|bot-vs-bot|기준선` except `platform/tests/test_store_postgres.py`, `docs/TROUBLESHOOTING.md`
 
 ## 2026-11-27 — Sign-out ends everything at once; a page follows only the events it shows
 
@@ -11624,6 +11628,8 @@ every time it shows through `front/src/format.ts` with `timeZone: "Asia/Seoul"`,
 viewer's browser zone. Kibana's spaces already carry `dateFormat:tz: Asia/Seoul`
 (`sandbox/kibana.py`), and the terminals run nine hours ahead of UTC. Docs write the
 zone as UTC+9.
+
+Replaces: `\bKST\b|KST-9`
 
 ## 2026-11-28 — Benign passes stay counted per pass
 
@@ -11821,3 +11827,40 @@ what it holds. The one spec left, `2026-11-19-side-split-design.md`, is
 design; `docs/ARCHITECTURE.md` is the current one, and `CLAUDE.md`, the README, `docs/STATE.md`,
 `docs/state/now.md` and `docs/OPENSTACK.md` say so. Older entries here that name
 `docs/superpowers/specs/` files name paths git keeps in its history.
+
+## 2026-11-28 — English terms are written in English
+
+The user: "probes는 영어로, 영어 용어는 발음 표기 말고 영어로". The console and the docs write
+probes, range, slot, stack, signature and pool in English, not their sound in Hangul; the
+recorded requests a rule test replays are probes.
+
+Replaces: `레인지|슬롯|스택|시그니처|프로브`
+Replaces: `(?<![가-힣])풀(?:에서|에|의|을|은|로)?(?![가-힣])`
+Replaces: `녹화`
+
+## 2026-11-28 — Six checks the harness enforces instead of remembering
+
+The user asked for mechanisms against the orchestrating session's repeated
+mistakes: reporting work done that its check did not cover, asking what it
+could decide, idling, running the slowest checks for small changes, leaving
+docs stale, writing briefs from memory, missing readers after a rename, and
+leaving `dev` red. Memory notes had not stopped any of them, so each is now a
+hook or a test that fails.
+
+| # | Mechanism | Where | Blocks |
+|---|---|---|---|
+| 1 | dev stays green | `.githooks/pre-push` (`git config core.hooksPath .githooks`), `.github/workflows/tests.yml`, a SessionStart line | a push to `dev` whose merge with `origin/dev` fails `bin/verify --changed`; CI runs `bin/verify --fast` on every push to `dev`; each session opens with the latest result |
+| 2 | a decision reaches every reader | `Replaces:` lines here, `platform/tests/seams/test_replaced_forms.py` | the unit tests, while a replaced name or behaviour is still written outside this file, `docs/research/`, `docs/specs/` and generated files |
+| 3 | briefs from facts | `bin/facts`, `.claude/hooks/before-delegate.sh` | an Agent or Workflow call whose brief does not name `~/.cache/fsl-work/facts.txt`, or when that file is older than 30 minutes |
+| 4 | done means checked | `bin/orders-check`, `.claude/hooks/orders-stop.sh` | a stop while a `끝남` row of `~/.cache/fsl-work/user-orders.md` fails its `검사` command (rows marked `fast`, 10 s in all); each row also says what its check does not see |
+| 5 | questions carry their context | `.claude/hooks/reply-check.py`, `~/.cache/fsl-work/asked-words.txt`, the "Do not ask" list in `CLAUDE.md` | a reply that asks without saying what is decided, the effect, the recommendation and what happens with no answer, or that uses a word the user asked about without explaining it |
+| 6 | long runs only at the end | `bin/verify`, `bin/acceptance`, `bin/cloud` | `bin/verify --fast`, the full `bin/verify` and `bin/acceptance` without `--only` unless `CR_FINAL_CHECK=1`; a run past an hour stops with "1시간 초과: 오류로 보고 원인을 찾을 것"; `bin/cloud up --replace` first prints the `dev` commits the VM does not run and the day's replace count |
+
+A `Replaces:` line follows an entry and holds one Python regex in backticks,
+then optionally ` in ` and backticked path prefixes the rule is limited to, and
+` except ` and prefixes it does not reach. Hooks fail open on their own errors:
+a broken hook never stops the session. A Stop hook does not block a second
+time in a row (`stop_hook_active`), so a reply it sent back once ends the turn.
+Rejected: more memory notes (they were the status quo), and blocking on every
+`?` in a reply (code and quoted text carry them; code spans are stripped
+first).

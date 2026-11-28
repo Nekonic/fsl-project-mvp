@@ -31,6 +31,21 @@ tag a version (`vMAJOR.MINOR.PATCH`) when a verified state is worth keeping.
 `bin/verify`, a live review round with zero countable findings, and a docs
 review that found no document out of step with the code, moved there as a fast-forward after gate 2. Never force-push `dev` or `main`.
 
+Do not ask; decide and report: deploys, test scope, internal names, doc
+tidying, slot cleanup, creating a test player account, wording that follows a
+recorded rule. When a question is needed, it says what is decided, its effect,
+the recommendation and what happens with no answer (the `reply-check.py` Stop
+hook sends back one that does not).
+
+Hooks hold the rest (2026-11-28, `docs/DECISIONS.md`): `.githooks/pre-push`
+(`git config core.hooksPath .githooks`) refuses a push to `dev` whose merge
+with `origin/dev` fails `bin/verify --changed`; a delegation is denied unless
+its brief names `~/.cache/fsl-work/facts.txt` written by `bin/facts` in the
+last 30 minutes; a stop is blocked while a `끝남` row of
+`~/.cache/fsl-work/user-orders.md` fails its `검사` (`bin/orders-check`); a
+`Replaces:` line in `docs/DECISIONS.md` fails the unit tests while the old form
+is still written.
+
 Replies are short — the result and the reason, no restatement, no analogy;
 detail goes in the commit and `docs/DECISIONS.md`. Documents and replies carry
 no commit SHAs: `git log` holds them and a merge or rebase changes them; say
@@ -200,9 +215,12 @@ is reported apart under `free_actions` and never scored as one.
 ## Verifying
 
 Run only what a change needs: `bin/verify --changed` (the tests the change
-reaches) by default while working; `--fast` before a commit that touches
-shared code; the full `bin/verify` with acceptance only when range-facing
-logic changed, and before a push.
+reaches, `--live` for the acceptance modules it reaches) while working and
+before a push. `bin/verify --fast`, the full `bin/verify` and `bin/acceptance`
+without `--only` are the final check: they refuse to start unless
+`CR_FINAL_CHECK=1`, set only after a review round found nothing. The CI
+workflow `tests` runs `bin/verify --fast` on every push to `dev`. A run past an
+hour stops and prints "1시간 초과: 오류로 보고 원인을 찾을 것".
 
 ## Gotchas
 

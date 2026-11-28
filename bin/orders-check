@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import subprocess
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+WORK = Path(os.environ.get("CR_WORK_DIR") or Path.home() / ".cache/fsl-work")
+ORDERS = WORK / "user-orders.md"
+DONE = "끝남"
+CHECK = "검사"
+UNSEEN = "안 본 것"
+FAST_BUDGET_SECONDS = 10.0
+SLOW_SECONDS = 300.0
+CELL_BREAK = re.compile(r"(?<!\\)\|")
+COMMAND = re.compile(r"^(?P<fast>fast\s+)?`(?P<command>.+)`$")
+
+
+@dataclass(frozen=True)
+class Order:
+    number: str
+    said: str
+    state: str
+    check: str
+    fast: bool
+    unseen: str
+
+
+@dataclass(frozen=True)
+class Outcome:
+    order: Order
+    result: str
+    detail: str = ""
+
+    @property
+    def defect(self) -> bool:
+        return self.order.state == DONE and self.result in ("fail", "검사 없음")
+
+
+def cells_of(line: str) -> list[str]:
+    return [cell.strip().replace("\\|", "|") for cell in CELL_BREAK.split(line.strip().strip("|"))]
+
+
+def orders_in(text: str) -> list[Order]:
+    header, found = None, []
+    for line in text.splitlines():
+        if not line.startswith("|") or set(line) <= set("|-: "):
+            continue
+        cells = cells_of(line)
+        if header is None:
+            header = cells
+            continue
+        row = dict(zip(header, cells))
+        written = COMMAND.match(row.get(CHECK, ""))
+        found.append(Order(
+            number=row.get("#", ""), said=cells[1] if len(cells) > 1 else "", state=row.get("상태", ""),
+            check=written["command"] if written else "", fast=bool(written and written["fast"]),
+            unseen=row.get(UNSEEN, ""),
+        ))
+    return found
+
+
+def checked(order: Order, seconds: float) -> Outcome:
+    if not order.check:
+        return Outcome(order, "검사 없음")
+    try:
+        done = subprocess.run(["bash", "-c", order.check], cwd=ROOT, capture_output=True, text=True,
+                              timeout=max(seconds, 0.5))
+    except subprocess.TimeoutExpired:
+        return Outcome(order, "fail", f"{seconds:.0f}s 안에 끝나지 않음")
+    said = (done.stdout + done.stderr).strip().splitlines()
+    return Outcome(order, "pass" if done.returncode == 0 else "fail",
+                   " / ".join(said[-3:])[:200].replace("|", "\\|"))
+
+
+def check_all(orders: list[Order], fast_only: bool) -> list[Outcome]:
+    finished = [order for order in orders if order.state == DONE]
+    skipped = [Outcome(order, "건너뜀 (fast 아님)") for order in finished if fast_only and order.check and not order.fast]
+    runnable = [order for order in finished if not (fast_only and order.check and not order.fast)]
+    seconds = FAST_BUDGET_SECONDS if fast_only else SLOW_SECONDS
+    began = time.monotonic()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(lambda order: checked(order, seconds - (time.monotonic() - began)), runnable))
+    return sorted(outcomes + skipped, key=lambda outcome: int(outcome.order.number or 0)
+                  if outcome.order.number.isdigit() else 0)
+
+
+def table(outcomes: list[Outcome]) -> str:
+    lines = ["| # | 지시 | 검사 | 결과 | 안 본 것 |", "|---|---|---|---|---|"]
+    for outcome in outcomes:
+        result = outcome.result + (f": {outcome.detail}" if outcome.result == "fail" and outcome.detail else "")
+        lines.append(f"| {outcome.order.number} | {outcome.order.said[:50]} | "
+                     f"{'fast' if outcome.order.fast else 'slow' if outcome.order.check else '-'} | {result} | "
+                     f"{outcome.order.unseen[:80]} |")
+    return "\n".join(lines)
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="orders-check",
+                                     description="run the 검사 of every 끝남 row of user-orders.md")
+    parser.add_argument("--fast", action="store_true", help=f"only the checks marked fast, in {FAST_BUDGET_SECONDS:.0f}s")
+    parser.add_argument("--orders", type=Path, default=ORDERS)
+    args = parser.parse_args(argv)
+    try:
+        orders = orders_in(args.orders.read_text(encoding="utf-8"))
+    except OSError as error:
+        print(f"orders-check: {args.orders} unreadable: {error}")
+        return 2
+    outcomes = check_all(orders, args.fast)
+    print(table(outcomes))
+    defects = [outcome for outcome in outcomes if outcome.defect]
+    if defects:
+        print(f"\n결함 {len(defects)}건: 끝남이라 적었지만 검사가 통과하지 않음 - "
+              + ", ".join(f"#{outcome.order.number}" for outcome in defects))
+        return 1
+    print(f"\n끝남 {len(outcomes)}건, 결함 0건")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

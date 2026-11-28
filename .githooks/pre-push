@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+
+remote="$1"
+zero=0000000000000000000000000000000000000000
+root="$(git rev-parse --show-toplevel)"
+refused=0
+
+check_dev_push() {
+  local pushed="$1" base scratch code
+  git fetch -q "$remote" dev || { echo "pre-push: could not fetch $remote dev"; return 1; }
+  base="$(git rev-parse FETCH_HEAD)"
+  [ "$pushed" = "$base" ] && return 0
+  scratch="$(mktemp -d)"
+  git worktree add -q --detach "$scratch/tree" "$base" || { rm -rf "$scratch"; return 1; }
+  [ -d "$root/.venv" ] && ln -s "$root/.venv" "$scratch/tree/.venv"
+  [ -d "$root/front/node_modules" ] && ln -s "$root/front/node_modules" "$scratch/tree/front/node_modules"
+  if ! git -C "$scratch/tree" -c user.name=pre-push -c user.email=pre-push@localhost merge -q --no-edit "$pushed" >/dev/null 2>&1; then
+    echo "pre-push: $remote/dev and the pushed commit do not merge cleanly"
+    code=1
+  else
+    echo "pre-push: bin/verify --changed on the merge of $remote/dev and the pushed commit"
+    (cd "$scratch/tree" && timeout 3600 bin/verify --changed "$base")
+    code=$?
+    [ "$code" = 124 ] && echo "1시간 초과: 오류로 보고 원인을 찾을 것"
+  fi
+  git worktree remove --force "$scratch/tree" >/dev/null 2>&1
+  rm -rf "$scratch"
+  return "$code"
+}
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = refs/heads/dev ] || continue
+  [ "$local_sha" = "$zero" ] && continue
+  if ! check_dev_push "$local_sha"; then
+    echo "pre-push: refused - dev stays green; fix the change, then push again"
+    refused=1
+  fi
+done
+
+exit "$refused"

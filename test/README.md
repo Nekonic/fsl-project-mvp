@@ -11,7 +11,7 @@ platform VM, against that VM's own platform and its running range
 (`docs/OPENSTACK.md` §7). `bin/verify` needs the checkout's `.venv`.
 
 ```bash
-ssh ubuntu@<address> 'cd /opt/cr && CR_PLATFORM_URL=http://<address>:8000 bin/verify'
+ssh ubuntu@<address> 'cd /opt/cr && CR_FINAL_CHECK=1 CR_PLATFORM_URL=http://<address>:8000 bin/verify'
 ```
 
 `bin/verify` regenerates the clients, runs the unit suite, and then the

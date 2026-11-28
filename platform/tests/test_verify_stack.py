@@ -40,7 +40,7 @@ def verify_against(tmp_path, checkout):
         done = subprocess.run(
             [str(checkout / "bin/verify")],
             capture_output=True, text=True, timeout=60,
-            env={**os.environ, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"},
+            env={**os.environ, "CR_FINAL_CHECK": "1", "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"},
         )
         return done, calls.read_text() if calls.exists() else ""
 
@@ -102,9 +102,22 @@ def test_acceptance_starts_only_after_the_warm_up_round_found_the_target_up(tmp_
     executable(tmp_path / "tools/curl", "exit 0\n")
 
     done = subprocess.run([str(checkout / "bin/verify")], capture_output=True, text=True, timeout=60, cwd=checkout,
-                          env={**os.environ, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"})
+                          env={**os.environ, "CR_FINAL_CHECK": "1", "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"})
 
     assert acceptance.exists() == accepted, done.stdout + done.stderr
     if not accepted:
         assert done.returncode == 1
         assert "no allocation got a slot" in done.stdout and "no slot came free for board" in done.stderr
+
+
+@pytest.mark.parametrize("argv", [[], ["--fast"]], ids=["full", "fast"])
+def test_the_long_runs_refuse_to_start_unless_it_is_the_final_check(tmp_path, checkout, argv):
+    calls = tmp_path / "docker-calls"
+    executable(tmp_path / "tools/docker", f'echo "$*" >> "{calls}"\nexit 0\n')
+    environment = {key: value for key, value in os.environ.items() if key != "CR_FINAL_CHECK"}
+
+    done = subprocess.run([str(checkout / "bin/verify"), *argv], capture_output=True, text=True, timeout=60,
+                          cwd=checkout, env={**environment, "PATH": f"{tmp_path / 'tools'}:/usr/bin:/bin"})
+
+    assert done.returncode == 2 and "CR_FINAL_CHECK=1" in done.stdout, done.stdout + done.stderr
+    assert not calls.exists()

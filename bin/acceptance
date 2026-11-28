@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import xml.etree.ElementTree as ElementTree
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -42,6 +43,15 @@ STANDING_STACK = (
     "test_range_isolation",
 )
 POLL_SECONDS = 1.0
+LONGEST_RUN_SECONDS = 3600
+OVER_AN_HOUR = "1시간 초과: 오류로 보고 원인을 찾을 것"
+WORK = Path(os.environ.get("CR_WORK_DIR") or Path.home() / ".cache/fsl-work")
+LOCK = WORK / "acceptance.lock"
+NOT_THE_FINAL_CHECK = (
+    "bin/acceptance (모듈 전체)는 최종 검증 전용입니다: 리뷰 라운드가 결함 0건을 낸 뒤에만 "
+    "CR_FINAL_CHECK=1 을 붙여 실행합니다. 수정 중에는 --only 로 바뀐 것이 닿는 모듈만 돌립니다 "
+    "(bin/verify --changed --live 가 고릅니다)."
+)
 
 
 @dataclass
@@ -292,12 +302,18 @@ def _finished(process: Process, running, log, report: Path) -> tuple[int, Totals
 
 
 def run_all(alongside: list[Process], waiting: list[Process], slots: int, logs: Path,
-            extra: list[str]) -> tuple[list[int], Totals]:
+            extra: list[str], clock=time.monotonic) -> tuple[list[int], Totals]:
     running = [_started(process, slots, logs, extra) for process in alongside]
     waiting = list(waiting)
     free = slots
     codes, merged = [], Totals()
+    began = clock()
     while waiting or running:
+        if clock() - began > LONGEST_RUN_SECONDS:
+            for _, process, _, _ in running:
+                process.kill()
+            print(OVER_AN_HOUR, flush=True)
+            return codes + [1], merged.add(Totals(errors=1))
         while (process := next_to_start(waiting, free)) is not None:
             waiting.remove(process)
             free -= process.slots
@@ -318,6 +334,18 @@ def run_all(alongside: list[Process], waiting: list[Process], slots: int, logs: 
     return codes, merged
 
 
+@contextmanager
+def held_lock(modules: str, platform: str, lock: Path | None = None):
+    lock = lock or LOCK
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    lock.write_text(json.dumps({"pid": os.getpid(), "started": time.time(), "modules": modules,
+                                "platform": platform}) + "\n")
+    try:
+        yield lock
+    finally:
+        lock.unlink(missing_ok=True)
+
+
 def save_durations(measured: dict[str, float], path: Path = DURATIONS) -> None:
     kept = measured_durations(path)
     kept.update({module: round(seconds) for module, seconds in measured.items() if module})
@@ -331,7 +359,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--save-durations", action="store_true")
     parser.add_argument("--only", default="", help="comma-separated test modules to run instead of all")
     args, extra = parser.parse_known_args(argv)
-    platform = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
+    if not args.only and not args.plan and os.environ.get("CR_FINAL_CHECK") != "1":
+        print(NOT_THE_FINAL_CHECK)
+        return 2
+    platform =os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
     workers = args.workers or workers_the_range_allows(platform)
     alongside, waiting = plan(workers, only=set(filter(None, args.only.split(","))))
 
@@ -349,7 +380,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     began = time.monotonic()
     logs = Path(tempfile.mkdtemp(prefix="cr-acceptance-"))
-    codes, totals = run_all(alongside, waiting, workers, logs, extra)
+    with held_lock(args.only or "all", platform):
+        codes, totals = run_all(alongside, waiting, workers, logs, extra)
     if args.save_durations:
         save_durations(totals.per_module)
     print(f"\n== acceptance: {totals.line(time.monotonic() - began, len(codes))}")

@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      # the unit tests run on SQLite, as bin/verify --fast does locally;
+      # platform/tests/test_store_postgres.py starts its own PostgreSQL with Docker
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: uv sync --frozen
+      - name: schema, unit, contract and front tests
+        env:
+          CR_FINAL_CHECK: "1"
+        run: bin/verify --fast
