@@ -1,0 +1,16 @@
+# corp 워게임(WordPress)의 시작 Suricata 룰. sid 대역 9000000-9999999.
+
+# 폼 본문(http.request_body)은 URL 디코딩 전 값이라 [ ] 가 %5B %5D 로 온다.
+# 둘 다 잡도록 [ ] 와 인코딩된 형태를 같이 적는다.
+
+# 회원가입 폼에 wp_capabilities[administrator] 를 끼워 넣는 권한 상승.
+# 플러그인은 wp_capabilities 라는 이름만 막아서 à 같은 악센트 문자로 우회하고,
+# MySQL 은 콜레이션 때문에 같은 키로 본다. 그래서 앞 글자는 보지 않고 pabilities 부터 잡는다.
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"WordPress privilege escalation - wp_capabilities[administrator] in registration form"; flow:established,to_server; http.method; content:"POST"; http.request_body; pcre:"/pabilities(%5b|\[)administrator(%5d|\])/i"; classtype:web-application-attack; sid:9000201; rev:1;)
+
+# 인증 없이 admin-ajax.php 로 사이트 옵션을 바꾸는 요청. 회원가입 허용 옵션이 대상이다.
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"WordPress option change via admin-ajax - users_can_register"; flow:established,to_server; http.uri; content:"admin-ajax.php"; http.request_body; content:"users_can_register"; classtype:web-application-attack; sid:9000202; rev:1;)
+
+# 글 제출 폼 액션에 이미 있는 글 번호(postId)를 넣어 남의 글을 덮어쓰는 요청.
+# postId 없이 새 글을 내는 제출에는 걸리지 않는다.
+alert http $EXTERNAL_NET any -> $HOME_NET any (msg:"WordPress post overwrite - rbsm_submit_post with an existing postId"; flow:established,to_server; http.uri; content:"admin-ajax.php"; http.request_body; content:"action=rbsm_submit_post"; pcre:"/(^|&)postId=0*[1-9]/"; classtype:web-application-attack; sid:9000203; rev:1;)

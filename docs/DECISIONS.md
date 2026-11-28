@@ -11579,3 +11579,16 @@ The reload wrappers on the WAF and IDS VMs print their refusal in English, next 
 Suricata's own English output in the same terminal. The Korean-only rule covers the console and
 the learner map; a terminal shows what the tools print, as practitioners read it. No image rebake
 for that text.
+
+## 2026-11-28 — Each wargame's sensor starts on its own rules
+
+A corp round started on the board's four signatures (SQLi, XSS, path traversal), because a
+slot's refill seeded every sensor from `deploy/suricata/rules/local.rules` whatever wargame the
+slot runs. None of them names a corp case's mechanism, so a corp round with no posture began
+with no IDS detection at all. The sensor device in `wargames/<id>/topology.yaml` now names its
+starting file under `baseline:`: board keeps `local.rules`, corp gets `corp.rules`, one
+signature per declared corp attack case (the `wp_capabilities[administrator]` key in the
+registration form, a `users_can_register` change through `admin-ajax.php`, `rbsm_submit_post`
+with an existing `postId`), each `msg` holding the case's `expect`. None matches the four
+benign corp cases (checked on the requests the case file builds). A posture still applies on
+top at round start.

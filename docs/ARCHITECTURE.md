@@ -257,8 +257,9 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
   예외입니다. 공격 쪽(Kali)과 방어 쪽(WAF와 센서 호스트의 `analyst`) 터미널이 같은 점프 권한(`sandbox/access.py`)을 쓰고,
   `training/attack`과 `training/defence`는 서로 import하지 않으므로 공용 경계가 어느 한쪽에 있으면 안 됩니다.
   박스 주소, runner, 계정은 호출하는 쪽이 넘깁니다.
-- `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 `deploy/suricata/rules/local.rules`를
-  적재합니다. 재생성 기본 룰은 슬롯의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
+- `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 그 슬롯 워게임의
+  `topology.yaml`이 센서 장비(`cr-ids`)의 `baseline:`에 적은 룰 파일(board는 `deploy/suricata/rules/local.rules`,
+  corp는 `deploy/suricata/rules/corp.rules`)을 적재합니다. 재생성 기본 룰은 슬롯의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `telemetry/elastic.py`), `operator_log.py`(→
   `sandbox/attacker.py`), `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께
   삭제), `blue.html`의 Kibana localStorage 설정(→ `front/src/panes/Kibana.tsx`)은 없어졌습니다.

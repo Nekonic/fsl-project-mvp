@@ -1158,7 +1158,6 @@ class OpenStack:
 
     def configure_slot(self) -> list[tuple[str, tuple[str, ...]]]:
         self._shape = None
-        baseline = (Path(self.build.source) / BASELINE_RULES).read_text()
         done = []
         for role in SENSOR_ROLES:
             if role not in self.declared.roles:
@@ -1167,11 +1166,15 @@ class OpenStack:
             sensor = SensorConfig(name=self.declared.host(role), role=role, rules=entry.rules,
                                   reload=tuple(entry.reload.split()))
             try:
-                suricata.seed(baseline, self.runner(role), sensor)
+                suricata.seed(self.baseline_rules(role), self.runner(role), sensor)
             except suricata.RuleApplyError as exc:
                 raise Drifted(f"slot {self.slot}'s {role} did not load the baseline rules: {exc}")
             done.append((self.declared.host(role), (f"loaded {entry.rules}",)))
         return done
+
+    def baseline_rules(self, role: str) -> str:
+        named = self._definition(self.wargame).filling(role).baseline or BASELINE_RULES
+        return (Path(self.build.source) / named).read_text()
 
     def plan_leftovers(self) -> list[tuple[str, str, str]]:
         found = [("stack", str(stack["id"]), f"{stack.get('stack_name')}: a slot beyond the {self.slots} the "
