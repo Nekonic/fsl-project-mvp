@@ -59,7 +59,7 @@ def arguments(argv: list[str]) -> argparse.Namespace:
                     "platform VM's Heat stack, then the range's pool of slot stacks through the "
                     "platform's own API. down backs the store up and takes the slot stacks down, "
                     "then the platform's stack. "
-                    "Every line starts with the local time. Run it with uv run, which "
+                    "Every line starts with the time in UTC+9. Run it with uv run, which "
                     "installs what it needs.",
     )
     parser.add_argument("action", choices=("init", "up", "down"))
@@ -76,8 +76,11 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+UTC9_SECONDS = 9 * 3600
+
+
 class Stamped:
-    def __init__(self, stream, now=time.localtime):
+    def __init__(self, stream, now=lambda: time.gmtime(time.time() + UTC9_SECONDS)):
         self.stream, self.now, self.line_start = stream, now, True
 
     def write(self, text: str) -> int:

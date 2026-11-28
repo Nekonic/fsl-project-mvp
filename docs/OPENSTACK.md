@@ -1258,7 +1258,7 @@ uv run bin/cloud down
 ```
 
 Every line `bin/cloud` prints, its own and `bin/platform-rebuild`'s, starts
-with the local time (`HH:MM:SS`), so a run's log shows how long each step took.
+with the time in UTC+9 (`HH:MM:SS`), whatever the host's zone, so a run's log shows how long each step took.
 It asks the platform's API every 5 s while it waits (`POLL`), and
 `bin/platform-rebuild` tries ssh and `/api/auth/csrf/` every 2 s (`SSH_POLL`,
 `API_POLL`).
@@ -1376,9 +1376,9 @@ This command replaces the platform VM without losing data. It does these steps:
    kept its WAL connection to the store the restore replaced, its lock on the
    file made every write of the new platform answer `database is locked`, and
    `bin/cloud up --replace` stopped at the first sign-in (500). A
-   `store-<UTC time>.pgdump` goes through `bin/backup`'s restore program into
+   `store-<UTC+9 time>.pgdump` goes through `bin/backup`'s restore program into
    `cr-postgres` (one transaction: the schema is dropped, the archive loaded).
-   A `db-<UTC time>.sqlite3`, which the first replace after the move to
+   A `db-<UTC+9 time>.sqlite3`, which the first replace after the move to
    PostgreSQL takes from the old VM, is loaded once with
    `docker compose run ... platform ... manage.py load_sqlite_store`: it
    migrates a copy of the file to the new code, empties PostgreSQL, applies the
@@ -1399,7 +1399,7 @@ is in place.
 There may be no store to carry over: there may be no stack, the stack may have
 failed, or the VM may hold none. The backup just taken may also hold no rows. In
 these cases the command restores the newest backup by its stamp, a
-`backups/store-<UTC time>.pgdump` or an older `backups/db-<UTC time>.sqlite3`
+`backups/store-<UTC+9 time>.pgdump` or an older `backups/db-<UTC+9 time>.sqlite3`
 that holds rows, and names it. If there is none, the platform starts empty and says
 so. The hand-over that `up` redoes (§5.2) does the same when the VM holds no
 store. Move a backup you do not want restored out of `backups/` first: on
@@ -1481,10 +1481,12 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
   `pg_restore --list`, counts the rows of each table and streams the archive
   over ssh in 1 MiB chunks. It gives up only after 600 s with no data. The
   platform keeps serving: `pg_dump` reads one snapshot and blocks no writer.
-- It keeps the archive as `backups/store-<UTC time>.pgdump` only when it starts
+- It keeps the archive as `backups/store-<UTC+9 time>.pgdump` only when it starts
   with the custom-format header and the store holds rows. An empty store, as a
   new VM's, keeps no backup and removes none. Otherwise it removes older stamped
-  backups (`store-*.pgdump` and the SQLite `db-*.sqlite3`, by stamp) beyond
+  backups (`store-*.pgdump` and the SQLite `db-*.sqlite3`, by the instant
+  their stamp names, so an older UTC name such as
+  `store-20261127T203345Z.pgdump` sorts beside `store-20261128T053345+0900.pgdump`) beyond
   `--keep` (default 1, counting the new one). It never removes a file with any
   other name.
 - `bin/backup --restore ARCHIVE` sends the same way in a program followed by the
@@ -1493,7 +1495,7 @@ replaced it 25 min 27 s (`docs/DECISIONS.md`, 2026-11-17).
   archive leaves the store as it was. Stop `platform` and `rebuild` first.
 - `bin/backup --sqlite` backs up a platform from before 2026-11-25 the old way:
   a compacted copy made with SQLite's `VACUUM INTO` inside `cr-platform`
-  (`CR_PLATFORM_EXEC`), kept as `backups/db-<UTC time>.sqlite3` after
+  (`CR_PLATFORM_EXEC`), kept as `backups/db-<UTC+9 time>.sqlite3` after
   `integrity_check`.
 - `bin/platform-rebuild` and `bin/cloud down` pass `backups.keep` from
   `cloud.yaml` as `--keep`.

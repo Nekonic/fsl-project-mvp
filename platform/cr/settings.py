@@ -114,6 +114,14 @@ LANGUAGE_CODE = "ko"
 USE_TZ = True
 TIME_ZONE = "UTC"
 
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"utc9": {"()": "cr.logtime.Utc9Formatter", "format": "%(asctime)s %(levelname)s %(name)s %(message)s"}},
+    "handlers": {"stderr": {"class": "logging.StreamHandler", "formatter": "utc9"}},
+    "root": {"handlers": ["stderr"], "level": "WARNING"},
+}
+
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["users.permissions.SessionAuthentication"],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],

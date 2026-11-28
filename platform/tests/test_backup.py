@@ -163,7 +163,7 @@ def test_a_platform_reached_some_other_way_is_backed_up_the_same(
     printed = backup()
 
     [kept] = backup.module.BACKUPS.iterdir()
-    assert re.fullmatch(r"db-\d{8}T\d{6}Z\.sqlite3", kept.name)
+    assert re.fullmatch(r"db-\d{8}T\d{6}\+0900\.sqlite3", kept.name)
     assert str(kept) in printed
     assert dump(kept) == dump(store)
 
@@ -358,3 +358,17 @@ def test_a_new_archive_thins_the_older_backups_of_both_kinds_by_their_stamp(back
 
     assert [path.name for path in gone] == ["db-20261001T000000Z.sqlite3", "db-20261002T000000Z.sqlite3"]
     assert backup.kept() == ["db-20261014-pre-p6.sqlite3", "store-20261003T000000Z.pgdump", kept.name]
+
+
+def test_a_new_backup_is_stamped_in_utc9_and_sorts_by_its_instant_beside_the_older_utc_names(backup):
+    from datetime import datetime, timezone
+
+    backups = backup.module.BACKUPS
+    backups.mkdir()
+    stamp = backup.module.stamp_now(datetime(2026, 11, 27, 20, 33, 45, tzinfo=timezone.utc))
+    for name in ("store-20261127T210000Z.pgdump", f"store-{stamp}.pgdump", "store-20261127T200000Z.pgdump"):
+        (backups / name).write_bytes(b"PGDMP")
+
+    assert stamp == "20261128T053345+0900"
+    assert [path.name for path in backup.module.stamped(backups)] == [
+        "store-20261127T200000Z.pgdump", "store-20261128T053345+0900.pgdump", "store-20261127T210000Z.pgdump"]

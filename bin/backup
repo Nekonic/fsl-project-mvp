@@ -11,7 +11,7 @@ import sqlite3
 import subprocess
 import tempfile
 from contextlib import closing, suppress
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -21,8 +21,10 @@ PLATFORM_EXEC = "docker exec -i cr-platform python -"
 TIMEOUT = 600
 CHUNK = 1 << 20
 ARCHIVE_MAGIC = b"PGDMP"
-STAMPED = re.compile(r"store-(\d{8}T\d{6}Z)\.pgdump")
-LEGACY = re.compile(r"db-(\d{8}T\d{6}Z)\.sqlite3")
+STAMP = r"\d{8}T\d{6}(?:Z|[+-]\d{4})"
+STAMPED = re.compile(rf"store-({STAMP})\.pgdump")
+LEGACY = re.compile(rf"db-({STAMP})\.sqlite3")
+UTC9 = timezone(timedelta(hours=9))
 ROWS_SAID = "rows "
 
 TABLES = (
@@ -202,7 +204,15 @@ def check(path):
 
 def stamp_of(path):
     named = STAMPED.fullmatch(path.name) or LEGACY.fullmatch(path.name)
-    return named.group(1) if named else None
+    return instant(named.group(1)) if named else None
+
+
+def instant(stamp):
+    return datetime.strptime(stamp.removesuffix("Z") + ("+0000" if stamp.endswith("Z") else ""), "%Y%m%dT%H%M%S%z")
+
+
+def stamp_now(now=None):
+    return (now or datetime.now(timezone.utc)).astimezone(UTC9).strftime("%Y%m%dT%H%M%S%z")
 
 
 def stamped(directory):
@@ -242,7 +252,7 @@ def take_sqlite(out, partial):
 
 
 def keep(legacy=False):
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = stamp_now()
     if legacy:
         return kept_as(f"db-{stamp}.sqlite3", take_sqlite)
     return kept_as(f"store-{stamp}.pgdump", take_archive)
@@ -278,7 +288,7 @@ def printed_rows(rows):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Dump the platform's PostgreSQL store into backups/store-<UTC stamp>.pgdump (pg_dump "
+        description="Dump the platform's PostgreSQL store into backups/store-<UTC+9 stamp>.pgdump (pg_dump "
                     "custom format) while it keeps serving, then remove the older stamped backups beyond "
                     f"--keep. CR_STORE_EXEC chooses how to reach the store (default: {STORE_EXEC}). "
                     "With --restore, load such an archive into the store instead, replacing what it holds.",
@@ -286,9 +296,9 @@ def main():
     parser.add_argument("--keep", type=int, default=1,
                         help="how many backups to leave in backups/, this one included (default 1)")
     parser.add_argument("--restore", type=Path, metavar="ARCHIVE",
-                        help="restore this store-<UTC stamp>.pgdump into the store, in one transaction")
+                        help="restore this store-<UTC+9 stamp>.pgdump into the store, in one transaction")
     parser.add_argument("--sqlite", action="store_true",
-                        help="back up a platform that still runs the SQLite store, into db-<UTC stamp>.sqlite3 "
+                        help="back up a platform that still runs the SQLite store, into db-<UTC+9 stamp>.sqlite3 "
                              f"(CR_PLATFORM_EXEC, default: {PLATFORM_EXEC})")
     args = parser.parse_args()
     if args.keep < 1:

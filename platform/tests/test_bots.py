@@ -1029,3 +1029,11 @@ def test_a_failed_read_skips_the_check_and_the_next_tick_feeds_what_it_missed():
 def test_the_next_watch_check_is_timed_from_the_start_of_the_last_one_and_skips_slots_an_overrun_missed():
     assert watch.next_start(100.0, 10.0, 103.5) == 110.0
     assert watch.next_start(100.0, 10.0, 125.0) == 130.0
+
+
+def test_a_launcher_line_starts_with_the_time_in_utc9(capsys):
+    from datetime import datetime, timezone
+
+    launcher.log("claimed run 4", now=datetime(2026, 11, 27, 20, 33, 45, tzinfo=timezone.utc))
+
+    assert capsys.readouterr().err == "2026-11-28T05:33:45+09:00 bots.launcher: claimed run 4\n"

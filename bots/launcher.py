@@ -12,7 +12,7 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import requests
@@ -72,8 +72,12 @@ OUT_OF_BUDGET = "error_max_budget_usd"
 WATCHED_SIDES = frozenset({"defence"})
 
 
-def log(text: str) -> None:
-    print(f"bots.launcher: {text}", file=sys.stderr, flush=True)
+UTC9 = timezone(timedelta(hours=9))
+
+
+def log(text: str, now=None) -> None:
+    at = (now or datetime.now(timezone.utc)).astimezone(UTC9).isoformat(timespec="seconds")
+    print(f"{at} bots.launcher: {text}", file=sys.stderr, flush=True)
 
 
 def read_secret(path: str) -> str:

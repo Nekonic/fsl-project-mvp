@@ -15,11 +15,11 @@ HTTP_LAYER = 10
 COORDINATORS = ("training/round/lifecycle.py", "training/round/allocation.py",
                 "training/round/site.py", "training/round/retention.py", "training/traffic/customers.py",
                 "training/content/probes.py", "training/round/bots.py", "training/round/records.py",
-                "training/round/debrief.py")
+                "training/round/debrief.py", "training/round/reading.py")
 LAYERS = (
     (HTTP_LAYER, HTTP),
     (0, ("domain/*",)),
-    (1, ("cr/__init__.py", "cr/config.py", "cr/errors.py", "*/__init__.py", "sandbox/*", "telemetry/elastic.py",
+    (1, ("cr/__init__.py", "cr/config.py", "cr/errors.py", "cr/logtime.py", "*/__init__.py", "sandbox/*", "telemetry/elastic.py",
          "training/attack/cases.py", "training/attack/tools.py", "scoring/loot.py", "scoring/effect.py",
          "testing/*")),
     (2, ("users/*",)),

@@ -353,3 +353,13 @@ def test_every_line_up_prints_starts_with_the_time_it_was_printed():
     stamped.write("again\n")
 
     assert written.getvalue() == "09:05:07 slot standing\n09:05:07 configure: 503\n09:05:07 trying again\n"
+
+
+def test_a_printed_line_starts_with_the_time_in_utc9_whatever_the_host_zone(monkeypatch):
+    module = command()
+    monkeypatch.setattr(module.time, "time", lambda: 1795811625.0)
+    written = io.StringIO()
+
+    print("slot standing", file=module.Stamped(written))
+
+    assert written.getvalue() == "05:33:45 slot standing\n"

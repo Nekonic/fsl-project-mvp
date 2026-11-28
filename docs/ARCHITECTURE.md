@@ -56,14 +56,14 @@
 | 계층 | 모듈 |
 |---|---|
 | L0 순수 | `domain/**` |
-| L1 경계와 라이브러리 | `cr/config.py`, `cr/errors.py`, `sandbox/*`, `telemetry/elastic.py`, `training/attack/cases.py`, `training/attack/tools.py`, `scoring/loot.py`, `scoring/effect.py`, `testing/*`, 모든 `__init__.py` |
+| L1 경계와 라이브러리 | `cr/config.py`, `cr/errors.py`, `cr/logtime.py`, `sandbox/*`, `telemetry/elastic.py`, `training/attack/cases.py`, `training/attack/tools.py`, `scoring/loot.py`, `scoring/effect.py`, `testing/*`, 모든 `__init__.py` |
 | L2 | `users/*` |
 | L3 훈련 기록 | `training/models.py` |
 | L4 | `telemetry/*` |
 | L5 | `scoring/*` |
 | L6 | `training/round/access.py`, `training/content/catalog.py`, `training/content/problems.py`, `training/content/bots.py` |
 | L7 양쪽 | `training/attack/actions.py`, `training/attack/origins.py`, `training/defence/*` |
-| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py` |
+| L8 조정 | `training/round/lifecycle.py`, `training/round/allocation.py`, `training/round/site.py`, `training/round/retention.py`, `training/traffic/customers.py`, `training/content/probes.py`, `training/round/bots.py`, `training/round/records.py`, `training/round/debrief.py`, `training/round/reading.py` |
 | HTTP | `views*.py`, `serializers.py`, `urls.py`, `cr/urls.py`, `cr/handler.py`, `cr/schema.py`, `cr/settings.py`, `cr/strings.py`, `cr/wsgi.py`, `management/commands/*`, `apps.py`, 마이그레이션 |
 
 주요 규칙(번호는 테스트 이름의 번호):
@@ -107,7 +107,7 @@ bin/
   backup  prune               DB 백업(pg_dump custom format)·복원(--restore), 닫힌 할당 정리
   fetch-geoip  pick-origins  worldmap  build-css
 platform/                     패키지 아님. manage.py와 pytest의 작업 디렉터리
-  cr/          settings.py(CR_DB_HOST가 있으면 PostgreSQL, 없으면 SQLite)  urls.py  wsgi.py  schema.py(쪽별 스키마)
+  cr/          settings.py(CR_DB_HOST가 있으면 PostgreSQL, 없으면 SQLite)  logtime.py(로그 시각 UTC+9)  urls.py  wsgi.py  schema.py(쪽별 스키마)
                config.py    경계마다 넘기는 frozen 설정, topology의 센서 목록. 설정을 읽는 유일한 경계 모듈
                errors.py    DomainError와 하위 클래스, 오류 코드
                handler.py   DRF 예외 처리기. 오류 형태 하나
@@ -152,7 +152,8 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
                lifecycle.py   라운드 만들기, 참가, 시작, catch_up(READS), 케이스 판정, 종료, 기권, 점수
                access.py      PlayerTokenAuthentication, IsPlayer(side), InRound, IsOperator, OnAllocation
-               views_catch_up.py  CatchingUpView: 요청마다 할당 만료 확인과 catch_up(CR_READ_IN_BACKGROUND면 별도 스레드)
+               views_catch_up.py  CatchingUpView: 요청마다 reading.catch_up을 부름
+               reading.py     할당 만료 확인과 catch_up(CR_READ_IN_BACKGROUND면 별도 스레드, 라운드마다 하나)
                site.py(사이트 패널 프록시)  retention.py  views.py(라운드, 할당, 스태프 range API)
                bots.py        봇 실행: 시작 때 자리마다 BotRun, 실행기의 수령(토큰 발급)·메모·종료
                records.py     라운드 기록(점수·복기 고정, 90일 보관)

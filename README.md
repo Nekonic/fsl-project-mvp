@@ -351,8 +351,8 @@ uv run bin/cloud down            # DB 백업 후 슬롯 스택, cr-mgmt, 플랫�
 uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞추지 않음
 ```
 
-- `down`과 `--replace`는 먼저 DB를 `backups/store-<UTC 시각>.pgdump`로 받습니다. 백업이
-  실패하면 아무것도 지우지 않습니다. 아직 SQLite를 쓰는 이전 플랫폼 VM이면 `db-<UTC 시각>.sqlite3`로 받고,
+- `down`과 `--replace`는 먼저 DB를 `backups/store-<UTC+9 시각>.pgdump`로 받습니다. 백업이
+  실패하면 아무것도 지우지 않습니다. 아직 SQLite를 쓰는 이전 플랫폼 VM이면 `db-<UTC+9 시각>.sqlite3`로 받고,
   새 VM이 그 파일을 PostgreSQL로 한 번 옮겨 담습니다(아래 "백업과 복원").
 - 플랫폼 VM 교체는 보통 `uv run bin/cloud up --replace`로 합니다. 훈련 환경 ssh 키(`keys.range`)를
   옮겨 주고, 템플릿·이미지·flavor·`target_tag`가 같은 스택은 그대로 씁니다. 다른 스택은
@@ -468,23 +468,23 @@ CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-po
   bin/backup --keep 2
 ```
 
-플랫폼이 도는 동안 `pg_dump` custom format으로 받아 `backups/store-<UTC 시각>.pgdump`에 저장합니다.
+플랫폼이 도는 동안 `pg_dump` custom format으로 받아 `backups/store-<UTC+9 시각>.pgdump`에 저장합니다.
 컨테이너 안에서 `pg_restore --list`로 읽히는지 확인한 뒤에만 이 이름을 붙입니다. 행이 하나도 없는 DB는
 백업을 남기지 않고, 그때는 이전 백업도 지우지 않습니다. `--keep`(기본 1)을 넘는 이전 백업은 지웁니다.
-`db-<UTC 시각>.sqlite3`(SQLite 시절 백업)도 시각 순서로 같이 셉니다. 손으로 이름 붙인 파일은 지우지 않습니다.
+`db-<UTC+9 시각>.sqlite3`(SQLite 시절 백업)도 시각 순서로 같이 셉니다. 예전 UTC 이름(`store-20261127T203345Z.pgdump`)도 같은 시각 순서로 읽습니다. 손으로 이름 붙인 파일은 지우지 않습니다.
 
 복원(DB 내용 전체를 한 트랜잭션으로 바꿉니다):
 
 ```bash
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose stop platform rebuild'
 CR_STORE_EXEC="ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS sudo docker exec -i cr-postgres bash -s" \
-  bin/backup --restore backups/store-20261126T020000Z.pgdump
+  bin/backup --restore backups/store-20261126T110000+0900.pgdump
 ssh -i ~/.ssh/fsl_claude ubuntu@ADDRESS 'cd /opt/cr && sudo docker compose start platform rebuild'
 ```
 
 `platform`과 `rebuild`를 먼저 멈춥니다. 연결이 남아 있으면 복원이 그 잠금을 기다립니다.
 
-SQLite 백업(`db-<UTC 시각>.sqlite3`)을 PostgreSQL로 옮기기(`up --replace`가 이 경우 알아서 합니다):
+SQLite 백업(`db-<UTC+9 시각>.sqlite3`)을 PostgreSQL로 옮기기(`up --replace`가 이 경우 알아서 합니다):
 
 ```bash
 scp -i ~/.ssh/fsl_claude backups/db-20261125T042248Z.sqlite3 ubuntu@ADDRESS:/opt/cr/backups/
@@ -548,7 +548,9 @@ sudo docker compose start platform rebuild
 
 시각: 저장소와 API는 UTC ISO 시각을 그대로 주고받습니다. 콘솔은 보는 사람의 브라우저 시간대와 상관없이 모든
 시각을 UTC+9로 보여 주고(`front/src/format.ts`), Kibana 공간도 UTC+9로 보여 줍니다(`sandbox/kibana.py`의
-`dateFormat:tz`). 터미널 출력은 도구가 찍는 그대로입니다. 백업 파일 이름은 UTC입니다.
+`dateFormat:tz`). 터미널 출력은 도구가 찍는 그대로입니다. 백업 파일 이름(`store-20261128T053345+0900.pgdump`), `bin/cloud`가 줄마다 찍는
+시각, `cr-platform`·`cr-bots` 컨테이너 로그의 시각도 UTC+9입니다(`cr/logtime.py`, `bots/launcher.py`의 `log`). 예전 UTC
+이름의 백업(`...Z.pgdump`)도 그대로 읽습니다. 훈련 환경 VM의 nginx·Suricata 로그는 수집기가 읽는 형식 그대로 둡니다.
 
 다음 순서는 [docs/state/now.md](docs/state/now.md)에 있습니다.
 
