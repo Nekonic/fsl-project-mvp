@@ -37,7 +37,7 @@ from the platform VM: 87 passed, 3 failed and 11 errors in 1 h 44 min, all
 six modules they sit in run again alone, 20 of 20. On the range the IDS rule
 test took 7.9 to 35.8 s (5 tests, from the store's test and `rule.tested`
 times, with up to 15 acceptance processes at once); locally it went from
-56 s to 12.5 s. The kali bake for `deploy/kali/operator-log.sh` is still
+56 s to 12.5 s. The kali bake for `deploy/roles/kali/operator-log.sh` is still
 deferred, so the slots run `cr-kali-bake4`'s command log.
 
 The second live review round (2026-11-27) found, and `review2` fixes: a
@@ -405,7 +405,7 @@ Elasticsearch at scoring time stay).
   actions; `scoring/` has no views.
 - **The comment scan reads code only.** `test_no_comments.py` covers
   Python, shell and TS/TSX/JS; YAML data and config files may carry
-  comments and are not scanned: `redteam/cases/board.yaml`,
+  comments and are not scanned: `cases/board.yaml`,
   `wargames/board/traffic.yaml` and `deploy/openstack/cloud.example.yaml`
   carry them today.
 - **A changed case needs its probe recorded again.** The board and corp
@@ -433,7 +433,7 @@ Elasticsearch at scoring time stay).
   asks for old databases to be deleted within 30 days of a new release and
   for the line "This product includes GeoLite Data created by MaxMind". For
   the MVP the user took the lightest path (2026-10-02): the `.mmdb` is not
-  committed, `bin/fetch-geoip` pulls it and `config/ingest-geoip/README.md`
+  committed, `bin/fetch-geoip` pulls it and `deploy/elastic/ingest-geoip/README.md`
   carries the attribution. Whether to carry the database and that obligation
   into the production repo, and the 30-day refresh, is still open.
   Cloudflare Radar's shares are CC BY-NC 4.0, fine here, to be looked at

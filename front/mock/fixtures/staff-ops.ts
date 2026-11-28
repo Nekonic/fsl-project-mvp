@@ -82,8 +82,8 @@ export const fixtures = [
   reply("delete", "/api/staff/range/fabric/", undefined),
 
   reply("get", "/api/staff/wargames/", [
-    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "redteam/cases/board.yaml", default_traffic: null, waf_files: WAF_FILES, cards: BOARD_CARDS, objectives: [{ key: "board-auth-user-partial", name: "게시판 계정 일부 탈취" }] },
-    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "redteam/cases/corp.yaml", default_traffic: null, waf_files: WAF_FILES, cards: CORP_CARDS, objectives: [] },
+    { id: "board", title: "Community board", image: "board:1", public_url: "", hosts: HOSTS, objective_model: "loot", case_file: "board.yaml", default_traffic: null, waf_files: WAF_FILES, cards: BOARD_CARDS, objectives: [{ key: "board-auth-user-partial", name: "게시판 계정 일부 탈취" }] },
+    { id: "corp", title: "Corporate site", image: "corp:1", public_url: "", hosts: HOSTS, objective_model: "effect", case_file: "corp.yaml", default_traffic: null, waf_files: WAF_FILES, cards: CORP_CARDS, objectives: [] },
   ]),
   reply("post", "/api/staff/wargames/{wargame_id}/probes/record/", () => {
     probeReads = 0;

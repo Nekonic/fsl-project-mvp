@@ -124,10 +124,11 @@ def test_the_platform_reads_the_image_sources_it_bundles():
     mounted = {
         volume.split(":")[1] for volume in service["volumes"] if volume.startswith("./")
     }
-    from sandbox import openstack, stack_plan
+    from sandbox import stack_plan
 
-    for path in (openstack.BASELINE_RULES, stack_plan.DEFINITION.format(wargame="board"),
-                 stack_plan.DEFINITION.format(wargame="corp")):
+    wargames = stack_plan.wargames(ROOT)
+    for path in (*(stack_plan.read(ROOT, wargame).filling("sensor").baseline for wargame in wargames),
+                 *(stack_plan.DEFINITION.format(wargame=wargame) for wargame in wargames)):
         assert any(f"{source}/{path}".startswith(f"{m}/") or f"{source}/{path}" == m
                    for m in mounted), path
 

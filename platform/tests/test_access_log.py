@@ -9,7 +9,7 @@ from telemetry import elastic
 from training.defence import ruletest
 
 ROOT = Path(__file__).resolve().parents[2]
-VHOSTS = ROOT / "deploy/waf/board.com.conf"
+VHOSTS = ROOT / "deploy/roles/waf/sites.conf"
 FILEBEAT = ROOT / "deploy/filebeat/filebeat.yml"
 PIPELINE = ROOT / "deploy/elastic/ingest-pipeline.json"
 

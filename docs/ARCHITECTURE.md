@@ -21,7 +21,7 @@
   토큰을 가짐
 - **매치업**: `pvp`, `def_vs_bot`(사람 수비 vs AI 공격 봇), `atk_vs_bot`(사람 공격 vs AI 수비 봇)
 - **슬롯**: `cr-slot-N`의 N. 다시 쓰는 번호. Kibana space `soc-logs-N`, 로그 인덱스 `logs-N-*`도 이 번호
-- **케이스**: `redteam/cases/<wargame>.yaml`에 선언한 공격 요청이나 정상 요청. 알림이 몇 건 나오든 판정은 1건
+- **케이스**: `cases/<wargame>.yaml`에 선언한 공격 요청이나 정상 요청. 알림이 몇 건 나오든 판정은 1건
 - **자유 행동**: 선언된 케이스가 아닌 요청, 도구 실행, 명령, 사이트 패널 요청. 출발지와 시간으로 묶어 따로 보고하고
   정탐·오탐으로 세지 않음
 - **출발지**(`Origin`): 공격 박스가 요청을 보내는 주소 하나. WAF가 `deny`나 `limit_req`로 막으면 소진
@@ -146,7 +146,7 @@ platform/                     패키지 아님. manage.py와 pytest의 작업 �
                access.py    WAF 접근 로그(트래픽), 오류 로그의 deny·limit_req 줄
                views.py     이벤트 피드, 방어 쪽 알림·트래픽 API   management/commands/  register_pipeline
   training/    Django 앱 하나. models.py에 Wargame부터 RuleTest까지 모든 훈련 기록
-    content/   catalog.py(wargames/와 redteam/cases 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
+    content/   catalog.py(wargames/와 cases/ 읽기, limit_floor_rpm)  problems.py(중첩 문서, revision,
                내보내기·가져오기, posture)  probes.py(probes 만들기)  스태프 문제 API, 학습자 읽기 API
                bots.py(steps.yaml 난이도 3단계, cards.yaml ATT&CK 공격 카드 A1~A8 읽기)
     round/     allocation.py  할당 열기·하트비트·닫기·만료(열 때 만료된 할당 닫기와 오래된 할당 정리)
@@ -182,10 +182,10 @@ bots/          tools.py  rest.py  calls.py  shell.py  cli.py  play.py  provider.
                launcher.py(bots compose 서비스)  watch.py(방어 실행에 보낼 새 소식)  relay.py(실행별 프록시, 속도·허용 동작)
                pace.py  Dockerfile
 test/          라이브 acceptance. plays.py가 bots/rest.py로 할당과 라운드를 돌림
-redteam/cases/ board.yaml  corp.yaml   공격·정상 케이스(데이터만)
+cases/         board.yaml  corp.yaml   공격·정상 케이스(데이터만)
 wargames/<board|corp>/  wargame.yaml  compose.yaml  topology.yaml  objectives.yaml  traffic.yaml  probes/  app/
-deploy/        roles/<kali|waf|infra|target>/  openstack/  suricata/  filebeat/  elastic/  kibana/  traffic/
-               kali/  waf/  proxy/   역할 디렉터리가 링크로 가리키는 원본(proxy/stamp.py는 사본 없이 하나)
+deploy/        roles/<kali|waf|infra|target>/(역할 이미지의 원본 파일)  openstack/  suricata/  filebeat/
+               elastic/(ingest pipeline, ingest-geoip/)  kibana/
 front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단계가 빌드하고 nginx가 /srv/front로 내줌
   src/theme/   tokens.css(색, 글꼴, 크기, 간격, 둥글기, 그림자 값)  components.css(모든 컴포넌트 클래스)
   src/ui/      props만 받아 클래스를 그리는 작은 컴포넌트: Button, Badge, Card, Hero, Table, Field, Notice, Shell(TopNav,
@@ -259,7 +259,7 @@ front/         Vite, TypeScript, Preact 콘솔. platform/Dockerfile의 node 단�
   `training/attack`과 `training/defence`는 서로 import하지 않으므로 공용 경계가 어느 한쪽에 있으면 안 됩니다.
   박스 주소, runner, 계정은 호출하는 쪽이 넘깁니다.
 - `sandbox/openstack.py`는 슬롯을 재생성할 때 `sandbox.suricata.seed`로 그 슬롯 워게임의
-  `topology.yaml`이 센서 장비(`cr-ids`)의 `baseline:`에 적은 룰 파일(board는 `deploy/suricata/rules/local.rules`,
+  `topology.yaml`이 센서 장비(`cr-ids`)의 `baseline:`에 적은 룰 파일(board는 `deploy/suricata/rules/board.rules`,
   corp는 `deploy/suricata/rules/corp.rules`)을 적재합니다. 재생성 기본 룰은 슬롯의 시작 파일이고, 라운드 시작 때 문제의 posture가 그 위에 적용됩니다.
 - 이전 구조의 예외 중 `register_pipeline.py`(→ `telemetry/elastic.py`), `operator_log.py`(→
   `sandbox/attacker.py`), `redteam/tools.py`의 `cr-kali`(→ 박스가 `launch`를 넘김), 레슨 F6의 명령(레슨과 함께
@@ -377,7 +377,7 @@ sequenceDiagram
 - WAF는 `files`(파일 경로 → 파일 전체 텍스트)를 받습니다. 방어 쪽이 고치는 WAF 파일은
   `crs-setup.conf`, `REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf`, `RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf`,
   `/etc/nginx/defence/`의 `http.conf`(http 블록), `board.com.conf`·`corp.com.conf`(각 server 블록)입니다.
-  `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/board.com.conf`와 `modsecurity.conf`에
+  `log_format`, `access_log`, 요청 마커, 감사 로그는 읽기 전용인 `conf.d/sites.conf`와 `modsecurity.conf`에
   있고, 방어 파일 어느 줄 어느 자리에든 `access_log`·`log_format`·`error_log`·`open_log_file_cache`·`SecAudit*`·`ctl:audit*`가
   있으면 거부합니다. 클라이언트 주소도 측정이라 `set_real_ip_from`·`real_ip_header`·`real_ip_recursive`도 거부합니다.
   검사하지 않은 파일을 불러올 수 있는 nginx `include`와 ModSecurity `Include`·`IncludeOptional`도 거부합니다.
@@ -581,7 +581,7 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   테이블을 다시 읽으면 집합이 비고, 라운드 중에는 아무도 다시 채우지 않으므로 다음 라운드 시작까지 kali에서
   타깃에 닿지 않습니다. infra 이미지에는
   `conntrack`, `tcpdump`(probes 만들기), 오프라인 룰 테스트의 임시 폴더 `/var/lib/cr-ruletest`가 더해집니다.
-- `deploy/roles/waf/board.com.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
+- `deploy/roles/waf/sites.conf`: 두 vhost의 `$refused` 맵(400, 403) 하나와 모든 요청의 JSON 접근 로그
   `/var/log/nginx/access.json`(`client_ip`, `status`, `refused`, `request_id` 등). `request_id`는 마커 모양(`^[A-Za-z0-9._:-]{1,128}$`)일 때만 남기고 아니면 비웁니다. 헤더를 부풀리거나 여러 번 넣어 줄이 64 KiB를 넘기면 `client_ip`가 사라지기 때문입니다.
   같은 파일이 오류 로그 `error_log /var/log/nginx/error.log warn;`을 정합니다.
   각 server 블록의 `listen`은 `/etc/nginx/slot/<워게임>.listen`에서 읽고, WAF의 `slot-boot`가 `/etc/slot.env`의
@@ -614,12 +614,14 @@ SSH 권한으로 점프 호스트를 거쳐 공격 박스나 WAF(`analyst`)에�
   `cr-users` 0750입니다. nft 울타리(`/etc/nftables.conf`)는 WAF보다 좁아서 `lo`로 나가는 패킷도 목적지가
   `127.0.0.0/8`, `::1`일 때만 통과시킵니다(로그 중계가 자기 주소의 514번에 있기 때문). 이 파일에는 그 테이블만
   있어 `nftables.service`를 켜도 `slot-boot`가 읽는 edge 테이블은 그대로입니다.
-- `deploy/roles/infra/`: 고객 계정 `cr-users`, `/usr/local/lib/cr-users/users.py`, 켜지 않은 유닛
+- `deploy/roles/infra/`: 고객 계정 `cr-users`, `/usr/local/lib/cr-users/customers.py`, 켜지 않은 유닛
   `cr-customers.service`(플랫폼이 라운드 시작 때 켜고 끝날 때 끔). `slot-boot`가 고객 주소를 dummy 링크 `customers`에
   /32로 붙이고 사이트 이름을 `WAF_FRONT`로 `/etc/hosts`에 적습니다.
 - `wargames/board/`: `set_passwords` 명령. `objectives.yaml`의 비밀값이 `rotate`로 이 명령을 선언하고, 라운드
   시작 때 `scoring.loot.rotate`가 target VM에서 돌립니다. target 이미지가 이 명령이 든 `cr-board`를 받아야 합니다.
-- `deploy/roles/kali/stamp.py`는 `deploy/proxy/stamp.py`를 가리키는 링크라 프록시 코드는 한 벌입니다. 설계 문서가 지우기로 했던 "중복"은 처음부터 없었습니다.
+- `deploy/roles/kali/web-proxy.py`: kali의 웹 프록시(`web-proxy.service`, `/usr/local/lib/web-proxy.py`). 역할 디렉터리의
+  파일은 링크가 아니라 원본이고, `deploy/roles/infra/`의 `suricata.yaml`·`local.rules`와 `deploy/roles/target/`의
+  compose 파일만 `deploy/suricata/`와 `wargames/<id>/`를 가리키는 링크입니다.
 
 ## DB
 

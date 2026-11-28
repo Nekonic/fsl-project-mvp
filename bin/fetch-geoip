@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-HOME = ROOT / "config" / "ingest-geoip"
+HOME = ROOT / "deploy" / "elastic" / "ingest-geoip"
 ENDPOINT = "https://geoip.elastic.co/v1/database?elastic_geoip_service_tos=agree"
 WANT = "GeoLite2-City"
 

@@ -141,7 +141,7 @@ def test_the_session_data_view_shows_the_waf_s_recorded_request_body_as_one_fiel
     view = a_session_view()
     runtime = json.loads(view["attributes"]["runtimeFieldMap"])
     hidden = {entry["value"] for entry in json.loads(view["attributes"]["sourceFilters"])}
-    parts = re.search(r"^SecAuditLogParts (\S+)", (ROOT / "deploy/waf/modsecurity.conf").read_text(), re.M).group(1)
+    parts = re.search(r"^SecAuditLogParts (\S+)", (ROOT / "deploy/roles/waf/modsecurity.conf").read_text(), re.M).group(1)
 
     assert "C" in parts and not set(parts) & set("DGIK"), (
         "ModSecurity v3 writes the request body only for part C and has no D, G, I or K; ABIJDEFHZ dropped the body")

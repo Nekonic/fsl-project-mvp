@@ -5,7 +5,7 @@ import pytest
 import plays
 
 SETUP = plays.Setup(wargame="board", title="Acceptance defence shell board")
-SITES = "/etc/nginx/conf.d/board.com.conf"
+SITES = "/etc/nginx/conf.d/sites.conf"
 LOGGING_OFF = "access_log off;"
 
 

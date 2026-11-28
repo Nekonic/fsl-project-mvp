@@ -274,7 +274,7 @@ if [ "$(cat "$RULES_SAID")" = ok ]; then
 else
   cat "$RULES_SAID"
   echo
-  fail "the sensor of allocation $opened does not run deploy/suricata/rules/local.rules or suricata -T refused it (reason above)"
+  fail "the sensor of allocation $opened does not run deploy/suricata/rules/board.rules or suricata -T refused it (reason above)"
 fi
 rm -f "$RULES_SAID"
 

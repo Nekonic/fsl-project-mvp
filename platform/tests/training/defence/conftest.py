@@ -42,7 +42,7 @@ def copied_source(into: Path) -> Path:
             for name in ("wargame.yaml", "topology.yaml", "objectives.yaml", "traffic.yaml"):
                 if (folder / name).is_file():
                     shutil.copy(folder / name, into / "wargames" / folder.name / name)
-    shutil.copytree(REPO / "redteam" / "cases", into / "redteam" / "cases")
+    shutil.copytree(REPO / "cases", into / "cases")
     (into / "platform" / "sandbox").mkdir(parents=True)
     shutil.copy(REPO / "platform" / "sandbox" / "declaration.yaml", into / "platform" / "sandbox" / "declaration.yaml")
     shutil.copytree(REPO / "deploy" / "kibana", into / "deploy" / "kibana")

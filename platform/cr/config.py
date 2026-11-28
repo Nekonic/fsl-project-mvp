@@ -242,7 +242,7 @@ def build(environ: Mapping[str, str] = os.environ, source: Path | str | None = N
     found, watches = devices(root)
     declaration = root / DECLARATION if (root / DECLARATION).is_file() else DECLARATION_BESIDE_THE_CODE
     declared = yaml.safe_load(declaration.read_text()) if declaration.is_file() else {}
-    target_url = environ.get("ATTACKER_TARGET_URL") or environ.get("PUBLIC_TARGET_URL") or BoxConfig.target_url
+    target_url = environ.get("ATTACKER_TARGET_URL") or BoxConfig.target_url
     attacker, _ = filling(found, "attacker")
     proxy, _ = filling(found, "proxy")
     customers, _ = filling(found, "customers")

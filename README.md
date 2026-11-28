@@ -106,7 +106,7 @@ IDS(Suricata)로 막습니다. 플랫폼은 대상 시스템이 무엇을 잃었
   알림도 많이 나오지만 1건입니다. 알림 단위로 세면 방어가 아니라 알림 임계값을 재게 됩니다.
 - 알림이 공격 수법을 짚지 못하면(케이스의 `expect` 문자열이 시그니처에 없으면) `corroborated: false`로 표시하고
   탐지로 인정하지 않습니다.
-- 탐지 결과에 들어가는 것은 선언된 케이스(`redteam/cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격 플레이어가
+- 탐지 결과에 들어가는 것은 선언된 케이스(`cases/`)와 플랫폼이 보내는 정상 케이스뿐입니다. 공격 플레이어가
   터미널이나 API로 자유롭게 보낸 요청은 출발지별로 따로 보여 주고(`free_actions`) 정탐·오탐으로 세지 않습니다.
 - 모든 요청을 막는 방어는 탐지 결과에서 만점을 받지만 정상 케이스에서 오탐이 쌓이고, 목표는 지켜도 그 오탐이 옆에
   그대로 남습니다.
@@ -407,11 +407,14 @@ uv run bin/platform-rebuild      # 플랫폼 VM만 교체. 훈련 환경은 맞�
 1. `wargames/<이름>/`에 `wargame.yaml`(id, 제목, 이미지, 공개 URL, 호스트, 목표 판정 방식, 케이스 파일, 기본 고객
    트래픽), `compose.yaml`, `objectives.yaml`, `topology.yaml`(스택의 LAN, VM, 고정 IP, 장치와 역할), 필요하면
    `traffic.yaml`
-2. `redteam/cases/<이름>.yaml`에 공격 케이스와 정상 케이스. 정상 케이스가 없으면 테스트가 실패합니다
+2. `cases/<이름>.yaml`에 공격 케이스와 정상 케이스. 정상 케이스가 없으면 테스트가 실패합니다.
+   센서의 시작 룰은 `deploy/suricata/rules/<이름>.rules`에 공격 케이스마다 signature 하나(`msg`에 케이스의
+   `expect`)로 쓰고, `topology.yaml`의 `cr-ids` 장비 `baseline:`에 그 경로를 적습니다. `baseline:`이 없으면 슬롯
+   재생성이 실패합니다
 3. 모든 워게임 `topology.yaml`의 `cr-waf`에서 `names:`에 사이트 이름, `upstreams:`에 대상 주소
 4. `deploy/roles/target/`에 compose 파일 링크 `<이름>.yaml`, `wargames.yaml`의 `fronts`와 `limits`,
    `install.sh`의 `WARGAMES`
-5. `deploy/waf/`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와 `deploy/roles/kali/install.sh`의 호스트 이름
+5. `deploy/roles/waf/sites.conf`에 사이트의 `server` 블록, `deploy/roles/waf/slot-boot`와 `deploy/roles/kali/install.sh`의 호스트 이름
 6. target, waf, kali 이미지를 다시 굽고 `cloud.yaml`의 `compute.images`에 새 이름, `compute.pool`에 스택 수
 7. 룰 테스트용 probes를 만들어 `wargames/<이름>/probes/`에 커밋(`bin/record-probes`, 스태프 API 사용)
 

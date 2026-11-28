@@ -16,7 +16,7 @@ def copied_source(into: Path) -> Path:
             for name in ("wargame.yaml", "topology.yaml", "objectives.yaml", "traffic.yaml"):
                 if (folder / name).is_file():
                     shutil.copy(folder / name, into / "wargames" / folder.name / name)
-    shutil.copytree(REPO / "redteam" / "cases", into / "redteam" / "cases")
+    shutil.copytree(REPO / "cases", into / "cases")
     return into
 
 

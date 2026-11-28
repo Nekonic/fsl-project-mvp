@@ -27,7 +27,7 @@ not yet deployed. `main` holds the old product until gate 2.
   defender's rule. Times on screen read UTC+9; no Hangul spelling of an
   English term shows.
 - The demo answer sheet (attack and defence per wargame, the rules used and
-  the sqlmap commands from `redteam/cases/board.yaml`) is a private artifact.
+  the sqlmap commands from `cases/board.yaml`) is a private artifact.
 - corp's committed probes for `corp-rogue-admin` still hold the old `-4`
   registration requests; the case itself sends `-5` since the fix. They are
   not recorded again yet.
@@ -45,7 +45,7 @@ not yet deployed. `main` holds the old product until gate 2.
   does not cover the back button, Kibana's own English UI.
 - The launcher does not stop a bot's child process when its round ends (the
   platform marks the run ended; the child runs to `CR_BOT_RUN_SECONDS`).
-- The kali change `deploy/kali/operator-log.sh` waits for a kali bake; the
+- The kali change `deploy/roles/kali/operator-log.sh` waits for a kali bake; the
   slots run `cr-kali-bake4`'s command log.
 - The attack bot meets 2 refusals a run on Sonnet and Opus 5.5 and goes on.
 - Round 406's `ground_truth_unavailable` (2026-11-27) is not explained; a

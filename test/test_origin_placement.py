@@ -44,5 +44,5 @@ def test_every_origin_is_placed_in_its_country_by_the_pipeline_scoring_reads(sta
     )
     assert not unlocated, (
         f"GeoIP gave no location for {unlocated}, so the map cannot draw them; "
-        f"run bin/fetch-geoip to populate config/ingest-geoip"
+        f"run bin/fetch-geoip to populate deploy/elastic/ingest-geoip"
     )

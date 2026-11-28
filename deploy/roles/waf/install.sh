@@ -130,7 +130,7 @@ for site in http.conf board.com.conf corp.com.conf; do
 done
 
 install -m 0644 modsecurity.conf "$MODSEC_DIR/modsecurity.conf"
-install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf
+install -m 0644 sites.conf /etc/nginx/conf.d/sites.conf
 sites_listening
 rm -f /etc/nginx/sites-enabled/default
 install -d -o www-data -g adm -m 750 /var/log/modsecurity /var/log/modsecurity/audit

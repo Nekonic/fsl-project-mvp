@@ -19,8 +19,8 @@ from opening import refused_for_room
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLATFORM_URL = os.environ.get("CR_PLATFORM_URL", "http://localhost:8000").rstrip("/")
-DECLARED_RULES = REPO_ROOT / "deploy/suricata/rules/local.rules"
-CASES = REPO_ROOT / "redteam/cases"
+DECLARED_RULES = REPO_ROOT / "deploy/suricata/rules/board.rules"
+CASES = REPO_ROOT / "cases"
 WARGAMES = REPO_ROOT / "wargames"
 TITLE = "Acceptance {wargame}"
 BOT = "acceptance"
@@ -472,7 +472,7 @@ def apply_ids(played: Played, text: str, timeout: float = SCORE_WAIT) -> Reloade
 def sensor_runs_the_declared_rules(played: Played) -> str:
     live = ids_rules(played)["text"]
     if live != declared_rules():
-        return f"the sensor's live rules are not deploy/suricata/rules/local.rules: {live[:300]!r}"
+        return f"the sensor's live rules are not deploy/suricata/rules/board.rules: {live[:300]!r}"
     checked = in_shell(played, "ids", "sudo suricata -T")
     return "ok" if checked.get("ok") else json.dumps(checked)[:2000]
 

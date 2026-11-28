@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-WAF_CONF = Path(__file__).resolve().parents[2] / "deploy/waf/board.com.conf"
+WAF_CONF = Path(__file__).resolve().parents[2] / "deploy/roles/waf/sites.conf"
 SERVERS = re.findall(r"^server\s*\{.*?^\}", WAF_CONF.read_text(), flags=re.DOTALL | re.MULTILINE)
 INTERNAL_ANSWER = {
     "board": r"location\s+/internal/\s*\{\s*proxy_pass\s+http://board:8000/not-found/;",

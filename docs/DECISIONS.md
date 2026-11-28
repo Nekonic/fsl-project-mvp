@@ -11575,10 +11575,13 @@ the round says `operated`.
 
 ## 2026-11-28 — Terminal output stays as the tool prints it
 
-The reload wrappers on the WAF and IDS VMs print their refusal in English, next to nginx's and
-Suricata's own English output in the same terminal. The Korean-only rule covers the console and
-the learner map; a terminal shows what the tools print, as practitioners read it. No image rebake
-for that text.
+nginx and Suricata print in English in the terminal, as practitioners read them. The
+Korean-only rule covers the console and the learner map, not what a tool prints. The platform's
+own reload wrappers on the WAF and IDS VMs (`deploy/roles/waf/nginx`,
+`deploy/roles/infra/suricatasc`) print their refusal in Korean in the source since 2026-11-27; a
+waf or infra image baked before that change still prints the earlier English text, and the
+Korean reaches the VMs at the next bake of those roles. No bake is made for that text alone.
+(Corrected on 2026-11-28: this entry first said the wrappers print English.)
 
 ## 2026-11-28 — Each wargame's sensor starts on its own rules
 
@@ -11636,3 +11639,71 @@ The user: "어차피 개인이 돌리는건데 15분도 많을수도 있잖아 �
 range is played by one person at a time, not a class; the default limit of a pvp round goes
 from 30 to 15 minutes (`CR_PVP_TIME_LIMIT_SECONDS`, default 900). The demo flow from start to
 end took 4 to 5 minutes on 2026-11-28.
+
+## 2026-11-28 — `redteam/` becomes `cases/`
+
+The folder held one thing, `cases/`, with attack and benign cases side by side; the name
+`redteam` described only half of them. The cases now live in `cases/<wargame>.yaml` and the
+platform reads them from `CR_SOURCE/cases` (`compose.yaml` mounts `./cases:/src/cases`). The
+second mount `./redteam:/app/redteam` and the `WARGAME_CASES_DIR` it served, read by no code,
+are gone.
+
+## 2026-11-28 — A role directory holds its own files
+
+`deploy/roles/<role>/` is what each role image is baked from, but eleven of its files were links
+into `deploy/kali/`, `deploy/waf/`, `deploy/proxy/` and `deploy/traffic/`, folders left from the
+container range. The real files now sit in the role directories and those four folders are
+gone. What stays linked: `infra/suricata.yaml` and `infra/local.rules` into `deploy/suricata/`,
+and the target's compose files into `wargames/<id>/compose.yaml`.
+
+## 2026-11-28 — Kali's web proxy is `web-proxy.py`
+
+The proxy that stamps a marker on each site-pane and learner request was `deploy/proxy/stamp.py`
+in the repo and `/usr/local/lib/web-proxy.py` under `web-proxy.service` on kali. It is
+`deploy/roles/kali/web-proxy.py` now, one name for the file, the installed copy and the unit.
+
+## 2026-11-28 — The WAF's front config is `sites.conf`
+
+`board.com.conf` held the server blocks of both sites, the JSON access log format and the
+include of the defence's `http.conf`, and shared its name with the defender's own
+`/etc/nginx/defence/board.com.conf`. It is `deploy/roles/waf/sites.conf`, installed as
+`/etc/nginx/conf.d/sites.conf`. The defence files keep their names. A waf image baked before
+this change still carries `conf.d/board.com.conf`; the next waf bake installs the new name.
+
+## 2026-11-28 — The customers' program is `customers.py`
+
+The benign customers' program was `deploy/traffic/users.py`, run by `cr-customers.service`
+through `sandbox/customers.py`. It is `deploy/roles/infra/customers.py`, installed as
+`/usr/local/lib/cr-users/customers.py`. The account `cr-users` keeps its name. The next infra
+bake installs the new file name.
+
+## 2026-11-28 — board's starting IDS rules are `board.rules`
+
+board's starting file was `deploy/suricata/rules/local.rules`, the same name as the live rule
+file on every sensor, while corp's is `corp.rules`. It is `deploy/suricata/rules/board.rules`;
+the sensor's file stays `/var/lib/suricata/rules/local.rules`, and `deploy/roles/infra/local.rules`
+links to `board.rules` under the installed name. A sensor device without `baseline:` no longer
+falls back to board's file: the slot refill fails and names the wargame.
+
+## 2026-11-28 — The GeoIP databases sit under `deploy/elastic/ingest-geoip/`
+
+`config/` held only `ingest-geoip/` and its README, while the pipeline that uses the databases is
+`deploy/elastic/ingest-pipeline.json`. The folder moved to `deploy/elastic/ingest-geoip/`;
+`compose.yaml`, `.gitignore` and `bin/fetch-geoip` name the new path. The platform VM's
+cloud-init runs `bin/fetch-geoip` when it is built (`deploy/openstack/platform.yaml`), so a rebuilt
+VM fills the new path; a checkout updated in place needs `bin/fetch-geoip` once, because the
+`.mmdb` files are not committed.
+
+## 2026-11-28 — The board's sqlmap injection test is `board-sqli-orderby-sqlmap-detect`
+
+The case was named `board-sqli-orderby-sqlmap-probe`, while "probe" already names a case's
+recording for the rule test (`wargames/<id>/probes/`), so its recording was the probe of the
+probe. The case and its recording are `board-sqli-orderby-sqlmap-detect`; the marker is
+unchanged. No problem exported in the backup folder names the case.
+
+## 2026-11-28 — compose leftovers removed
+
+`TARGET_URL`, `PUBLIC_TARGET_URL` and `WARGAME_CASES_DIR` on the platform, the `cr.segment`
+labels on the `mgmt` network and the collector's `hostname: log-server` were read by nothing.
+`log-server` names only the infra VM's log relay. The attacker's target URL is
+`ATTACKER_TARGET_URL` or the default, as before.

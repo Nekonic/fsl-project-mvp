@@ -132,7 +132,7 @@ def test_a_refused_request_s_status_lands_where_the_ids_record_s_does_so_no_runt
 
     from sandbox import kibana
     root = FILEBEAT.parents[2]
-    logged = re.search(r"log_format access escape=json '(\{.*\})';", (root / "deploy/waf/board.com.conf").read_text())
+    logged = re.search(r"log_format access escape=json '(\{.*\})';", (root / "deploy/roles/waf/sites.conf").read_text())
     shipped = set(re.findall(r'"([A-Za-z_]+)":', logged[1]))
     [heard] = syslog_inputs()
     [nginx] = [step["then"] for step in heard["processors"] if "if" in step

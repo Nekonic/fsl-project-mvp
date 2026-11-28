@@ -27,7 +27,7 @@ def test_tool_case_in_the_default_file_declares_args():
 
     from training.attack.cases import load_cases
 
-    cases = load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")
+    cases = load_cases(Path(__file__).resolve().parents[3] / "cases/board.yaml")
     tool_cases = [c for c in cases if is_tool_case(c)]
 
     assert tool_cases, "no tool: cases at all"
@@ -42,7 +42,7 @@ def test_the_tamper_variant_skips_the_heuristic_probe_that_a_dropped_connection_
 
     from training.attack.cases import load_cases
 
-    cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml")}
+    cases = {c["name"]: c for c in load_cases(Path(__file__).resolve().parents[3] / "cases/board.yaml")}
 
     assert "--skip-heuristics" in cases["board-sqli-orderby-sqlmap-tamper"]["args"], (
         "from paranoia level 2 a board 500 is refused after its headers are sent and nginx drops the "

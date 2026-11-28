@@ -14,7 +14,7 @@ deploy/suricata/logs/
 /claude-oauth-token
 /store-password
 /.env
-config/ingest-geoip/*.mmdb
+deploy/elastic/ingest-geoip/*.mmdb
 /deploy/openstack/cloud.yaml
 /front/src/api/schema.d.ts
 /front/node_modules/

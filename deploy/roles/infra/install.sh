@@ -50,8 +50,8 @@ customers_installed() {
     || useradd --system --no-create-home --shell /usr/sbin/nologin "$CUSTOMERS_ACCOUNT"
   install -d -m 0750 -o "$CUSTOMERS_ACCOUNT" -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_HOME"
   install -d -m 0750 -g "$CUSTOMERS_ACCOUNT" "$CUSTOMERS_PROGRAM_DIR"
-  install -m 0644 users.py "$CUSTOMERS_PROGRAM_DIR/users.py"
-  python3 -m py_compile "$CUSTOMERS_PROGRAM_DIR/users.py"
+  install -m 0644 customers.py "$CUSTOMERS_PROGRAM_DIR/customers.py"
+  python3 -m py_compile "$CUSTOMERS_PROGRAM_DIR/customers.py"
   install -m 0644 cr-customers.service /etc/systemd/system/
 }
 

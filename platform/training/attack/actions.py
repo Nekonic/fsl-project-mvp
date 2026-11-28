@@ -39,7 +39,7 @@ from training.models import Action, Allocation, Origin, Player, Round, ToolRun
 ATTACKER = box.ATTACKER_ROLE
 CUSTOMERS = customers.CUSTOMERS_ROLE
 PROXY = "proxy"
-CASES = "redteam/cases"
+CASES = "cases"
 REQUEST_TIMEOUT = 30
 BODY_LIMIT = 262144
 SELF_MARKING_TOOLS = ("curl", "sqlmap")

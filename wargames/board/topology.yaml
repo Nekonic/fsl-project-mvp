@@ -38,7 +38,7 @@ devices:
     container: sensor
     roles: [sensor]
     rules: /var/lib/suricata/rules/local.rules
-    baseline: deploy/suricata/rules/local.rules
+    baseline: deploy/suricata/rules/board.rules
     reload: suricatasc -c reload-rules
   log-server: {node: cr-infra, roles: [log-server]}
   cr-customers: {node: cr-infra, roles: [customers]}

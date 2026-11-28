@@ -45,7 +45,7 @@
       "marker": "probe-2e8f95ac5eab",
       "tool_case": true
     },
-    "board-sqli-orderby-sqlmap-probe": {
+    "board-sqli-orderby-sqlmap-detect": {
       "malicious": true,
       "marker": "probe-06b6c3e453f5",
       "tool_case": true

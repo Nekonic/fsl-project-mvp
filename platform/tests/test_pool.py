@@ -8,7 +8,7 @@ from sandbox import fabric as networks
 from sandbox import openstack, pool, stack_plan
 from testing import fakecloud
 
-BASELINE = (fakecloud.ROOT / openstack.BASELINE_RULES).read_text()
+BASELINE = (fakecloud.ROOT / stack_plan.read(fakecloud.ROOT, "board").filling("sensor").baseline).read_text()
 
 
 @pytest.fixture
@@ -175,5 +175,5 @@ def test_a_slot_s_sensor_starts_on_the_rules_its_own_wargame_names(cloud):
 
     started = {one.wargame: one.baseline_rules("sensor") for one in adapter.every_slot()}
 
-    assert started == {"board": (rules / "local.rules").read_text(), "corp": (rules / "corp.rules").read_text()}
+    assert started == {"board": (rules / "board.rules").read_text(), "corp": (rules / "corp.rules").read_text()}
     assert started["board"] != started["corp"], "a corp round would start on the board's signatures"

@@ -711,14 +711,15 @@ builder VM that has egress, is idempotent, and ends by clearing cloud-init and
 the machine id (`cloud-init clean --logs`, an empty `/etc/machine-id`), so
 every range VM booted from the snapshot is a new instance. The role's boot
 units wait for `/etc/slot.env` (`ConditionPathExists`), so they do nothing on
-the builder. Several files in a role directory are links into the repo
-(`deploy/kali/`, `deploy/proxy/stamp.py`, `deploy/waf/`, `deploy/suricata/`,
-each wargame's `compose.yaml`); copy the directory with the links resolved.
+the builder. A few files in a role directory are links into the repo
+(`infra/suricata.yaml` and `infra/local.rules` into `deploy/suricata/`, the
+target's compose files into each wargame's `compose.yaml`); copy the directory
+with the links resolved.
 
 | Role | Builder's base | `install.sh` installs |
 |---|---|---|
 | `kali` | the Kali base | `kali-linux-headless` and the tools of the Kali container before (nmap, sqlmap, nikto, whatweb, ffuf, gobuster, hydra, dirb, mitmproxy and others), the stamp proxy as `web-proxy.service`, the operator log hook, `set-origin`, `slot-boot`, `set-peer` with `wireguard-tools` and `net.ipv4.ip_forward = 1` (the learner's tunnel; images baked before 2026-11-25 lack it), and a key-only `kali` user with bash and passwordless sudo; `board.com` and `corp.com` resolve to 121.134.88.42; sslh's systemd generator masked and `cloud-init.target` wanted by `multi-user.target`, so cloud-init runs on every boot (`docs/TROUBLESHOOTING.md` "A Kali VM booted without cloud-init") |
-| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `board.com.conf` (the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), the `nginx` reload wrapper in `/usr/local/sbin` and its `nginx.service` drop-in, `slot-boot`, and `/etc/nginx/slot/board.listen` and `corp.listen`, the `listen` of each `server` (images baked before 2026-11-25 lack them, so their default server is always board and a corp slot's bare address reaches no site) |
+| `waf` | `compute.base_image` | nginx 1.24 from Ubuntu, ModSecurity 3.0.16 and its nginx connector built from release tarballs checked by SHA-256, CRS 4.25.1, the repo's `modsecurity.conf` and `sites.conf` (installed as `/etc/nginx/conf.d/sites.conf`; images baked before 2026-11-28 carry it as `conf.d/board.com.conf`; the JSON access log of every request), rsyslog, nftables, python3, the scratch CRS test's `probe.conf` and `probe-upstream.py` in `/usr/local/share/cr/` with its scratch folder `/var/lib/cr-crstest`, the `analyst` account (`analyst.sh`), the `nginx` reload wrapper in `/usr/local/sbin` and its `nginx.service` drop-in, `slot-boot`, and `/etc/nginx/slot/board.listen` and `corp.listen`, the `listen` of each `server` (images baked before 2026-11-25 lack them, so their default server is always board and a corp slot's bare address reaches no site) |
 | `infra` | `compute.base_image` | nftables, conntrack, tcpdump, bridge-utils, ethtool, rsyslog, Docker with `bridge: none` and no iptables, the pinned `jasonish/suricata` image (`suricata -T` run on the repo's config and rules), the `suricatasc` wrapper (`docker exec -i sensor suricatasc`; `-c reload-rules` first copies the rule file to `/var/lib/cr-reloaded/ids`, refuses a copy with `config: logging` or one whose sha256 is not in `/var/lib/cr-reloaded/ids.passed`, and loads that copy), `edge.nft` with the `pool` and `spent` sets, the offline rule test's scratch folder `/var/lib/cr-ruletest`, `sensor.service`, `slot-boot`, the `analyst` account (`analyst.sh`) with the `suricata` wrapper (`docker exec sensor suricata -T`); `suricata` itself is only in the `sensor` container |
 | `target` | `compute.base_image` | Docker and Compose; board's and corp's compose files rendered for a VM (`render.py`: fronts published on the stack's addresses, databases on the internal `<w>_backend`), their images pulled from GHCR at `CR_IMAGE_TAG` (required), brought up once and their volumes kept as the pristine data, `wargames.service` |
 
@@ -821,7 +822,7 @@ On 2026-11-23 the roles were baked from `restructure` on `m1.medium` builders:
 `cr-target-bake2` (at the branch's commit as `CR_IMAGE_TAG`, snapshot 6 min
 44 s) and `cr-waf-bake3` (snapshot 3 min 18 s), each `min_disk` 30 GB. The kali
 snapshot failed (above), so the range ran `cr-kali-bake2` until 2026-11-24,
-because nothing under `deploy/roles/kali`, `deploy/kali` or `deploy/proxy`
+because nothing under `deploy/roles/kali` or the files it then linked
 changed between the tree it was baked from and `restructure`; it runs
 `cr-kali-bake3`, baked from `restructure`, from 2026-11-24, and `cr-kali-bake4`,
 baked from `bot-rounds`, since 2026-11-25.
@@ -866,7 +867,7 @@ at each.
 | Role | New name | What changed in `deploy/roles/<role>/` |
 |---|---|---|
 | `infra` | `cr-infra-bake2` | `edge.nft` declares the sets `pool` and `spent` (`type ipv4_addr`) and drops `ip saddr @spent` and then `ip saddr != @pool` from `wan` before the established accept, so an open keep-alive or sqlmap connection of a spent origin stops too and an address the platform never put in `pool` reaches nothing; `sandbox/edge.py` adds the addresses after each `slot-boot` load and flushes a spent origin's conntrack entries (package `conntrack`). `tcpdump` for `sandbox.suricata.capture` (probe recording), `/var/lib/cr-ruletest` (0700) for `sandbox.suricata.offline_test`, which runs the same pinned image and `/etc/suricata/suricata.yaml` with `-r` and reads the scratch `eve.json`, never `/var/log/suricata`. `log-relay.conf` relays the WAF's `nginx-access` lines instead of `nginx`, and its `nginx-error` lines (the error log origin loss is read from) |
-| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `board.com.conf` writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `board.com.conf` also writes `error_log /var/log/nginx/error.log warn;`, which `log-shipper.conf` ships under Tag `nginx-error`, and includes the defence files `/etc/nginx/defence/http.conf` (at `http` level), `board.com.conf` and `corp.com.conf` (in each `server`). `install.sh` creates those three, `crs-setup.conf` (from the example), REQUEST-900 and RESPONSE-999 when absent. `probe.conf` and `probe-upstream.py` for `sandbox.crs.scratch_check` and `scratch_test`. `analyst.sh` creates the defence player's account and makes those six defence files root:analyst 0664 |
+| `waf` | `cr-waf-bake3` (**(this cloud)**; `cr-waf-bake2` is taken) | `sites.conf` (then named `board.com.conf`) writes every request to `/var/log/nginx/access.json` as JSON (`time`, `client_ip`, `vhost`, `request`, `status`, `refused` from the one `$refused` map of 400 and 403, `request_id` from `X-Request-ID` when it has a marker's shape and empty otherwise, so a padded or repeated header cannot push the line past the shipper's 64 KiB), and `log-shipper.conf` ships it under Tag `nginx-access` in place of `refused.log`. `board.com.conf` also writes `error_log /var/log/nginx/error.log warn;`, which `log-shipper.conf` ships under Tag `nginx-error`, and includes the defence files `/etc/nginx/defence/http.conf` (at `http` level), `board.com.conf` and `corp.com.conf` (in each `server`). `install.sh` creates those three, `crs-setup.conf` (from the example), REQUEST-900 and RESPONSE-999 when absent. `probe.conf` and `probe-upstream.py` for `sandbox.crs.scratch_check` and `scratch_test`. `analyst.sh` creates the defence player's account and makes those six defence files root:analyst 0664 |
 
 `pool` holds a round's attack origins (filled when
 the round starts) or, for a probe allocation, the origin it wears (admitted before
@@ -987,7 +988,7 @@ ssh ubuntu@<platform> "sudo docker exec cr-platform tar -C /data/probes/board/pr
 
 ### 3.8 Benign traffic moves to the infra (infra and kali rebake)
 
-The customers program (`deploy/traffic/users.py`) and the benign cases no
+The customers program (`deploy/roles/infra/customers.py`, then `users.py`) and the benign cases no
 longer run on kali. Until the infra is rebaked, a range has no customers:
 the platform starts `cr-customers.service` on the infra and the old image
 has no such unit, so starting the customers fails and the round records the
@@ -995,7 +996,7 @@ error in `Round.traffic`.
 
 | Role | What changed in `deploy/roles/<role>/` |
 |---|---|
-| `infra` | `install.sh` creates the system account `cr-users` and `/var/lib/cr-users`, installs `users.py` (a link to `deploy/traffic/users.py`) into `/usr/local/lib/cr-users/` and the unit `cr-customers.service` (not enabled; the platform starts it with a round's plan and stops it at the round's end), and installs `python3` and `curl`. `slot-boot` puts the slot's customer addresses (`CUSTOMERS` in `/etc/slot.env`) on a dummy link `customers` as /32s and points the sites (`SITES`) at the WAF's front in `/etc/hosts` |
+| `infra` | `install.sh` creates the system account `cr-users` and `/var/lib/cr-users`, installs `customers.py` (`users.py` in images baked before 2026-11-28) into `/usr/local/lib/cr-users/` and the unit `cr-customers.service` (not enabled; the platform starts it with a round's plan and stops it at the round's end), and installs `python3` and `curl`. `slot-boot` puts the slot's customer addresses (`CUSTOMERS` in `/etc/slot.env`) on a dummy link `customers` as /32s and points the sites (`SITES`) at the WAF's front in `/etc/hosts` |
 | `kali` | nothing in its role files; it stands on one address per origin now, which comes from `/etc/slot.env`, not the image. It is rebaked with the infra so both images come from the same tree |
 
 The customers leave the infra's DMZ port, which already allows every source
@@ -1941,7 +1942,7 @@ stack uses the same addresses; stacks differ by network, not by CIDR.
 The refill's last step seeds each stack's sensor with its wargame's starting
 rules through `sandbox.suricata.seed`: the file the sensor device names under
 `baseline:` in `wargames/<w>/topology.yaml`, read from the platform's checkout
-(board `deploy/suricata/rules/local.rules`, corp
+(board `deploy/suricata/rules/board.rules`, corp
 `deploy/suricata/rules/corp.rules`). A Player vs AI round's start then applies
 its problem's posture over it; a `pvp` round has no problem and starts on the
 slot as it is. Everything else a stack needs is in its images and its user data.
@@ -2087,8 +2088,7 @@ file's and `docs/state/now.md`'s git history. The side split's ported suite
 cloud yet (`docs/STATE.md`).
 
 A change to a range VM role (`deploy/roles/<role>/` or a file it links, such as
-`deploy/kali/`, `deploy/proxy/stamp.py`, `deploy/waf/`, `deploy/suricata/` or a
-wargame's `compose.yaml` and app image) reaches the range only through a new
+`deploy/suricata/` or a wargame's `compose.yaml` and app image) reaches the range only through a new
 bake (§3.6). Range VMs boot from the Glance images `compute.images` names, and the
 stack's digest covers those names and the flavors, not the images' content:
 bake under a new name (`cr-<role>-bake2`), name it in `compute.images` (a

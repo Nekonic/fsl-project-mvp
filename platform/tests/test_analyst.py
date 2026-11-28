@@ -85,10 +85,10 @@ def test_it_writes_the_defence_files_and_nothing_else_of_the_nginx_crs_logging_o
     assert 'chown root:"$ACCOUNT" "$file"' in script and 'chmod 0664 "$file"' in script
     assert script.index("\nnothing_writable_by_its_groups\n") < script.index("\ndefence_files_writable\n"), (
         "the defence files are made writable after every other file is made read-only")
-    assert not any(file.endswith(("modsecurity.conf", "/conf.d/board.com.conf")) for file in defence), (
+    assert not any(file.endswith(("modsecurity.conf", "/conf.d/sites.conf")) for file in defence), (
         "log_format, access_log, the request marker and the audit log stay the platform's")
     assert (WAF / "install.sh").read_text().index("./analyst.sh") > (WAF / "install.sh").read_text().index(
-        'install -m 0644 board.com.conf'), "it runs after every nginx and CRS file is in place"
+        'install -m 0644 sites.conf'), "it runs after every nginx and CRS file is in place"
 
 
 def test_it_is_posix_sh_that_stops_at_the_first_failure():
@@ -97,25 +97,25 @@ def test_it_is_posix_sh_that_stops_at_the_first_failure():
 
 
 def test_the_site_config_keeps_the_logging_and_loads_the_defence_s_nginx_files_where_they_apply():
-    site = (ROOT / "deploy/waf/board.com.conf").read_text()
+    site = (ROOT / "deploy/roles/waf/sites.conf").read_text()
     http_part, servers = site.split("\nserver {", 1)
 
     assert "log_format access" in http_part and "access_log /var/log/nginx/access.json access;" in http_part
     assert "include /etc/nginx/defence/http.conf;" in http_part
     assert "server_name board.com;\n    include /etc/nginx/defence/board.com.conf;" in servers
     assert "server_name corp.com;\n    include /etc/nginx/defence/corp.com.conf;" in servers
-    assert "install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf" in (WAF / "install.sh").read_text()
+    assert "install -m 0644 sites.conf /etc/nginx/conf.d/sites.conf" in (WAF / "install.sh").read_text()
 
 
 def test_the_platform_s_logging_lies_outside_what_the_analyst_writes():
-    logging = (WAF / "board.com.conf").read_text()
+    logging = (WAF / "sites.conf").read_text()
     defence = assigned()["DEFENCE_FILES"].replace("$CRS", assigned()["CRS"]).split()
     sensor = ROOT / "deploy/roles/infra"
 
     assert all(directive in logging for directive in ("log_format access", "access_log ", "error_log ",
                                                       "$http_x_request_id"))
-    assert "install -m 0644 board.com.conf /etc/nginx/conf.d/board.com.conf" in (WAF / "install.sh").read_text()
-    assert "/etc/nginx/conf.d/board.com.conf" not in defence and "/etc/nginx" in assigned()["READ_ONLY"].split()
+    assert "install -m 0644 sites.conf /etc/nginx/conf.d/sites.conf" in (WAF / "install.sh").read_text()
+    assert "/etc/nginx/conf.d/sites.conf" not in defence and "/etc/nginx" in assigned()["READ_ONLY"].split()
     assert "install -m 0644 suricata.yaml /etc/suricata/suricata.yaml" in (sensor / "install.sh").read_text()
 
 

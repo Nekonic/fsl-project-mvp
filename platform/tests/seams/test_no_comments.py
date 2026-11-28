@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[3]
-CODE_ROOTS = ("platform", "front/src", "bots", "bin", "test", "deploy", "wargames", "redteam")
+CODE_ROOTS = ("platform", "front/src", "bots", "bin", "test", "deploy", "wargames", "cases")
 NOT_SCANNED = re.compile(
     r"^deploy/suricata/rules/|^front/src/api/schema\.d\.ts$"
     r"|(?:^|/)(?:\.[^/]+|__pycache__|node_modules|dist)/")

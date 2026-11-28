@@ -2,9 +2,6 @@ name: cr
 
 networks:
   mgmt:
-    labels:
-      cr.segment.id: "mgmt"
-      cr.segment: "Management"
     ipam:
       config:
         - subnet: 172.31.0.0/24
@@ -60,7 +57,7 @@ services:
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ./config/ingest-geoip:/usr/share/elasticsearch/config/ingest-geoip:ro
+      - ./deploy/elastic/ingest-geoip:/usr/share/elasticsearch/config/ingest-geoip:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9200/_cluster/health | grep -qE '\"status\":\"(green|yellow)\"'"]
       interval: 10s
@@ -71,7 +68,6 @@ services:
     platform: linux/amd64
     image: docker.elastic.co/beats/filebeat:8.15.0
     container_name: cr-collector
-    hostname: log-server
     user: root
     depends_on:
       elasticsearch: {condition: service_healthy}
@@ -141,9 +137,6 @@ services:
       CR_PROBES_OUT: "/data/probes"
       CR_JUMP_DIR: "/data/jump"
       CR_VPN_DIR: "/data/vpn"
-      TARGET_URL: "http://board.com"
-      PUBLIC_TARGET_URL: "http://board.com"
-      WARGAME_CASES_DIR: "/app/redteam/cases"
       CR_SOURCE: "/src"
       CR_RETAIN_CLOSED_MINUTES: "${CR_RETAIN_CLOSED_MINUTES:-60}"
       CR_ALLOCATION_IDLE_MINUTES: "${CR_ALLOCATION_IDLE_MINUTES:-30}"
@@ -158,10 +151,9 @@ services:
     secrets: [openstack_password, bots_launcher_key, store_password]
     volumes: &platform-volumes
       - ./platform:/app
-      - ./redteam:/app/redteam:ro
       - ./deploy:/src/deploy:ro
       - ./wargames:/src/wargames:ro
-      - ./redteam/cases:/src/redteam/cases:ro
+      - ./cases:/src/cases:ro
       - platformdata:/data
 
   rebuild:

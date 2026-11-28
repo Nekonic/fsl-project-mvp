@@ -2,7 +2,7 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-RULES = ROOT / "deploy/suricata/rules/local.rules"
+RULES = ROOT / "deploy/suricata/rules/board.rules"
 SENSOR = ROOT / "deploy/suricata/suricata.yaml"
 
 def live_rules():
@@ -37,10 +37,10 @@ def test_the_port_variable_names_every_port_the_waf_proxies_to():
 
     ports = str(yaml.safe_load(SENSOR.read_text())["vars"]["port-groups"]["HTTP_PORTS"])
     declared = {int(port) for port in re.findall(r"\d+", ports)}
-    waf = (ROOT / "deploy/waf/board.com.conf").read_text()
+    waf = (ROOT / "deploy/roles/waf/sites.conf").read_text()
     upstream = {int(port) for port in re.findall(r"proxy_pass\s+http://[\w.-]+:(\d+)", waf)}
 
-    assert upstream, "board.com.conf names no upstream port"
+    assert upstream, "sites.conf names no upstream port"
     assert upstream <= declared, (
         f"the WAF proxies to {sorted(upstream)} but HTTP_PORTS is {ports}; a rule "
         f"written $HOME_NET $HTTP_PORTS would miss the traffic on the ports left out"

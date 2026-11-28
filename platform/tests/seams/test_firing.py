@@ -17,7 +17,7 @@ def _launcher(exit_code=0, output="200"):
     return launch, calls
 
 BASE = "http://localhost:8080"
-DEFAULT_CASES = Path(__file__).resolve().parents[3] / "redteam/cases/board.yaml"
+DEFAULT_CASES = Path(__file__).resolve().parents[3] / "cases/board.yaml"
 
 def test_build_request_omits_marker_for_window_cases():
     case = {

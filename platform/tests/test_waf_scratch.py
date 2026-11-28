@@ -109,7 +109,7 @@ def test_the_scratch_instance_listens_on_loopback_only_and_keeps_every_file_unde
 def test_the_copied_crs_tree_points_at_the_scratch_copy_and_the_scratch_audit_log_only():
     config = live_waf()
     scratch = crs.scratch_for(config, 42)
-    copied = sed_over(f"{scratch.tree}/modsecurity.conf", (ROOT / "deploy/waf/modsecurity.conf").read_text())
+    copied = sed_over(f"{scratch.tree}/modsecurity.conf", (ROOT / "deploy/roles/waf/modsecurity.conf").read_text())
     audit_log_shipped = re.findall(r'File="([^"]+)"', (WAF / "log-shipper.conf").read_text())
 
     assert config.tree == "/etc/nginx/modsecurity"

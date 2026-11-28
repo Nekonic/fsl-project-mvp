@@ -73,7 +73,7 @@ install -m 0644 bashrc /etc/skel/.bashrc
 key_only_login_for kali
 bashrc_for kali
 
-install -m 0644 stamp.py /usr/local/lib/web-proxy.py
+install -m 0644 web-proxy.py /usr/local/lib/web-proxy.py
 install -m 0644 operator-log.sh /usr/local/lib/shell-hook.sh
 install -m 0755 set-origin /usr/local/sbin/set-origin
 install -m 0755 slot-boot /usr/local/sbin/slot-boot

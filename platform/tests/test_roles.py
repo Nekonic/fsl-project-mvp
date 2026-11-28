@@ -140,15 +140,8 @@ def test_every_unit_a_node_waits_on_before_it_reports_ready_is_one_its_image_ins
 
 
 @pytest.mark.parametrize("carried, source", [
-    ("kali/bashrc", "deploy/kali/bashrc"),
-    ("kali/operator-log.sh", "deploy/kali/operator-log.sh"),
-    ("kali/set-origin", "deploy/kali/set-origin"),
-    ("kali/stamp.py", "deploy/proxy/stamp.py"),
-    ("waf/modsecurity.conf", "deploy/waf/modsecurity.conf"),
-    ("waf/board.com.conf", "deploy/waf/board.com.conf"),
     ("infra/suricata.yaml", "deploy/suricata/suricata.yaml"),
-    ("infra/local.rules", "deploy/suricata/rules/local.rules"),
-    ("infra/users.py", "deploy/traffic/users.py"),
+    ("infra/local.rules", "deploy/suricata/rules/board.rules"),
     ("target/board.yaml", "wargames/board/compose.yaml"),
     ("target/corp.yaml", "wargames/corp/compose.yaml"),
 ])
@@ -161,7 +154,7 @@ def test_kali_installs_the_headless_set_the_tools_the_cases_run_and_sshd():
     installed = re.search(r"^installed (.+)$", text("kali/install.sh"), re.M)[1].split()
     packages = {word for word in installed if not word.startswith("$")}
     packages |= {package for word in installed if word.startswith("$") for package in named[word[1:]].split()}
-    tools = {case["tool"] for path in (ROOT / "redteam/cases").glob("*.yaml")
+    tools = {case["tool"] for path in (ROOT / "cases").glob("*.yaml")
              for case in yaml.safe_load(path.read_text()) or () if isinstance(case, dict) and case.get("tool")}
 
     assert {"kali-linux-headless", "iputils-ping", "traceroute", "openssh-server", "sudo"} <= packages
@@ -171,7 +164,7 @@ def test_kali_installs_the_headless_set_the_tools_the_cases_run_and_sshd():
 def test_kali_keeps_the_files_the_platform_reads_and_writes_where_the_container_had_them():
     script = text("kali/install.sh")
 
-    assert "install -m 0644 stamp.py /usr/local/lib/web-proxy.py" in script
+    assert "install -m 0644 web-proxy.py /usr/local/lib/web-proxy.py" in script
     assert "install -m 0644 operator-log.sh /usr/local/lib/shell-hook.sh" in script
     assert "install -m 0755 set-origin /usr/local/sbin/set-origin" in script
     assert "install -d -m 0711 /var/lib/session" in script
@@ -242,8 +235,8 @@ def test_the_waf_builds_pinned_versions_each_checked_by_its_sha256():
 
 def test_the_waf_ships_the_audit_access_and_error_logs_under_the_tags_filebeat_reads():
     audit = re.search(r"^SecAuditLog (\S+)$", text("waf/modsecurity.conf"), re.M)[1]
-    access = re.search(r"^access_log (\S+) access;$", text("waf/board.com.conf"), re.M)[1]
-    error = re.search(r"^error_log (\S+) warn;$", text("waf/board.com.conf"), re.M)[1]
+    access = re.search(r"^access_log (\S+) access;$", text("waf/sites.conf"), re.M)[1]
+    error = re.search(r"^error_log (\S+) warn;$", text("waf/sites.conf"), re.M)[1]
     shipped = dict((tag, path) for path, tag in
                    re.findall(r'File="([^"]+)" Tag="([^"]+)"', text("waf/log-shipper.conf")))
     filebeat = yaml.safe_dump(yaml.safe_load(FILEBEAT.read_text()))
@@ -372,7 +365,7 @@ def test_the_infra_runs_the_customers_program_as_its_own_account_from_the_plan_t
     named = assigned("infra/install.sh")
 
     assert f"User={customers.ACCOUNT}" in unit and f"Group={customers.ACCOUNT}" in unit
-    assert (f"ExecStart=/usr/bin/python3 {named['CUSTOMERS_PROGRAM_DIR']}/users.py {customers.PLAN} "
+    assert (f"ExecStart=/usr/bin/python3 {named['CUSTOMERS_PROGRAM_DIR']}/customers.py {customers.PLAN} "
             f"{customers.RECORDS}") in unit
     assert f"ConditionPathExists={customers.PLAN}" in unit
     assert named["CUSTOMERS_ACCOUNT"] == customers.ACCOUNT and named["CUSTOMERS_HOME"] == customers.HOME
@@ -395,7 +388,7 @@ def test_the_infra_holds_the_customer_addresses_on_a_dummy_link_and_reaches_the_
 
 
 def test_kali_no_longer_carries_the_customers():
-    assert "cr-users" not in text("kali/install.sh") and "users.py" not in " ".join(
+    assert "cr-users" not in text("kali/install.sh") and "customers.py" not in " ".join(
         path.name for path in (ROLES / "kali").iterdir())
 
 
@@ -423,7 +416,7 @@ def test_the_target_runs_both_wargames_by_the_images_ci_builds_at_the_baked_tag(
 
 
 def test_the_target_publishes_each_front_on_the_port_the_waf_proxies_to_and_keeps_the_databases_inside():
-    proxied = dict(re.findall(r"proxy_pass http://([a-z-]+):(\d+);", text("waf/board.com.conf")))
+    proxied = dict(re.findall(r"proxy_pass http://([a-z-]+):(\d+);", text("waf/sites.conf")))
     render = render_module()
 
     for wargame, document in rendered_wargames().items():
@@ -461,7 +454,7 @@ def test_the_target_keeps_pristine_data_and_restores_it_into_empty_volumes_only(
 @pytest.mark.parametrize("wargame", WARGAMES)
 def test_a_request_by_the_bare_address_reaches_the_slot_s_own_wargame(wargame, tmp_path):
     listeners = assigned("waf/slot-boot")["LISTENERS"]
-    servers = re.findall(r"^server\s*\{.*?^\}", text("waf/board.com.conf"), re.M | re.S)
+    servers = re.findall(r"^server\s*\{.*?^\}", text("waf/sites.conf"), re.M | re.S)
     listened = {re.search(rf"include {listeners}/(\S+)\.listen;", server)[1]: server for server in servers}
     for site in listened:
         (tmp_path / f"{site}.listen").write_text("")

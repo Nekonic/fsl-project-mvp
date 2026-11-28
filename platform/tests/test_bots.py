@@ -676,7 +676,7 @@ def test_launcher_command_runs_claude_code_on_bash_and_json_files_in_an_empty_di
     script = command[command.index("-c") + 1]
     assert 'mkdir -p "$HOME/run/work"' in script and 'cd "$HOME/run/work"' in script
     assert 'head -c "$1" > "$HOME/run/config/system.md" && shift' in script
-    assert not any(str(REPO) in word or "redteam" in word for word in command)
+    assert not any(str(REPO) in word or "cases/" in word for word in command)
     assert "MITRE ATT&CK" in launcher.system_text(attack) and "bots.cli" in launcher.system_text(attack)
     assert "MITRE ATT&CK" not in launcher.system_text(claimed_run("defence", stance="This round's attack profile (MITRE ATT&CK: ...)"))
     assert "every 75 seconds" in launcher.system_text({**claimed_run("defence"), "watch_s": 75})

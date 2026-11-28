@@ -1,7 +1,7 @@
 import pathlib
 
 from sandbox import definitions as declaration
-from sandbox import openstack, stack_plan
+from sandbox import stack_plan
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
@@ -21,7 +21,10 @@ def test_the_sensor_starts_on_the_shipped_baseline_rules():
     entry = stack.hosts[stack.roles["sensor"]]
 
     assert entry.rules == "/var/lib/suricata/rules/local.rules"
-    assert (ROOT / openstack.BASELINE_RULES).is_file(), (
-        "a slot's configure seeds the sensor from local.rules; the ready check reads the sensor's rules against it")
+    for wargame in stack_plan.wargames(ROOT):
+        baseline = stack_plan.read(ROOT, wargame).filling("sensor").baseline
+        assert baseline and (ROOT / baseline).is_file(), (
+            f"a slot's configure seeds {wargame}'s sensor from its own baseline: file; "
+            "the ready check reads the sensor's rules against it")
 
 

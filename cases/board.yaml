@@ -79,7 +79,7 @@
 
 # The first sqlmap run as a learner types it: the injection test
 # alone, sqlmap's own User-Agent, no dump. CRS 913100 names the scanner.
-- name: board-sqli-orderby-sqlmap-probe
+- name: board-sqli-orderby-sqlmap-detect
   title: "정렬 파라미터 SQL 인젝션: sqlmap 취약점 점검"
   malicious: true
   stage: initial-compromise

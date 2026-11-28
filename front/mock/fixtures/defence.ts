@@ -55,13 +55,13 @@ function idsResult(test: number, errors: RuleError[]): RuleTestResult {
     cases: [
       { case: "board-sqli-search", malicious: true, verdict: "tp", corroborated: true, recorded_run: false, alerts: [{ rule: "9000001", signature: "SQLi attempt - URI" }] },
       { case: "board-xss-script-tag-in-search", malicious: true, verdict: "tp", corroborated: true, recorded_run: false, alerts: [{ rule: "9000003", signature: "XSS attempt - script tag or event handler" }] },
-      { case: "board-sqli-orderby-sqlmap-probe", malicious: true, verdict: "tp", corroborated: true, recorded_run: true, alerts: [{ rule: "9000005", signature: "SQLi attempt - sort parameter" }] },
+      { case: "board-sqli-orderby-sqlmap-detect", malicious: true, verdict: "tp", corroborated: true, recorded_run: true, alerts: [{ rule: "9000005", signature: "SQLi attempt - sort parameter" }] },
       { case: "board-path-traversal-static", malicious: true, verdict: "tp", corroborated: false, recorded_run: false, alerts: [{ rule: "9000004", signature: "path traversal attempt" }] },
       ...benign.map((name) => ({ case: name, malicious: false, verdict: "tn" as const, corroborated: null, recorded_run: false, alerts: [] })),
     ],
     totals: { tp: 4, fn: 0, fp: 0, tn: benign.length },
     untested: [],
-    against_applied: [{ case: "board-sqli-orderby-sqlmap-probe", was: "fn", now: "tp" }],
+    against_applied: [{ case: "board-sqli-orderby-sqlmap-detect", was: "fn", now: "tp" }],
   };
 }
 

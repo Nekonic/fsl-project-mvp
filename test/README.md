@@ -17,7 +17,7 @@ ssh ubuntu@<address> 'cd /opt/cr && CR_PLATFORM_URL=http://<address>:8000 bin/ve
 `bin/verify` regenerates the clients, runs the unit suite, and then the
 acceptance suite through `bin/acceptance`, which runs `python -m pytest test/`.
 Before the acceptance suite it opens one allocation, starts a round on it, has that
-round's sensors check `deploy/suricata/rules/local.rules`, and closes the
+round's sensors check `deploy/suricata/rules/board.rules`, and closes the
 allocation.
 
 `CR_PLATFORM_URL` is the platform's address (default `http://localhost:8000`).
@@ -32,7 +32,7 @@ acceptance check reads as "passed".
 
 1. It keeps one staff problem per wargame, `Acceptance <wargame>`, written
    through the staff API on first use: a round problem whose posture is the
-   committed `local.rules` and a CRS exclusion file that detects without blocking
+   committed `board.rules` and a CRS exclusion file that detects without blocking
    `/search/`, and every objective of the wargame.
 2. `plays.play(wargame)` opens an allocation (`POST /api/allocations/`), creates a
    `def_vs_bot` round on it and starts it. The attack player is a bot whose token
@@ -86,7 +86,7 @@ pass in any order.
 | `terminal_windows` | `test_window_correlation` (a free tool attributed by source and time) and `test_strategy_comparison` |
 | `rogue_admin_session`, `option_flip_session` | `test_corp_authz`, two corp allocations side by side; `rogue_admin_session` also serves `test_score_reveal` (the weighted objective number, an undetected and unanswered loss) |
 
-The red-team run fires every malicious case in `redteam/cases/board.yaml`
+The red-team run fires every malicious case in `cases/board.yaml`
 except the sqlmap variants other than `board-sqli-orderby-sqlmap`.
 `CR_SQLMAP_VARIANTS=1` fires them all.
 

@@ -87,5 +87,5 @@ def test_benign_traffic_comes_from_the_infra_not_the_attacker(rules_session):
     assert benign, "no alert carried a benign marker, so nothing shows where benign traffic comes from"
     assert not [alert for alert in benign if alert["src_ip"] in rules_session["noisy_origins"]], (
         f"benign requests left from an attack origin: {[a for a in benign if a['src_ip'] in rules_session['noisy_origins']][:5]}")
-    assert not [line for line in processes if "users.py" in line or line.split(" ", 1)[0] == "cr-users"], (
+    assert not [line for line in processes if "customers.py" in line or line.split(" ", 1)[0] == "cr-users"], (
         f"the attacker box runs the customers' program: {processes}")

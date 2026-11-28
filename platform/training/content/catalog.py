@@ -13,7 +13,7 @@ from domain.traffic import limit_floor
 from training.attack.cases import load_cases
 
 WARGAMES = "wargames"
-CASES = "redteam/cases"
+CASES = "cases"
 DECLARED = "wargame.yaml"
 FIELDS = ("id", "title", "image", "public_url", "hosts", "objective_model", "case_file", "default_traffic")
 OBJECTIVE_MODELS = ("loot_verified", "effect_observed")

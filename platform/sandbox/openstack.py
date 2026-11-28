@@ -70,7 +70,6 @@ OLD_BUNDLE = "cr_bundle"
 SLOT_KEY = "cr_slot"
 NODE_KEY = "cr_node"
 IMAGE = "cr-{role}-bake1"
-BASELINE_RULES = "deploy/suricata/rules/local.rules"
 STACK_TIMEOUT_MINUTES = 30
 
 CONNECT_TIMEOUT = 10
@@ -1173,7 +1172,9 @@ class OpenStack:
         return done
 
     def baseline_rules(self, role: str) -> str:
-        named = self._definition(self.wargame).filling(role).baseline or BASELINE_RULES
+        named = self._definition(self.wargame).filling(role).baseline
+        if not named:
+            raise Drifted(f"{self.wargame}'s topology names no baseline: rule file for its {role}")
         return (Path(self.build.source) / named).read_text()
 
     def plan_leftovers(self) -> list[tuple[str, str, str]]:

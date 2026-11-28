@@ -134,7 +134,7 @@ def test_stopping_a_run_kills_its_process_group_and_marks_it_ended():
 
 def _hook(tmp_path):
     hook = tmp_path / "hook.sh"
-    hook.write_text((DEPLOY / "kali/operator-log.sh").read_text()
+    hook.write_text((DEPLOY / "roles/kali/operator-log.sh").read_text()
                     .replace(BoxConfig.command_log, str(tmp_path / "commands.log"))
                     .replace("/var/lib/session/active", str(tmp_path / "active")))
     return hook
@@ -181,7 +181,7 @@ def test_the_hook_leaves_a_blank_line_before_every_prompt_but_the_first_as_kali_
 def test_the_attacker_prompt_is_kali_s_two_line_prompt_and_ends_in_a_dollar_and_a_space():
     shell = subprocess.run(
         ["bash", "--noprofile", "--norc", "-ic", 'source "$1"; printf "%s" "$PS1"', "bash",
-         str(DEPLOY / "kali/bashrc")],
+         str(DEPLOY / "roles/kali/bashrc")],
         capture_output=True, text=True, timeout=30, env={**os.environ, "TERM": "xterm-256color"},
     )
     prompt = re.sub(r"\\\[.*?\\\]", "", shell.stdout)

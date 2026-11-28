@@ -82,7 +82,7 @@ def test_a_broken_wargame_yaml_is_refused_by_name(source, fields, said):
 
 
 def test_a_case_file_without_a_benign_case_is_refused(source):
-    path = source / "redteam" / "cases" / "corp.yaml"
+    path = source / "cases" / "corp.yaml"
     path.write_text(yaml.safe_dump([case for case in yaml.safe_load(path.read_text()) if case["malicious"]]))
 
     with pytest.raises(catalog.CatalogBroken, match="no benign case"):
