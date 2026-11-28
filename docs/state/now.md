@@ -5,10 +5,30 @@ are in `docs/STATE.md`; rulings in `docs/DECISIONS.md`; the design in
 `docs/superpowers/specs/2026-11-19-side-split-design.md`; detail in `git log`.
 The handover of the old tree up to 2026-11-18 is in this file's git history.
 
-Updated: 2026-11-27.
+Updated: 2026-11-28.
 
 ## Where things stand
 
+- 2026-11-28, the pvp demo day: `dev` holds the pvp check fixes
+  (`docs/DECISIONS.md` 2026-11-28 "pvp demo check"). The Kali terminal no
+  longer reloads itself while ttyd's page loads; terminal grants skip the
+  round's log read and every other view reads on a thread of its own
+  (`CR_READ_IN_BACKGROUND=1` in `compose.yaml`); corp's registration cases
+  send the form's own field ids, so corp-rogue-admin creates an administrator
+  and the objective falls; corp starts on its own IDS rules (corp-ids), which
+  alert on it; the defence console opens on alerts and loads Kibana only on
+  its tab; the starting WAF/IDS versions read '시작 룰'; learners see the slot
+  as '1번'; both consoles show a waiting or starting notice; the WireGuard
+  profile downloads as a `.conf` (vpn-download); problems 19 and 20 say
+  '기업 사이트'. On the cloud after one replace, both pvp checks
+  (`~/.cache/fsl-work/pvp-check/{board,corp}/results.json`) passed every
+  step from sign-in to sign-out: the attack takes corp's objective, the IDS
+  alert shows, the defender's WAF rule passes its test, goes live and the same
+  attack gets 403; the board SQLi is refused by CRS and then by the
+  defender's rule. Start still takes 25-40 s (posture 7.6 s, baseline 3.1 s
+  measured, on a 2-vCPU platform VM). Times shown in the console are KST
+  (`front/src/format.ts`); that change is on `dev` and reaches the cloud with
+  the next replace.
 - The tree is `ui-sweep` (2026-11-27, the evening before the pvp demo):
   `demo` with the Korean wording pass and the fixes of a UI sweep
   (`docs/DECISIONS.md` 2026-11-27 "Sign-out ends everything at once"). Sign-out

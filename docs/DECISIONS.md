@@ -11613,3 +11613,10 @@ corp's first objective. Causes, each read from the platform's logs or the target
 Problems 19 and 20 called the wargame '회사 홈페이지' while the console names it '기업 사이트'; their
 title, summary and body were changed through the staff API (copies before the change in the
 backup folder).
+
+## 2026-11-28 — Times are shown in KST
+
+The user: "시간대 kst로 맞춰놔". The store and the API keep UTC ISO times; the console formats
+every time it shows through `front/src/format.ts` with `timeZone: "Asia/Seoul"`, whatever the
+viewer's browser zone. Kibana's spaces already carry `dateFormat:tz: Asia/Seoul`
+(`sandbox/kibana.py`), and the terminals run with `TZ=KST-9`.

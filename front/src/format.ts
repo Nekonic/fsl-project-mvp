@@ -1,6 +1,7 @@
-const TIME = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false });
-const TIME_SECONDS = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-const DATE = new Intl.DateTimeFormat("sv-SE", { year: "numeric", month: "2-digit", day: "2-digit" });
+export const SHOWN_TIME_ZONE = "Asia/Seoul";
+const TIME = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: SHOWN_TIME_ZONE });
+const TIME_SECONDS = new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: SHOWN_TIME_ZONE });
+const DATE = new Intl.DateTimeFormat("sv-SE", { year: "numeric", month: "2-digit", day: "2-digit", timeZone: SHOWN_TIME_ZONE });
 const NUMBER = new Intl.NumberFormat("ko-KR");
 
 export function clock(at: string | null | undefined): string {
